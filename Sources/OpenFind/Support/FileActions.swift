@@ -1,6 +1,6 @@
 import AppKit
 
-/// 对命中结果的系统级操作，集中一处便于复用。
+/// System-level actions for search hits, consolidated for reuse.
 enum FileActions {
 
     static func open(_ url: URL) {
@@ -20,15 +20,16 @@ enum FileActions {
         pasteboard.setString(text, forType: .string)
     }
 
-    /// 弹目录选择面板，允许多选。返回用户选中的目录，取消则空数组。
+    /// Show directory selection panel, allowing multiple selection.
+    /// Returns selected URLs, or empty array if cancelled.
     @MainActor
     static func chooseDirectories() -> [URL] {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = true
-        panel.prompt = "加入搜索范围"
-        panel.message = "选择要搜索的文件夹"
+        panel.prompt = L("Add to Scope")
+        panel.message = L("Select folders to search")
         return panel.runModal() == .OK ? panel.urls : []
     }
 }

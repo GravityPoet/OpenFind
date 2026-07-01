@@ -9,10 +9,10 @@ struct ResultsTable: View {
 
     var body: some View {
         Table(results, selection: $selection, sortOrder: $sortOrder) {
-            TableColumn("Name", value: \.name) { ResultRow(result: $0) }
+            TableColumn(L("Name"), value: \.name) { ResultRow(result: $0) }
                 .width(min: 200, ideal: 280)
 
-            TableColumn("Location", value: \.locationPath) { result in
+            TableColumn(L("Location"), value: \.locationPath) { result in
                 Text(result.locationPath)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -20,14 +20,14 @@ struct ResultsTable: View {
             }
             .width(min: 160, ideal: 320)
 
-            TableColumn("Size", value: \.size) { result in
+            TableColumn(L("Size"), value: \.size) { result in
                 Text(result.isDirectory ? "—" : ByteCountFormatter.string(fromByteCount: result.size, countStyle: .file))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
             .width(min: 70, ideal: 90)
 
-            TableColumn("Date Modified", value: \.modified) { result in
+            TableColumn(L("Date Modified"), value: \.modified) { result in
                 Text(result.modified, format: .dateTime.year().month().day().hour().minute())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -37,10 +37,10 @@ struct ResultsTable: View {
         .contextMenu(forSelectionType: SearchResult.ID.self) { ids in
             let urls = Array(ids)
             if !urls.isEmpty {
-                Button("Open") { urls.forEach(FileActions.open) }
-                Button("Reveal in Finder") { FileActions.revealInFinder(urls) }
+                Button(L("Open")) { urls.forEach(FileActions.open) }
+                Button(L("Reveal in Finder")) { FileActions.revealInFinder(urls) }
                 Divider()
-                Button("Copy Path") { FileActions.copyPaths(urls) }
+                Button(L("Copy Path")) { FileActions.copyPaths(urls) }
             }
         } primaryAction: { ids in
             if let first = ids.first { FileActions.open(first) }

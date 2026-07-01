@@ -1,0 +1,58 @@
+/* Results Table Headers & Actions */
+"Name" = "Name";
+"Location" = "Location";
+"Size" = "Size";
+"Date Modified" = "Date Modified";
+"Open" = "Open";
+"Reveal in Finder" = "Reveal in Finder";
+"Copy Path" = "Copy Path";
+
+/* File Dialogs */
+"Add to Scope" = "Add to Scope";
+"Select folders to search" = "Select folders to search";
+
+/* Search Bar & Header */
+"Search..." = "Search...";
+"Cancel Search" = "Cancel Search";
+"Start Search" = "Start Search";
+
+/* Filter Bar */
+"Target" = "Target";
+"Options" = "Options";
+"Scope" = "Scope";
+"Case Sensitive" = "Case Sensitive";
+"Include Hidden Files" = "Include Hidden Files";
+"Search Inside Packages" = "Search Inside Packages";
+"Add Folder..." = "Add Folder...";
+"Clear Scopes" = "Clear Scopes";
+"Remove" = "Remove";
+
+/* Match Modes */
+"Contains" = "Contains";
+"Whole Word" = "Whole Word";
+"Wildcard" = "Wildcard";
+"Regular Expression" = "Regular Expression";
+
+/* Search Targets */
+"Name or Contents" = "Name or Contents";
+"Contents" = "Contents";
+
+/* Status Bar */
+"%lld results" = "%lld results";
+"showing first %lld" = "showing first %lld";
+"elapsed: %.2fs" = "elapsed: %.2fs";
+"%lld folders" = "%lld folders";
+
+/* Placeholders & Empty States */
+"Start searching by typing a query" = "Start searching by typing a query";
+"No Results Found" = "No Results Found";
+"No Search Scopes" = "No Search Scopes";
+"Add a folder to search in" = "Add a folder to search in";
+
+/* Settings Window */
+"Settings" = "Settings";
+"Default Target" = "Default Target";
+"Default Match Mode" = "Default Match Mode";
+"Max Content File Size (MB)" = "Max Content File Size (MB)";
+"Clear Recent Searches" = "Clear Recent Searches";
+"Durable Defaults" = "Durable Defaults";

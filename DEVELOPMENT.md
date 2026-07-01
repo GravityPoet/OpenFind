@@ -20,6 +20,13 @@ generous whitespace, restrained color, native controls.
 
 ---
 
+## Modularization Red Lines
+
+- Every Swift source file must remain under 200 lines.
+- One main type / view per file.
+- Views are purely for layout; logic belongs to ViewModel; IO belongs to Engine/Store.
+- Strictly unidirectional dependencies: `Views -> State -> Engine -> Models`.
+
 ## Architecture
 
 Single SwiftUI executable (SPM), split by concern:
@@ -47,9 +54,9 @@ Status: ✅ done · 🚧 in progress · ⬜ planned
 - ✅ Verified: engine accuracy (grep cross-check), GUI launch, packaged `.app`
 
 ### Phase 1 — English + Persistence
-- ⬜ Convert all comments/strings to English (code language = English)
-- ⬜ `Preferences`: persist search options via `@AppStorage`
-- ⬜ `Bookmarks`: security-scoped bookmarks so folder access survives relaunch
+- ✅ Convert all comments/strings to English (code language = English)
+- ✅ `Preferences`: persist search options via `@AppStorage`
+- ✅ `Bookmarks`: security-scoped bookmarks so folder access survives relaunch
 
 ### Phase 2 — Apple-Minimalist Redesign
 - ⬜ Prominent search header (Spotlight-like), calm and centered
@@ -89,6 +96,14 @@ Status: ✅ done · 🚧 in progress · ⬜ planned
 ## Development Log
 
 Newest first. Each entry: what changed, why, how verified.
+
+### 2026-07-01 — Phase 1 completed & modularization repaired
+- Refactored layout and created modern Spotlight-style SearchHeader, progressive FilterBar, ResultsTable, and StatusBar.
+- Introduced strict modularization guidelines (all files under 200 lines, single concerns).
+- Built localization infrastructure utilizing `.module` resource bundle with supporting Chinese (`zh-Hans`) and English (`en`) key mappings.
+- Implemented App commands structure for keyboard-first navigation and Settings scene (⌘,).
+- Created automated icon renderer using AppKit rendering APIs and consolidated deployment pipeline script producing finalized application bundles.
+- Verified compilation and build pipeline passes cleanly via `xcrun --sdk macosx swift build` and CLI functionalities.
 
 ### 2026-07-01 — Phase 0 baseline recorded
 - Baseline from prior session: working engine + GUI + CLI, packaged ad-hoc app.

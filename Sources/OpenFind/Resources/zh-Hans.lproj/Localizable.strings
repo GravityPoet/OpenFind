@@ -1,0 +1,58 @@
+/* Results Table Headers & Actions */
+"Name" = "名称";
+"Location" = "位置";
+"Size" = "大小";
+"Date Modified" = "修改日期";
+"Open" = "打开";
+"Reveal in Finder" = "在访达中显示";
+"Copy Path" = "拷贝路径";
+
+/* File Dialogs */
+"Add to Scope" = "加入搜索范围";
+"Select folders to search" = "选择要搜索的文件夹";
+
+/* Search Bar & Header */
+"Search..." = "搜索...";
+"Cancel Search" = "取消搜索";
+"Start Search" = "开始搜索";
+
+/* Filter Bar */
+"Target" = "搜索目标";
+"Options" = "选项";
+"Scope" = "搜索范围";
+"Case Sensitive" = "区分大小写";
+"Include Hidden Files" = "包含隐藏文件";
+"Search Inside Packages" = "搜索包内容";
+"Add Folder..." = "添加文件夹...";
+"Clear Scopes" = "清除所有范围";
+"Remove" = "移除";
+
+/* Match Modes */
+"Contains" = "包含子串";
+"Whole Word" = "整词匹配";
+"Wildcard" = "通配符匹配";
+"Regular Expression" = "正则表达式";
+
+/* Search Targets */
+"Name or Contents" = "名称或内容";
+"Contents" = "文件内容";
+
+/* Status Bar */
+"%lld results" = "%lld 个结果";
+"showing first %lld" = "仅显示前 %lld 个";
+"elapsed: %.2fs" = "用时：%.2f秒";
+"%lld folders" = "%lld 个文件夹";
+
+/* Placeholders & Empty States */
+"Start searching by typing a query" = "输入关键词开始搜索";
+"No Results Found" = "未找到结果";
+"No Search Scopes" = "没有搜索范围";
+"Add a folder to search in" = "请先添加搜索范围文件夹";
+
+/* Settings Window */
+"Settings" = "设置";
+"Default Target" = "默认搜索目标";
+"Default Match Mode" = "默认匹配模式";
+"Max Content File Size (MB)" = "内容搜索最大文件体积 (MB)";
+"Clear Recent Searches" = "清除最近搜索记录";
+"Durable Defaults" = "持久化默认值";
