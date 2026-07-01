@@ -97,6 +97,12 @@ Status: ✅ done · 🚧 in progress · ⬜ planned
 
 Newest first. Each entry: what changed, why, how verified.
 
+### 2026-07-01 — Independent review, deadlock fix & hardening
+- Audited the modularization refactor against reality (not the report): clean build, single-definition types, sub-200-line files, CLI accuracy (grep cross-check), and localization were each verified independently.
+- Found the committed HEAD shipped a deadlocking CLI entry point: `main.swift` blocked the `@MainActor` executor with `semaphore.wait()`, so the CLI `Task` never started (reproduced as a SIGALRM hang). The working fix existed only in the uncommitted working tree; committed it.
+- Hardened: switched the CLI wait to `dispatchMain()` (non-spinning, idiomatic main-thread yield); normalized SwiftPM's lowercased `zh-hans.lproj` back to canonical `zh-Hans` in `build_app.sh` so Chinese resolves on case-sensitive volumes/CI too.
+- Verified: debug + release builds green; CLI name/content search correct and non-hanging; shipped bundle reports `["en", "zh-Hans"]` and resolves Chinese (`搜索...`, `名称`).
+
 ### 2026-07-01 — Phase 1 completed & modularization repaired
 - Refactored layout and created modern Spotlight-style SearchHeader, progressive FilterBar, ResultsTable, and StatusBar.
 - Introduced strict modularization guidelines (all files under 200 lines, single concerns).

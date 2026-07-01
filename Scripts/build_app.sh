@@ -46,6 +46,17 @@ else
     fi
 fi
 
+# Normalize localization directory casing. SwiftPM lowercases region subtags
+# (zh-hans), but the BCP-47 canonical form is zh-Hans. Case-insensitive volumes
+# tolerate the lowercase name; case-sensitive volumes/CI do not. Rename through a
+# temp name so the case-only change also sticks on case-insensitive filesystems.
+LPROJ_LOWER="$MACOS_DIR/$BUNDLE_NAME/zh-hans.lproj"
+if [ -d "$LPROJ_LOWER" ]; then
+    echo "Normalizing zh-hans.lproj -> zh-Hans.lproj..."
+    mv "$LPROJ_LOWER" "$MACOS_DIR/$BUNDLE_NAME/zh-Hans.lproj.tmp"
+    mv "$MACOS_DIR/$BUNDLE_NAME/zh-Hans.lproj.tmp" "$MACOS_DIR/$BUNDLE_NAME/zh-Hans.lproj"
+fi
+
 # Copy icon
 mv OpenFind.icns "$RESOURCES_DIR/"
 
