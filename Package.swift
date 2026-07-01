@@ -10,6 +10,10 @@ let package = Package(
             name: "OpenFind",
             path: "Sources/OpenFind",
             resources: [.process("Resources")]
+        ),
+        .testTarget(
+            name: "OpenFindTests",
+            dependencies: ["OpenFind"]
         )
     ]
 )

@@ -41,8 +41,9 @@ struct SearchHeader: View {
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                    .stroke(isFocused ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: isFocused ? 1.2 : 1)
             )
+            .animation(.easeOut(duration: 0.15), value: isFocused)
 
             if !viewModel.recentSearches.isEmpty {
                 Menu {

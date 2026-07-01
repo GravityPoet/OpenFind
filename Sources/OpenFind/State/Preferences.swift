@@ -13,6 +13,7 @@ enum Preferences {
         static let caseSensitive = "search.caseSensitive"
         static let includeHidden = "search.includeHidden"
         static let includePackages = "search.includePackages"
+        static let maxContentFileSize = "search.maxContentFileSize"
         static let recentSearches = "search.recent"
     }
 
@@ -28,6 +29,9 @@ enum Preferences {
         options.caseSensitive = defaults.bool(forKey: Key.caseSensitive)
         options.includeHidden = defaults.bool(forKey: Key.includeHidden)
         options.includePackages = defaults.bool(forKey: Key.includePackages)
+        if let rawSize = defaults.object(forKey: Key.maxContentFileSize) as? NSNumber {
+            options.maxContentFileSize = rawSize.int64Value
+        }
         return options
     }
 
@@ -38,6 +42,7 @@ enum Preferences {
         defaults.set(options.caseSensitive, forKey: Key.caseSensitive)
         defaults.set(options.includeHidden, forKey: Key.includeHidden)
         defaults.set(options.includePackages, forKey: Key.includePackages)
+        defaults.set(options.maxContentFileSize, forKey: Key.maxContentFileSize)
     }
 
     static var recentSearches: [String] {

@@ -15,7 +15,7 @@ struct ResultRow: View {
                     .lineLimit(1)
                 if let preview = result.contentPreview {
                     Text(preview)
-                        .font(.caption)
+                        .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
