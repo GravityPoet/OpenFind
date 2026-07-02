@@ -30,6 +30,10 @@ struct FilterBar: View {
                     Toggle(L("Case Sensitive"), isOn: $viewModel.options.caseSensitive)
                     Toggle(L("Include Hidden Files"), isOn: $viewModel.options.includeHidden)
                     Toggle(L("Search Inside Packages"), isOn: $viewModel.options.includePackages)
+
+                    Divider()
+
+                    Toggle(L("Deep Index"), isOn: $viewModel.options.deepIndex)
                 } label: {
                     Label(L("Options"), systemImage: "slider.horizontal.3")
                 }

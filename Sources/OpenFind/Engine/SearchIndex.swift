@@ -12,12 +12,16 @@ struct SearchIndexStats: Sendable, Equatable {
 
 struct SearchIndexSignature: Codable, Equatable, Sendable {
     let scopes: [String]
+    /// When true the builder drops the noise-filtering ignore list (keeping
+    /// only firmlink duplicates), so caches, logs, /Volumes etc. are indexed.
+    let deepIndex: Bool
 
-    init(scopes: [URL]) {
+    init(scopes: [URL], deepIndex: Bool = false) {
         let normalized = scopes
             .map { SearchPath.normalize($0.path(percentEncoded: false)) }
             .filter { !$0.isEmpty }
         self.scopes = Array(Set(normalized)).sorted()
+        self.deepIndex = deepIndex
     }
 }
 
@@ -237,13 +241,13 @@ actor SearchIndexStore {
     private var inProgressNodes: [IndexedFileNode] = []
     private var lastPartialPublish: ContinuousClock.Instant?
 
-    func snapshot(for scopes: [URL]) async -> SearchIndex {
-        let signature = SearchIndexSignature(scopes: scopes)
+    func snapshot(for scopes: [URL], deepIndex: Bool = false) async -> SearchIndex {
+        let signature = SearchIndexSignature(scopes: scopes, deepIndex: deepIndex)
         if currentSignature == signature {
             return index ?? SearchIndex(signature: signature, nodes: [])
         }
 
-        _ = await prepare(scopes: scopes)
+        _ = await prepare(scopes: scopes, deepIndex: deepIndex)
         if let index, index.signature == signature {
             return index
         }
@@ -255,8 +259,8 @@ actor SearchIndexStore {
     }
 
     @discardableResult
-    func prepare(scopes: [URL]) async -> SearchIndexStats {
-        let signature = SearchIndexSignature(scopes: scopes)
+    func prepare(scopes: [URL], deepIndex: Bool = false) async -> SearchIndexStats {
+        let signature = SearchIndexSignature(scopes: scopes, deepIndex: deepIndex)
         guard !signature.scopes.isEmpty else {
             cancelPipeline()
             index = SearchIndex(signature: signature, nodes: [])
@@ -426,7 +430,7 @@ actor SearchIndexStore {
 
     private func scheduleBackgroundRefresh(signature: SearchIndexSignature) {
         backgroundRefreshTask = Task {
-            try? await Task.sleep(for: .milliseconds(300))
+            try? await Task.sleep(for: .milliseconds(3000))
             guard !Task.isCancelled else { return }
             await self.refreshIfCurrent(signature: signature)
         }
@@ -504,6 +508,42 @@ struct TempNode: Sendable {
     let isPackageDescendant: Bool
 }
 
+/// Work-stealing queue for directory scanning. Workers pull one directory at a
+/// time and push its subdirectories back, so a single huge subtree spreads
+/// across all workers instead of becoming one task's long tail.
+final class ScanCoordinator: @unchecked Sendable {
+    enum Slot {
+        case path(String)
+        case wait
+        case done
+    }
+
+    private let lock = NSLock()
+    private var pending: [String]
+    private var inFlight = 0
+
+    init(roots: [String]) {
+        pending = roots
+    }
+
+    func next() -> Slot {
+        lock.lock()
+        defer { lock.unlock() }
+        if let path = pending.popLast() {
+            inFlight += 1
+            return .path(path)
+        }
+        return inFlight == 0 ? .done : .wait
+    }
+
+    func complete(subdirectories: [String]) {
+        lock.lock()
+        pending.append(contentsOf: subdirectories)
+        inFlight -= 1
+        lock.unlock()
+    }
+}
+
 final class ProgressTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var files = 0
@@ -529,6 +569,7 @@ final class ProgressTracker: @unchecked Sendable {
 enum SearchIndexBuilder {
     private static let resourceKeys: [URLResourceKey] = [
         .isDirectoryKey,
+        .isSymbolicLinkKey,
         .fileSizeKey,
         .contentModificationDateKey,
         .isHiddenKey,
@@ -548,111 +589,101 @@ enum SearchIndexBuilder {
         let ignoredPaths = effectiveIgnoredPaths(for: signature)
         let tracker = ProgressTracker(progress: progress)
 
-        struct ScanTask: Sendable {
-            let path: String
-        }
-
-        var scanTasks: [ScanTask] = []
         var directNodes: [TempNode] = []
-
+        var rootDirectories: [String] = []
         for scope in signature.scopes {
-            let scopeURL = URL(fileURLWithPath: scope)
-            if let scopeNode = makeTempNode(url: scopeURL) {
-                directNodes.append(scopeNode)
-            }
-
-            if let children = try? FileManager.default.contentsOfDirectory(
-                at: scopeURL,
-                includingPropertiesForKeys: resourceKeys,
-                options: [.skipsSubdirectoryDescendants]
-            ) {
-                for child in children {
-                    let childPath = SearchPath.normalize(child.path(percentEncoded: false))
-                    if isIgnored(childPath, ignoredPaths: ignoredPaths) {
-                        continue
-                    }
-
-                    let isDir = (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-                    if isDir {
-                        scanTasks.append(ScanTask(path: childPath))
-                    } else {
-                        if let childNode = makeTempNode(url: child) {
-                            directNodes.append(childNode)
-                        }
-                    }
-                }
-            } else {
-                scanTasks.append(ScanTask(path: scope))
+            guard let scopeNode = makeTempNode(url: URL(fileURLWithPath: scope)) else { continue }
+            directNodes.append(scopeNode)
+            if scopeNode.isDirectory {
+                rootDirectories.append(scope)
             }
         }
+        onBatch(directNodes)
+
+        let workerCount = max(4, ProcessInfo.processInfo.activeProcessorCount)
+        let coordinator = ScanCoordinator(roots: rootDirectories)
 
         let scannedNodes = await withTaskGroup(of: [TempNode].self) { group in
-            group.addTask { [directNodes] in
-                return directNodes
-            }
-
-            for task in scanTasks {
-                group.addTask { [task] in
-                    var taskNodes: [TempNode] = []
+            for _ in 0..<workerCount {
+                group.addTask {
+                    var collected: [TempNode] = []
+                    var pendingBatch: [TempNode] = []
                     var localFiles = 0
                     var localDirs = 0
-                    let url = URL(fileURLWithPath: task.path)
+                    var processedDirs = 0
 
-                    if let subNode = makeTempNode(url: url) {
-                        taskNodes.append(subNode)
-                    }
-
-                    guard let enumerator = FileManager.default.enumerator(
-                        at: url,
-                        includingPropertiesForKeys: resourceKeys,
-                        options: [],
-                        errorHandler: { _, _ in true }
-                    ) else {
-                        return taskNodes
-                    }
-
-                    while let item = enumerator.nextObject() as? URL {
-                        if Task.isCancelled { break }
-                        let path = SearchPath.normalize(item.path(percentEncoded: false))
-                        guard signature.scopes.contains(where: { SearchPath.hasNormalizedPrefix(path, of: $0) }) else {
+                    while !Task.isCancelled {
+                        let slot = coordinator.next()
+                        if case .done = slot { break }
+                        guard case .path(let directoryPath) = slot else {
+                            // Queue momentarily empty while other workers still
+                            // expand directories; back off briefly and retry.
+                            try? await Task.sleep(for: .milliseconds(2))
                             continue
                         }
 
-                        if isIgnored(path, ignoredPaths: ignoredPaths) {
-                            if (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-                                enumerator.skipDescendants()
+                        processedDirs += 1
+                        if processedDirs % 16 == 0 {
+                            await Task.yield()
+                        }
+
+                        var subdirectories: [String] = []
+                        let children = (try? FileManager.default.contentsOfDirectory(
+                            at: URL(fileURLWithPath: directoryPath),
+                            includingPropertiesForKeys: resourceKeys,
+                            options: []
+                        )) ?? []
+
+                        for child in children {
+                            let childPath = SearchPath.normalize(child.path(percentEncoded: false))
+                            guard signature.scopes.contains(where: { SearchPath.hasNormalizedPrefix(childPath, of: $0) }) else {
+                                continue
                             }
-                            continue
+                            if isIgnored(childPath, ignoredPaths: ignoredPaths) { continue }
+                            guard let node = makeTempNode(url: child) else { continue }
+                            collected.append(node)
+                            pendingBatch.append(node)
+
+                            if node.isDirectory {
+                                localDirs += 1
+                                // Never descend through symlinks: the target is
+                                // indexed via its real path, and cycles must not hang.
+                                let isSymlink = (try? child.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
+                                if !isSymlink {
+                                    subdirectories.append(childPath)
+                                }
+                            } else {
+                                localFiles += 1
+                            }
+
+                            if (localFiles + localDirs).isMultiple(of: 500) {
+                                tracker.record(files: localFiles, directories: localDirs)
+                                localFiles = 0
+                                localDirs = 0
+                            }
                         }
 
-                        guard let node = makeTempNode(url: item) else { continue }
-                        taskNodes.append(node)
+                        coordinator.complete(subdirectories: subdirectories)
 
-                        if node.isDirectory {
-                            localDirs += 1
-                        } else {
-                            localFiles += 1
-                        }
-
-                        if (localFiles + localDirs).isMultiple(of: 500) {
-                            tracker.record(files: localFiles, directories: localDirs)
-                            localFiles = 0
-                            localDirs = 0
+                        if pendingBatch.count >= 2048 {
+                            onBatch(pendingBatch)
+                            pendingBatch.removeAll(keepingCapacity: true)
                         }
                     }
 
                     if localFiles > 0 || localDirs > 0 {
                         tracker.record(files: localFiles, directories: localDirs)
                     }
-
-                    return taskNodes
+                    if !pendingBatch.isEmpty {
+                        onBatch(pendingBatch)
+                    }
+                    return collected
                 }
             }
 
-            var combined: [TempNode] = []
+            var combined = directNodes
             for await taskNodes in group {
                 combined.append(contentsOf: taskNodes)
-                onBatch(taskNodes)
             }
             return combined
         }
@@ -837,7 +868,8 @@ enum SearchIndexBuilder {
     }
 
     private static func effectiveIgnoredPaths(for signature: SearchIndexSignature) -> [String] {
-        SearchPath.defaultIgnoredPaths.filter { ignored in
+        let base = signature.deepIndex ? SearchPath.deepIndexIgnoredPaths : SearchPath.defaultIgnoredPaths
+        return base.filter { ignored in
             !signature.scopes.contains { scope in
                 SearchPath.hasNormalizedPrefix(scope, of: ignored)
             }
@@ -851,7 +883,7 @@ enum SearchIndexBuilder {
 
 enum SearchIndexPersistence {
     private static let magic = "OFIX"
-    private static let version: UInt32 = 2
+    private static let version: UInt32 = 3
 
     private struct BinaryWriter {
         var data = Data()
@@ -985,8 +1017,10 @@ enum SearchIndexPersistence {
             try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: targetURL, options: .atomic)
 
-            let oldURL = targetURL.deletingLastPathComponent().appendingPathComponent("search-index-v1.plist")
-            try? FileManager.default.removeItem(at: oldURL)
+            for legacy in ["search-index-v1.plist", "search-index-v2.bin"] {
+                let oldURL = targetURL.deletingLastPathComponent().appendingPathComponent(legacy)
+                try? FileManager.default.removeItem(at: oldURL)
+            }
         } catch {
             // Cache persistence failure should not break search
         }
@@ -996,13 +1030,14 @@ enum SearchIndexPersistence {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return base.appendingPathComponent("OpenFind", isDirectory: true)
-            .appendingPathComponent("search-index-v2.bin")
+            .appendingPathComponent("search-index-v3.bin")
     }
 
     private static func encode(_ index: SearchIndex) -> Data {
         var writer = BinaryWriter()
         writer.write(bytes: Array(magic.utf8))
         writer.write(version)
+        writer.write(UInt8(index.signature.deepIndex ? 1 : 0))
         writer.write(UInt32(index.signature.scopes.count))
         writer.write(UInt32(index.nodes.count))
 
@@ -1073,6 +1108,7 @@ enum SearchIndexPersistence {
               String(bytes: magicBytes, encoding: .utf8) == magic else { return nil }
 
         guard let ver = reader.readUInt32(), ver == version else { return nil }
+        guard let deepIndexByte = reader.readUInt8() else { return nil }
         guard let scopesCount = reader.readUInt32() else { return nil }
         guard let nodesCount = reader.readUInt32() else { return nil }
 
@@ -1122,7 +1158,10 @@ enum SearchIndexPersistence {
             scopes.append(stringPool[Int(idx)])
         }
 
-        let loadedSignature = SearchIndexSignature(scopes: scopes.map { URL(fileURLWithPath: $0) })
+        let loadedSignature = SearchIndexSignature(
+            scopes: scopes.map { URL(fileURLWithPath: $0) },
+            deepIndex: deepIndexByte == 1
+        )
         guard loadedSignature == expectedSignature else { return nil }
 
         var nodes: [IndexedFileNode] = []
@@ -1166,6 +1205,12 @@ enum SearchPath {
             "/private/var",
             "/private/tmp",
         ].map(normalize)
+    }
+
+    /// Minimal ignore list for deep indexing: only the Data-volume firmlink,
+    /// which is the same tree as "/" and would double every node.
+    static var deepIndexIgnoredPaths: [String] {
+        ["/System/Volumes/Data"].map(normalize)
     }
 
     static func normalize(_ path: String) -> String {
@@ -1217,15 +1262,30 @@ enum SearchPath {
         string.unicodeScalars.contains(where: isHanScalar)
     }
 
+    /// Per-character pinyin initial cache. Distinct Han characters number in
+    /// the low thousands, so this stays tiny while eliminating repeated
+    /// CFStringTransform calls across names and queries. NSCache is
+    /// thread-safe, hence the unsafe opt-out.
+    private nonisolated(unsafe) static let pinyinCharCache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 65_536
+        return cache
+    }()
+
     static func pinyinFirstLetters(from string: String) -> String {
         var result = ""
         for char in string {
             if char.unicodeScalars.contains(where: isHanScalar) {
-                let mutable = NSMutableString(string: String(char)) as CFMutableString
-                CFStringTransform(mutable, nil, kCFStringTransformToLatin, false)
-                CFStringTransform(mutable, nil, kCFStringTransformStripDiacritics, false)
-                if let first = (mutable as String).first {
-                    result.append(first)
+                let key = String(char) as NSString
+                if let cached = pinyinCharCache.object(forKey: key) {
+                    result += cached as String
+                } else {
+                    let mutable = NSMutableString(string: String(char)) as CFMutableString
+                    CFStringTransform(mutable, nil, kCFStringTransformToLatin, false)
+                    CFStringTransform(mutable, nil, kCFStringTransformStripDiacritics, false)
+                    let initial = (mutable as String).first.map(String.init) ?? ""
+                    pinyinCharCache.setObject(initial as NSString, forKey: key)
+                    result += initial
                 }
             } else {
                 result.append(char)

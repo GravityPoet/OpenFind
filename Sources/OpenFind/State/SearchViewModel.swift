@@ -29,6 +29,9 @@ final class SearchViewModel {
     private var indexStatsTask: Task<Void, Never>?
     private var startedAt: Date?
     private var allowBroadContentSearch = false
+    /// Item count at the last auto re-search, so a growing index re-runs the
+    /// current query at most once per observed growth tick.
+    private var lastAutoSearchItems = -1
 
     init() {
         options = Preferences.loadOptions()
@@ -68,8 +71,9 @@ final class SearchViewModel {
         }
     }
 
-    /// Starts a new search, cancelling any previous one.
-    func startSearch() {
+    /// Starts a new search, cancelling any previous one. Auto re-searches
+    /// (fired while the index is still filling) pass `recordRecent: false`.
+    func startSearch(recordRecent: Bool = true) {
         guard canSearch else { return }
         debounceTask?.cancel()
         cancel()
@@ -86,7 +90,7 @@ final class SearchViewModel {
 
         isBroadContentSearchBlocked = false
         allowBroadContentSearch = false
-        recordRecentSearch()
+        if recordRecent { recordRecentSearch() }
         let currentOptions = options
         let currentScopes = scopes
         results = []
@@ -218,9 +222,10 @@ final class SearchViewModel {
 
     private func refreshIndex() {
         let currentScopes = scopes
+        let deepIndex = options.deepIndex
         Task { [weak self] in
             let fda = SearchViewModel.checkFullDiskAccess()
-            let stats = await SearchIndexStore.shared.prepare(scopes: currentScopes)
+            let stats = await SearchIndexStore.shared.prepare(scopes: currentScopes, deepIndex: deepIndex)
             await MainActor.run {
                 self?.hasFullDiskAccess = fda
                 self?.indexStats = stats
@@ -240,11 +245,25 @@ final class SearchViewModel {
                 let stats = await SearchIndexStore.shared.stats()
                 let fda = SearchViewModel.checkFullDiskAccess()
                 await MainActor.run {
-                    self?.hasFullDiskAccess = fda
-                    self?.indexStats = stats
+                    self?.handleStatsTick(stats, fullDiskAccess: fda)
                 }
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+    }
+
+    /// Applies a stats tick and, while an initial build is filling the index,
+    /// re-runs the current query so new results stream in as they are scanned.
+    private func handleStatsTick(_ stats: SearchIndexStats, fullDiskAccess: Bool) {
+        let wasIndexing = indexStats.isIndexing
+        hasFullDiskAccess = fullDiskAccess
+        indexStats = stats
+
+        let stillGrowing = stats.isIndexing && stats.indexedItems != lastAutoSearchItems
+        let justFinished = wasIndexing && !stats.isIndexing
+        guard stillGrowing || justFinished else { return }
+        guard canSearch, !isBroadContentSearchBlocked, !isSearching else { return }
+        lastAutoSearchItems = stats.indexedItems
+        startSearch(recordRecent: false)
     }
 }

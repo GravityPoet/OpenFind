@@ -207,6 +207,17 @@ struct SearchIndexTests {
         let originalPaths = (0..<originalIndex.nodes.count).map { originalIndex.path(for: $0) }
         let loadedPaths = (0..<loadedIndex.nodes.count).map { loadedIndex.path(for: $0) }
         #expect(Set(originalPaths) == Set(loadedPaths))
+
+        // The deepIndex flag is part of the signature: a deep-index cache must
+        // round-trip as deep, and must not satisfy a non-deep lookup.
+        let deepSignature = SearchIndexSignature(scopes: [root], deepIndex: true)
+        let deepIndex = SearchIndex(signature: deepSignature, nodes: nodes)
+        let deepURL = root.appendingPathComponent("search-index-deep.bin")
+        SearchIndexPersistence.save(index: deepIndex, to: deepURL)
+
+        let reloadedDeep = try #require(SearchIndexPersistence.load(signature: deepSignature, from: deepURL))
+        #expect(reloadedDeep.signature.deepIndex)
+        #expect(SearchIndexPersistence.load(signature: signature, from: deepURL) == nil)
     }
 
     @Test func testIncrementalIndexingReturnsPartialResults() async throws {

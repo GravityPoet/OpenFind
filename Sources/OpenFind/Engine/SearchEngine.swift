@@ -36,7 +36,7 @@ enum SearchEngine {
             return // Empty query or invalid regex: finish silently; the UI guards empty queries.
         }
 
-        let index = await store.snapshot(for: scopes)
+        let index = await store.snapshot(for: scopes, deepIndex: options.deepIndex)
 
         var nameHitPaths = Set<String>()
         if options.target != .content {

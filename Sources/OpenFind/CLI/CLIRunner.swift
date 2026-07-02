@@ -41,9 +41,22 @@ enum CLIRunner {
         options.caseSensitive = flags.contains("--case")
         options.includeHidden = flags.contains("--hidden")
         options.includePackages = flags.contains("--packages")
+        if flags.contains("--deep") { options.deepIndex = true }
 
         let scopes = (paths.isEmpty ? [FileManager.default.currentDirectoryPath] : paths)
             .map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+
+        let timing = flags.contains("--timing")
+        let started = ContinuousClock.now
+        func mark(_ label: String) {
+            guard timing else { return }
+            let ms = (ContinuousClock.now - started).components.attoseconds / 1_000_000_000_000_000
+                + (ContinuousClock.now - started).components.seconds * 1_000
+            FileHandle.standardError.write(Data("timing \(label)=\(ms)ms\n".utf8))
+        }
+
+        _ = await SearchIndexStore.shared.snapshot(for: scopes, deepIndex: options.deepIndex)
+        mark("snapshot")
 
         var count = 0
         for await result in SearchEngine.search(scopes: scopes, options: options) {
@@ -53,8 +66,10 @@ enum CLIRunner {
             }
             count += 1
         }
+        mark("search")
         FileHandle.standardError.write(Data("\u{2014} \(count) result(s) \u{2014}\n".utf8))
         await SearchIndexStore.shared.flushPersistence()
+        mark("flush")
         exit(0)
     }
 
@@ -69,6 +84,7 @@ enum CLIRunner {
           --case       case-sensitive
           --hidden     include hidden files
           --packages   search inside .app / .bundle packages
+          --deep       index everything (no ignore list)
 
         """
         FileHandle.standardError.write(Data(usage.utf8))
