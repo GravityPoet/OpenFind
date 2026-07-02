@@ -201,4 +201,26 @@ struct SearchIndexTests {
         }
         return results
     }
+
+    @Test func testBinarySerializationRoundTrip() async throws {
+        let root = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try writeFile(at: root.appendingPathComponent("file1.txt"))
+        try writeFile(at: root.appendingPathComponent("file2.txt"))
+
+        let signature = SearchIndexSignature(scopes: [root])
+        let nodes = await SearchIndexBuilder.build(signature: signature)
+        let originalIndex = SearchIndex(signature: signature, nodes: nodes)
+
+        SearchIndexPersistence.save(index: originalIndex)
+
+        let loadedIndex = try #require(SearchIndexPersistence.load(signature: signature))
+        #expect(loadedIndex.signature == originalIndex.signature)
+        #expect(loadedIndex.nodes.count == originalIndex.nodes.count)
+
+        let originalPaths = (0..<originalIndex.nodes.count).map { originalIndex.path(for: $0) }
+        let loadedPaths = (0..<loadedIndex.nodes.count).map { loadedIndex.path(for: $0) }
+        #expect(Set(originalPaths) == Set(loadedPaths))
+    }
 }

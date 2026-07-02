@@ -21,14 +21,29 @@ struct SearchIndexSignature: Codable, Equatable, Sendable {
     }
 }
 
-struct IndexedFileNode: Codable, Hashable, Sendable {
-    let path: String
+struct IndexedFileNode: Hashable, Sendable {
     let name: String
+    let parentIndex: Int32
     let isDirectory: Bool
     let size: Int64
     let modifiedTime: TimeInterval
     let isHiddenScope: Bool
     let isPackageDescendant: Bool
+}
+
+struct ResolvedNode: Sendable {
+    let node: IndexedFileNode
+    let path: String
+
+    var name: String {
+        if node.name.hasPrefix("/") {
+            return (node.name as NSString).lastPathComponent
+        }
+        return node.name
+    }
+    var isDirectory: Bool { node.isDirectory }
+    var size: Int64 { node.size }
+    var modifiedTime: TimeInterval { node.modifiedTime }
 
     var url: URL { URL(fileURLWithPath: path) }
     var modifiedDate: Date { Date(timeIntervalSinceReferenceDate: modifiedTime) }
@@ -76,29 +91,82 @@ struct SearchIndex: Sendable {
         )
     }
 
-    func nameMatches(query: CompiledSearchQuery, options: SearchOptions) -> [IndexedFileNode] {
-        let matches = nodes.filter { query.matchesNameBranch($0, options: options) }
-        return SearchRanking.sortedByRelevance(matches, query: query, options: options)
+    func path(for index: Int) -> String {
+        guard index >= 0 && index < nodes.count else { return "" }
+        var pathComponents: [String] = []
+        var currentIndex = index
+        while currentIndex >= 0 && currentIndex < nodes.count {
+            let node = nodes[currentIndex]
+            pathComponents.append(node.name)
+            currentIndex = Int(node.parentIndex)
+        }
+
+        guard !pathComponents.isEmpty else { return "" }
+        var result = pathComponents.last!
+        for component in pathComponents.dropLast().reversed() {
+            if result == "/" {
+                result = "/" + component
+            } else {
+                result = result + "/" + component
+            }
+        }
+        return result
     }
 
-    func contentCandidates(query: CompiledSearchQuery, options: SearchOptions, excluding excludedPaths: Set<String> = []) -> [IndexedFileNode] {
-        nodes.filter { node in
-            !excludedPaths.contains(node.path)
-            && query.matchesContentCandidate(node, options: options)
+    func nameMatches(query: CompiledSearchQuery, options: SearchOptions) -> [ResolvedNode] {
+        var results: [ResolvedNode] = []
+        for i in 0..<nodes.count {
+            let node = nodes[i]
+            guard query.matchesNameFilter(node.name) else { continue }
+
+            let nodePath = path(for: i)
+            if query.matchesNameBranch(node, path: nodePath, options: options) {
+                results.append(ResolvedNode(node: node, path: nodePath))
+            }
         }
-        .sorted(by: SearchRanking.shallowPathOrder)
+        return SearchRanking.sortedByRelevance(results, query: query, options: options)
+    }
+
+    func contentCandidates(query: CompiledSearchQuery, options: SearchOptions, excluding excludedPaths: Set<String> = []) -> [ResolvedNode] {
+        var results: [ResolvedNode] = []
+        for i in 0..<nodes.count {
+            let node = nodes[i]
+            guard !node.isDirectory else { continue }
+            let nodePath = path(for: i)
+            guard !excludedPaths.contains(nodePath) else { continue }
+
+            if query.matchesContentCandidate(node, path: nodePath, options: options) {
+                results.append(ResolvedNode(node: node, path: nodePath))
+            }
+        }
+        return results.sorted(by: SearchRanking.shallowPathOrder)
+    }
+
+    func toTempNodes() -> [TempNode] {
+        var tempNodes: [TempNode] = []
+        tempNodes.reserveCapacity(nodes.count)
+        for i in 0..<nodes.count {
+            let node = nodes[i]
+            tempNodes.append(TempNode(
+                path: path(for: i),
+                name: node.name,
+                isDirectory: node.isDirectory,
+                size: node.size,
+                modifiedTime: node.modifiedTime,
+                isHiddenScope: node.isHiddenScope,
+                isPackageDescendant: node.isPackageDescendant
+            ))
+        }
+        return tempNodes
     }
 }
 
-/// Orders name matches by how well the name itself matches, Everything-style:
-/// exact name (or stem) first, then prefix, then word-boundary hits, then any
-/// other substring; ties break toward shallower paths.
 enum SearchRanking {
     static func sortedByRelevance(
-        _ matches: [IndexedFileNode],
+        _ matches: [ResolvedNode],
         query: CompiledSearchQuery,
         options: SearchOptions
-    ) -> [IndexedFileNode] {
+    ) -> [ResolvedNode] {
         guard let term = query.rankingTerm(options: options) else {
             return matches.sorted(by: shallowPathOrder)
         }
@@ -113,15 +181,13 @@ enum SearchRanking {
             .map(\.node)
     }
 
-    static func shallowPathOrder(_ lhs: IndexedFileNode, _ rhs: IndexedFileNode) -> Bool {
+    static func shallowPathOrder(_ lhs: ResolvedNode, _ rhs: ResolvedNode) -> Bool {
         let leftDepth = depth(of: lhs.path)
         let rightDepth = depth(of: rhs.path)
         if leftDepth != rightDepth { return leftDepth < rightDepth }
         return lhs.path < rhs.path
     }
 
-    /// 0 exact (whole name or name without extension), 1 prefix, 2 substring
-    /// starting at a word boundary, 3 any other substring or non-literal match.
     static func score(name: String, needle: String) -> Int {
         let lower = name.lowercased()
         if lower == needle { return 0 }
@@ -157,11 +223,7 @@ actor SearchIndexStore {
     private var pendingEventPaths = Set<String>()
     private var eventRefreshTask: Task<Void, Never>?
     private var backgroundRefreshTask: Task<Void, Never>?
-    /// In-flight load-or-scan for the current signature. Concurrent `prepare`
-    /// calls join this task instead of starting duplicate filesystem scans.
     private var rebuildTask: Task<SearchIndexStats, Never>?
-    /// Bumped whenever the pipeline is torn down or a new rebuild starts, so a
-    /// stale scan that finishes late cannot overwrite newer state.
     private var rebuildGeneration = 0
     private var persistTask: Task<Void, Never>?
 
@@ -176,11 +238,8 @@ actor SearchIndexStore {
             return index
         }
 
-        // The store was retargeted to another scope set while this request was
-        // preparing. Serve it with a one-off scan instead of a wrong or empty
-        // index; store state stays owned by the newest scope set.
         let nodes = await Task.detached(priority: .userInitiated) {
-            SearchIndexBuilder.build(signature: signature)
+            await SearchIndexBuilder.build(signature: signature)
         }.value
         return SearchIndex(signature: signature, nodes: nodes)
     }
@@ -275,7 +334,7 @@ actor SearchIndexStore {
 
         currentStats.isIndexing = true
         let buildTask = Task.detached(priority: .utility) {
-            SearchIndexBuilder.build(signature: signature) { files, directories in
+            await SearchIndexBuilder.build(signature: signature) { files, directories in
                 Task {
                     await SearchIndexStore.shared.updateBuildProgress(
                         signature: signature,
@@ -311,8 +370,6 @@ actor SearchIndexStore {
         currentStats.indexedDirectories = directories
     }
 
-    /// After serving a cached index, rescan in the background so staleness is
-    /// bounded to one launch (stale-while-revalidate).
     private func scheduleBackgroundRefresh(signature: SearchIndexSignature) {
         backgroundRefreshTask = Task {
             try? await Task.sleep(for: .milliseconds(300))
@@ -347,7 +404,7 @@ actor SearchIndexStore {
 
         currentStats.isIndexing = true
         let updatedIndex = await Task.detached(priority: .utility) {
-            SearchIndexBuilder.apply(eventPaths: paths, to: index, signature: signature)
+            await SearchIndexBuilder.apply(eventPaths: paths, to: index, signature: signature)
         }.value
         guard expectedSignature == currentSignature else { return }
 
@@ -364,8 +421,6 @@ actor SearchIndexStore {
         }
     }
 
-    /// Waits for any in-flight cache write. Needed by short-lived processes
-    /// (the CLI) that would otherwise exit before the index hits disk.
     func flushPersistence() async {
         await persistTask?.value
     }
@@ -382,6 +437,38 @@ actor SearchIndexStore {
     private func stopWatching() {
         watcher?.stop()
         watcher = nil
+    }
+}
+
+struct TempNode: Sendable {
+    let path: String
+    let name: String
+    let isDirectory: Bool
+    let size: Int64
+    let modifiedTime: Double
+    let isHiddenScope: Bool
+    let isPackageDescendant: Bool
+}
+
+final class ProgressTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var files = 0
+    private var directories = 0
+    private let progress: @Sendable (Int, Int) -> Void
+
+    init(progress: @escaping @Sendable (Int, Int) -> Void) {
+        self.progress = progress
+    }
+
+    func record(files: Int, directories: Int) {
+        lock.lock()
+        self.files += files
+        self.directories += directories
+        let f = self.files
+        let d = self.directories
+        lock.unlock()
+
+        progress(f, d)
     }
 }
 
@@ -402,45 +489,197 @@ enum SearchIndexBuilder {
     static func build(
         signature: SearchIndexSignature,
         progress: @escaping @Sendable (_ files: Int, _ directories: Int) -> Void = { _, _ in }
-    ) -> [IndexedFileNode] {
+    ) async -> [IndexedFileNode] {
         let ignoredPaths = effectiveIgnoredPaths(for: signature)
-        var nodes: [IndexedFileNode] = []
-        var files = 0
-        var directories = 0
+        let tracker = ProgressTracker(progress: progress)
 
-        for scope in signature.scopes {
-            scanDescendants(
-                of: scope,
-                signature: signature,
-                ignoredPaths: ignoredPaths,
-                into: &nodes,
-                files: &files,
-                directories: &directories,
-                progress: progress
-            )
+        struct ScanTask: Sendable {
+            let path: String
         }
 
-        progress(files, directories)
-        return deduplicated(nodes)
+        var scanTasks: [ScanTask] = []
+        var directNodes: [TempNode] = []
+
+        for scope in signature.scopes {
+            let scopeURL = URL(fileURLWithPath: scope)
+            if let scopeNode = makeTempNode(url: scopeURL) {
+                directNodes.append(scopeNode)
+            }
+
+            if let children = try? FileManager.default.contentsOfDirectory(
+                at: scopeURL,
+                includingPropertiesForKeys: resourceKeys,
+                options: [.skipsSubdirectoryDescendants]
+            ) {
+                for child in children {
+                    let childPath = SearchPath.normalize(child.path(percentEncoded: false))
+                    if isIgnored(childPath, ignoredPaths: ignoredPaths) {
+                        continue
+                    }
+
+                    let isDir = (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                    if isDir {
+                        scanTasks.append(ScanTask(path: childPath))
+                    } else {
+                        if let childNode = makeTempNode(url: child) {
+                            directNodes.append(childNode)
+                        }
+                    }
+                }
+            } else {
+                scanTasks.append(ScanTask(path: scope))
+            }
+        }
+
+        let scannedNodes = await withTaskGroup(of: [TempNode].self) { group in
+            group.addTask { [directNodes] in
+                return directNodes
+            }
+
+            for task in scanTasks {
+                group.addTask { [task] in
+                    var taskNodes: [TempNode] = []
+                    var localFiles = 0
+                    var localDirs = 0
+                    let url = URL(fileURLWithPath: task.path)
+
+                    if let subNode = makeTempNode(url: url) {
+                        taskNodes.append(subNode)
+                    }
+
+                    guard let enumerator = FileManager.default.enumerator(
+                        at: url,
+                        includingPropertiesForKeys: resourceKeys,
+                        options: [],
+                        errorHandler: { _, _ in true }
+                    ) else {
+                        return taskNodes
+                    }
+
+                    while let item = enumerator.nextObject() as? URL {
+                        if Task.isCancelled { break }
+                        let path = SearchPath.normalize(item.path(percentEncoded: false))
+                        guard signature.scopes.contains(where: { SearchPath.hasNormalizedPrefix(path, of: $0) }) else {
+                            continue
+                        }
+
+                        if isIgnored(path, ignoredPaths: ignoredPaths) {
+                            if (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                                enumerator.skipDescendants()
+                            }
+                            continue
+                        }
+
+                        guard let node = makeTempNode(url: item) else { continue }
+                        taskNodes.append(node)
+
+                        if node.isDirectory {
+                            localDirs += 1
+                        } else {
+                            localFiles += 1
+                        }
+
+                        if (localFiles + localDirs).isMultiple(of: 500) {
+                            tracker.record(files: localFiles, directories: localDirs)
+                            localFiles = 0
+                            localDirs = 0
+                        }
+                    }
+
+                    if localFiles > 0 || localDirs > 0 {
+                        tracker.record(files: localFiles, directories: localDirs)
+                    }
+
+                    return taskNodes
+                }
+            }
+
+            var combined: [TempNode] = []
+            for await taskNodes in group {
+                combined.append(contentsOf: taskNodes)
+            }
+            return combined
+        }
+
+        let uniqueTempNodes = deduplicatedTempNodes(scannedNodes)
+
+        var filesCount = 0
+        var dirsCount = 0
+        for node in uniqueTempNodes {
+            if node.isDirectory {
+                dirsCount += 1
+            } else {
+                filesCount += 1
+            }
+        }
+        progress(filesCount, dirsCount)
+
+        var pathToIndex: [String: Int32] = [:]
+        pathToIndex.reserveCapacity(uniqueTempNodes.count)
+        for i in 0..<uniqueTempNodes.count {
+            pathToIndex[uniqueTempNodes[i].path] = Int32(i)
+        }
+
+        var finalNodes: [IndexedFileNode] = []
+        finalNodes.reserveCapacity(uniqueTempNodes.count)
+        for node in uniqueTempNodes {
+            let parentPath = (node.path as NSString).deletingLastPathComponent
+            let parentIdx = pathToIndex[parentPath] ?? -1
+            let nameToStore = (parentIdx == -1) ? node.path : node.name
+            finalNodes.append(IndexedFileNode(
+                name: nameToStore,
+                parentIndex: parentIdx,
+                isDirectory: node.isDirectory,
+                size: node.size,
+                modifiedTime: node.modifiedTime,
+                isHiddenScope: node.isHiddenScope,
+                isPackageDescendant: node.isPackageDescendant
+            ))
+        }
+
+        return finalNodes
     }
 
-    static func apply(eventPaths: [String], to index: SearchIndex, signature: SearchIndexSignature) -> SearchIndex {
+    static func apply(eventPaths: [String], to index: SearchIndex, signature: SearchIndexSignature) async -> SearchIndex {
         let ignoredPaths = effectiveIgnoredPaths(for: signature)
         let scanPaths = collapseEventPaths(eventPaths, signature: signature)
         guard !scanPaths.isEmpty else { return index }
 
-        var nodes = index.nodes
+        var tempNodes = index.toTempNodes()
         for path in scanPaths {
             if signature.scopes.contains(path) {
-                return SearchIndex(signature: signature, nodes: build(signature: signature))
+                return SearchIndex(signature: signature, nodes: await build(signature: signature))
             }
-            // Both sides are already normalized (index nodes at creation,
-            // event paths in collapseEventPaths), so take the fast path.
-            nodes.removeAll { SearchPath.hasNormalizedPrefix($0.path, of: path) }
-            scanPath(path, signature: signature, ignoredPaths: ignoredPaths, into: &nodes)
+            tempNodes.removeAll { SearchPath.hasNormalizedPrefix($0.path, of: path) }
+            scanTempPath(path, signature: signature, ignoredPaths: ignoredPaths, into: &tempNodes)
         }
 
-        return SearchIndex(signature: signature, nodes: deduplicated(nodes))
+        let uniqueTempNodes = deduplicatedTempNodes(tempNodes)
+
+        var pathToIndex: [String: Int32] = [:]
+        pathToIndex.reserveCapacity(uniqueTempNodes.count)
+        for i in 0..<uniqueTempNodes.count {
+            pathToIndex[uniqueTempNodes[i].path] = Int32(i)
+        }
+
+        var finalNodes: [IndexedFileNode] = []
+        finalNodes.reserveCapacity(uniqueTempNodes.count)
+        for node in uniqueTempNodes {
+            let parentPath = (node.path as NSString).deletingLastPathComponent
+            let parentIdx = pathToIndex[parentPath] ?? -1
+            let nameToStore = (parentIdx == -1) ? node.path : node.name
+            finalNodes.append(IndexedFileNode(
+                name: nameToStore,
+                parentIndex: parentIdx,
+                isDirectory: node.isDirectory,
+                size: node.size,
+                modifiedTime: node.modifiedTime,
+                isHiddenScope: node.isHiddenScope,
+                isPackageDescendant: node.isPackageDescendant
+            ))
+        }
+
+        return SearchIndex(signature: signature, nodes: finalNodes)
     }
 
     static func collapseEventPaths(_ paths: [String], signature: SearchIndexSignature) -> [String] {
@@ -465,89 +704,49 @@ enum SearchIndexBuilder {
         return selected
     }
 
-    private static func scanPath(
+    private static func scanTempPath(
         _ path: String,
         signature: SearchIndexSignature,
         ignoredPaths: [String],
-        into nodes: inout [IndexedFileNode]
+        into nodes: inout [TempNode]
     ) {
         guard signature.scopes.contains(where: { SearchPath.hasNormalizedPrefix(path, of: $0) }),
               !isIgnored(path, ignoredPaths: ignoredPaths) else { return }
 
         let url = URL(fileURLWithPath: path)
-        guard let node = makeNode(url: url) else { return }
+        guard let node = makeTempNode(url: url) else { return }
         nodes.append(node)
 
         if node.isDirectory {
-            var files = 0
-            var directories = 0
-            scanDescendants(
-                of: path,
-                signature: signature,
-                ignoredPaths: ignoredPaths,
-                into: &nodes,
-                files: &files,
-                directories: &directories,
-                progress: { _, _ in }
+            let enumerator = FileManager.default.enumerator(
+                at: url,
+                includingPropertiesForKeys: resourceKeys,
+                options: [],
+                errorHandler: { _, _ in true }
             )
-        }
-    }
+            if let enumerator {
+                while let item = enumerator.nextObject() as? URL {
+                    if Task.isCancelled { return }
+                    let itemPath = SearchPath.normalize(item.path(percentEncoded: false))
+                    guard signature.scopes.contains(where: { SearchPath.hasNormalizedPrefix(itemPath, of: $0) }) else {
+                        continue
+                    }
 
-    private static func scanDescendants(
-        of scope: String,
-        signature: SearchIndexSignature,
-        ignoredPaths: [String],
-        into nodes: inout [IndexedFileNode],
-        files: inout Int,
-        directories: inout Int,
-        progress: @escaping @Sendable (_ files: Int, _ directories: Int) -> Void
-    ) {
-        let url = URL(fileURLWithPath: scope)
-        guard let enumerator = FileManager.default.enumerator(
-            at: url,
-            includingPropertiesForKeys: resourceKeys,
-            options: [],
-            errorHandler: { _, _ in true }
-        ) else { return }
+                    if isIgnored(itemPath, ignoredPaths: ignoredPaths) {
+                        if (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                            enumerator.skipDescendants()
+                        }
+                        continue
+                    }
 
-        while let item = enumerator.nextObject() as? URL {
-            if Task.isCancelled { return }
-            let path = SearchPath.normalize(item.path(percentEncoded: false))
-            guard signature.scopes.contains(where: { SearchPath.hasNormalizedPrefix(path, of: $0) }) else {
-                continue
-            }
-
-            if isIgnored(path, ignoredPaths: ignoredPaths) {
-                if (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-                    enumerator.skipDescendants()
+                    guard let itemNode = makeTempNode(url: item) else { continue }
+                    nodes.append(itemNode)
                 }
-                continue
             }
-
-            guard let node = makeNode(url: item) else { continue }
-            nodes.append(node)
-            recordProgress(node: node, files: &files, directories: &directories, progress: progress)
         }
     }
 
-    private static func recordProgress(
-        node: IndexedFileNode,
-        files: inout Int,
-        directories: inout Int,
-        progress: @escaping @Sendable (_ files: Int, _ directories: Int) -> Void
-    ) {
-        if node.isDirectory {
-            directories += 1
-        } else {
-            files += 1
-        }
-
-        if (files + directories).isMultiple(of: 500) {
-            progress(files, directories)
-        }
-    }
-
-    private static func makeNode(url: URL) -> IndexedFileNode? {
+    private static func makeTempNode(url: URL) -> TempNode? {
         let values = try? url.resourceValues(forKeys: Set(resourceKeys))
         let path = SearchPath.normalize(url.path(percentEncoded: false))
         let name = values?.name ?? url.lastPathComponent
@@ -562,7 +761,7 @@ enum SearchIndexBuilder {
             packageExtensions.contains((component as NSString).pathExtension.lowercased())
         }
 
-        return IndexedFileNode(
+        return TempNode(
             path: path,
             name: name,
             isDirectory: isDirectory,
@@ -573,9 +772,7 @@ enum SearchIndexBuilder {
         )
     }
 
-    /// Order-preserving dedup. The index itself is unordered; matches are
-    /// ranked at query time, so no global sort is needed here.
-    private static func deduplicated(_ nodes: [IndexedFileNode]) -> [IndexedFileNode] {
+    private static func deduplicatedTempNodes(_ nodes: [TempNode]) -> [TempNode] {
         var seen = Set<String>()
         seen.reserveCapacity(nodes.count)
         return nodes.filter { seen.insert($0.path).inserted }
@@ -595,31 +792,144 @@ enum SearchIndexBuilder {
 }
 
 enum SearchIndexPersistence {
-    private static let version = 1
+    private static let magic = "OFIX"
+    private static let version: UInt32 = 2
 
-    private struct Storage: Codable {
-        let version: Int
-        let signature: SearchIndexSignature
-        let nodes: [IndexedFileNode]
+    private struct BinaryWriter {
+        var data = Data()
+
+        mutating func write(bytes: [UInt8]) {
+            data.append(contentsOf: bytes)
+        }
+
+        mutating func write(_ value: UInt32) {
+            let val = value.littleEndian
+            data.append(UInt8(val & 0xFF))
+            data.append(UInt8((val >> 8) & 0xFF))
+            data.append(UInt8((val >> 16) & 0xFF))
+            data.append(UInt8((val >> 24) & 0xFF))
+        }
+
+        mutating func write(_ value: Int32) {
+            write(UInt32(bitPattern: value))
+        }
+
+        mutating func write(_ value: Int64) {
+            let val = UInt64(bitPattern: value).littleEndian
+            data.append(UInt8(val & 0xFF))
+            data.append(UInt8((val >> 8) & 0xFF))
+            data.append(UInt8((val >> 16) & 0xFF))
+            data.append(UInt8((val >> 24) & 0xFF))
+            data.append(UInt8((val >> 32) & 0xFF))
+            data.append(UInt8((val >> 40) & 0xFF))
+            data.append(UInt8((val >> 48) & 0xFF))
+            data.append(UInt8((val >> 56) & 0xFF))
+        }
+
+        mutating func write(_ value: Double) {
+            write(Int64(bitPattern: value.bitPattern))
+        }
+
+        mutating func write(_ value: UInt8) {
+            data.append(value)
+        }
+
+        mutating func write(_ string: String) {
+            let utf8 = Array(string.utf8)
+            let len = UInt16(min(utf8.count, Int(UInt16.max))).littleEndian
+            data.append(UInt8(len & 0xFF))
+            data.append(UInt8((len >> 8) & 0xFF))
+            data.append(contentsOf: utf8.prefix(Int(len)))
+        }
+    }
+
+    private struct BinaryReader {
+        let data: Data
+        var offset = 0
+
+        mutating func readBytes(_ count: Int) -> [UInt8]? {
+            guard offset + count <= data.count else { return nil }
+            let bytes = Array(data[offset..<offset + count])
+            offset += count
+            return bytes
+        }
+
+        mutating func readUInt32() -> UInt32? {
+            guard offset + 4 <= data.count else { return nil }
+            let b0 = UInt32(data[offset])
+            let b1 = UInt32(data[offset + 1])
+            let b2 = UInt32(data[offset + 2])
+            let b3 = UInt32(data[offset + 3])
+            offset += 4
+            return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+        }
+
+        mutating func readInt32() -> Int32? {
+            guard let val = readUInt32() else { return nil }
+            return Int32(bitPattern: val)
+        }
+
+        mutating func readInt64() -> Int64? {
+            guard offset + 8 <= data.count else { return nil }
+            let b0 = UInt64(data[offset])
+            let b1 = UInt64(data[offset + 1])
+            let b2 = UInt64(data[offset + 2])
+            let b3 = UInt64(data[offset + 3])
+            let b4 = UInt64(data[offset + 4])
+            let b5 = UInt64(data[offset + 5])
+            let b6 = UInt64(data[offset + 6])
+            let b7 = UInt64(data[offset + 7])
+            offset += 8
+            let val = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24) | (b4 << 32) | (b5 << 40) | (b6 << 48) | (b7 << 56)
+            return Int64(bitPattern: val)
+        }
+
+        mutating func readDouble() -> Double? {
+            guard let val = readInt64() else { return nil }
+            return Double(bitPattern: UInt64(bitPattern: val))
+        }
+
+        mutating func readUInt8() -> UInt8? {
+            guard offset + 1 <= data.count else { return nil }
+            let val = data[offset]
+            offset += 1
+            return val
+        }
+
+        mutating func readUInt16() -> UInt16? {
+            guard offset + 2 <= data.count else { return nil }
+            let b0 = UInt16(data[offset])
+            let b1 = UInt16(data[offset + 1])
+            offset += 2
+            return b0 | (b1 << 8)
+        }
+
+        mutating func readString() -> String? {
+            guard let len = readUInt16() else { return nil }
+            let lenInt = Int(len)
+            guard offset + lenInt <= data.count else { return nil }
+            let strData = data[offset..<offset + lenInt]
+            offset += lenInt
+            return String(data: strData, encoding: .utf8)
+        }
     }
 
     static func load(signature: SearchIndexSignature) -> SearchIndex? {
         let url = cacheURL
-        guard let data = try? Data(contentsOf: url),
-              let storage = try? PropertyListDecoder().decode(Storage.self, from: data),
-              storage.version == version,
-              storage.signature == signature else { return nil }
-        return SearchIndex(signature: storage.signature, nodes: storage.nodes)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return decode(data, expectedSignature: signature)
     }
 
     static func save(index: SearchIndex) {
-        let storage = Storage(version: version, signature: index.signature, nodes: index.nodes)
-        guard let data = try? PropertyListEncoder.binary.encode(storage) else { return }
+        let data = encode(index)
         do {
             try FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: cacheURL, options: .atomic)
+
+            let oldURL = cacheURL.deletingLastPathComponent().appendingPathComponent("search-index-v1.plist")
+            try? FileManager.default.removeItem(at: oldURL)
         } catch {
-            // Cache persistence is an optimization; failed writes should not break search.
+            // Cache persistence failure should not break search
         }
     }
 
@@ -627,7 +937,157 @@ enum SearchIndexPersistence {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return base.appendingPathComponent("OpenFind", isDirectory: true)
-            .appendingPathComponent("search-index-v1.plist")
+            .appendingPathComponent("search-index-v2.bin")
+    }
+
+    private static func encode(_ index: SearchIndex) -> Data {
+        var writer = BinaryWriter()
+        writer.write(bytes: Array(magic.utf8))
+        writer.write(version)
+        writer.write(UInt32(index.signature.scopes.count))
+        writer.write(UInt32(index.nodes.count))
+
+        var stringPool: [String] = []
+        var stringToIndex: [String: UInt32] = [:]
+
+        func getStringIndex(_ s: String) -> UInt32 {
+            if let idx = stringToIndex[s] { return idx }
+            let idx = UInt32(stringPool.count)
+            stringPool.append(s)
+            stringToIndex[s] = idx
+            return idx
+        }
+
+        let scopeIndices = index.signature.scopes.map { getStringIndex($0) }
+
+        struct EncodedNode {
+            let parentIndex: Int32
+            let nameIndex: UInt32
+            let flags: UInt8
+            let size: Int64
+            let modifiedTime: Double
+        }
+
+        var encodedNodes: [EncodedNode] = []
+        encodedNodes.reserveCapacity(index.nodes.count)
+
+        for node in index.nodes {
+            let nameIdx = getStringIndex(node.name)
+            var flags: UInt8 = 0
+            if node.isDirectory { flags |= 1 }
+            if node.isHiddenScope { flags |= 2 }
+            if node.isPackageDescendant { flags |= 4 }
+
+            encodedNodes.append(EncodedNode(
+                parentIndex: node.parentIndex,
+                nameIndex: nameIdx,
+                flags: flags,
+                size: node.size,
+                modifiedTime: node.modifiedTime
+            ))
+        }
+
+        for idx in scopeIndices {
+            writer.write(idx)
+        }
+
+        for node in encodedNodes {
+            writer.write(node.parentIndex)
+            writer.write(node.nameIndex)
+            writer.write(node.flags)
+            writer.write(node.size)
+            writer.write(node.modifiedTime)
+        }
+
+        writer.write(UInt32(stringPool.count))
+        for str in stringPool {
+            writer.write(str)
+        }
+
+        return writer.data
+    }
+
+    private static func decode(_ data: Data, expectedSignature: SearchIndexSignature) -> SearchIndex? {
+        var reader = BinaryReader(data: data)
+
+        guard let magicBytes = reader.readBytes(4),
+              String(bytes: magicBytes, encoding: .utf8) == magic else { return nil }
+
+        guard let ver = reader.readUInt32(), ver == version else { return nil }
+        guard let scopesCount = reader.readUInt32() else { return nil }
+        guard let nodesCount = reader.readUInt32() else { return nil }
+
+        var scopeIndices: [UInt32] = []
+        for _ in 0..<scopesCount {
+            guard let idx = reader.readUInt32() else { return nil }
+            scopeIndices.append(idx)
+        }
+
+        struct TempEncodedNode {
+            let parentIndex: Int32
+            let nameIndex: UInt32
+            let flags: UInt8
+            let size: Int64
+            let modifiedTime: Double
+        }
+
+        var encodedNodes: [TempEncodedNode] = []
+        encodedNodes.reserveCapacity(Int(nodesCount))
+        for _ in 0..<nodesCount {
+            guard let parentIdx = reader.readInt32(),
+                  let nameIdx = reader.readUInt32(),
+                  let flags = reader.readUInt8(),
+                  let size = reader.readInt64(),
+                  let modified = reader.readDouble() else { return nil }
+
+            encodedNodes.append(TempEncodedNode(
+                parentIndex: parentIdx,
+                nameIndex: nameIdx,
+                flags: flags,
+                size: size,
+                modifiedTime: modified
+            ))
+        }
+
+        guard let poolCount = reader.readUInt32() else { return nil }
+        var stringPool: [String] = []
+        stringPool.reserveCapacity(Int(poolCount))
+        for _ in 0..<poolCount {
+            guard let str = reader.readString() else { return nil }
+            stringPool.append(str)
+        }
+
+        var scopes: [String] = []
+        for idx in scopeIndices {
+            guard idx < stringPool.count else { return nil }
+            scopes.append(stringPool[Int(idx)])
+        }
+
+        let loadedSignature = SearchIndexSignature(scopes: scopes.map { URL(fileURLWithPath: $0) })
+        guard loadedSignature == expectedSignature else { return nil }
+
+        var nodes: [IndexedFileNode] = []
+        nodes.reserveCapacity(encodedNodes.count)
+
+        for node in encodedNodes {
+            guard node.nameIndex < stringPool.count else { return nil }
+            let name = stringPool[Int(node.nameIndex)]
+            let isDir = (node.flags & 1) != 0
+            let isHidden = (node.flags & 2) != 0
+            let isPkg = (node.flags & 4) != 0
+
+            nodes.append(IndexedFileNode(
+                name: name,
+                parentIndex: node.parentIndex,
+                isDirectory: isDir,
+                size: node.size,
+                modifiedTime: node.modifiedTime,
+                isHiddenScope: isHidden,
+                isPackageDescendant: isPkg
+            ))
+        }
+
+        return SearchIndex(signature: loadedSignature, nodes: nodes)
     }
 }
 
@@ -660,10 +1120,6 @@ enum SearchPath {
         hasNormalizedPrefix(normalize(path), of: normalize(ancestor))
     }
 
-    /// Same containment check as `isSameOrDescendant`, but assumes both inputs
-    /// are already `normalize`d (index node paths, signature scopes, the
-    /// default ignore list). Skips re-normalization, which allocates URLs and
-    /// dominates hot scan loops.
     static func hasNormalizedPrefix(_ path: String, of ancestor: String) -> Bool {
         if ancestor == "/" { return path.hasPrefix("/") }
         guard path.hasPrefix(ancestor) else { return false }
@@ -671,13 +1127,5 @@ enum SearchPath {
         let ancestorBytes = ancestor.utf8
         if pathBytes.count == ancestorBytes.count { return true }
         return pathBytes.dropFirst(ancestorBytes.count).first == UInt8(ascii: "/")
-    }
-}
-
-private extension PropertyListEncoder {
-    static var binary: PropertyListEncoder {
-        let encoder = PropertyListEncoder()
-        encoder.outputFormat = .binary
-        return encoder
     }
 }

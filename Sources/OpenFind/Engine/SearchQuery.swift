@@ -179,25 +179,30 @@ struct CompiledSearchQuery: Sendable {
         hasExplicitContentFilter || options.target == .content || (options.target == .both && !plainMatchers.isEmpty)
     }
 
-    func matchesNameBranch(_ node: IndexedFileNode, options: SearchOptions) -> Bool {
+    func matchesNameFilter(_ name: String) -> Bool {
+        if plainMatchers.isEmpty { return true }
+        return plainMatchers.allSatisfy { $0.matches(name) }
+    }
+
+    func matchesNameBranch(_ node: IndexedFileNode, path: String, options: SearchOptions) -> Bool {
         guard options.target != .content, !hasExplicitContentFilter else { return false }
-        guard matchesBase(node, options: options) else { return false }
+        guard matchesBase(node, path: path, options: options) else { return false }
         return plainMatchers.allSatisfy { $0.matches(node.name) }
     }
 
-    func matchesContentCandidate(_ node: IndexedFileNode, options: SearchOptions) -> Bool {
-        guard !node.isDirectory, matchesBase(node, options: options) else { return false }
+    func matchesContentCandidate(_ node: IndexedFileNode, path: String, options: SearchOptions) -> Bool {
+        guard !node.isDirectory, matchesBase(node, path: path, options: options) else { return false }
         if hasExplicitContentFilter {
             return plainMatchers.allSatisfy { $0.matches(node.name) }
         }
         return true
     }
 
-    private func matchesBase(_ node: IndexedFileNode, options: SearchOptions) -> Bool {
+    private func matchesBase(_ node: IndexedFileNode, path: String, options: SearchOptions) -> Bool {
         guard node.isVisible(with: options) else { return false }
-        guard plan.filters.allSatisfy({ $0.matches(node: node, options: options) }) else { return false }
-        guard !plan.excludedFilters.contains(where: { $0.matches(node: node, options: options) }) else { return false }
-        guard !excludedMatchers.contains(where: { $0.matches(node.name) || $0.matches(node.path) }) else { return false }
+        guard plan.filters.allSatisfy({ $0.matches(node: node, path: path, options: options) }) else { return false }
+        guard !plan.excludedFilters.contains(where: { $0.matches(node: node, path: path, options: options) }) else { return false }
+        guard !excludedMatchers.contains(where: { $0.matches(node.name) || $0.matches(path) }) else { return false }
         return true
     }
 }
@@ -216,10 +221,10 @@ enum SearchQueryFilter: Sendable, Equatable {
     case size(SizePredicate)
     case modified(DatePredicate)
 
-    func matches(node: IndexedFileNode, options: SearchOptions) -> Bool {
+    func matches(node: IndexedFileNode, path: String, options: SearchOptions) -> Bool {
         switch self {
         case .extensionIs(let ext):
-            return !node.isDirectory && node.url.pathExtension.lowercased() == ext
+            return !node.isDirectory && (path as NSString).pathExtension.lowercased() == ext
 
         case .kind(.file):
             return !node.isDirectory
@@ -228,21 +233,21 @@ enum SearchQueryFilter: Sendable, Equatable {
             return node.isDirectory
 
         case .kindAndName(let kind, let value):
-            guard SearchQueryFilter.kind(kind).matches(node: node, options: options) else { return false }
+            guard SearchQueryFilter.kind(kind).matches(node: node, path: path, options: options) else { return false }
             return textContains(node.name, value, caseSensitive: options.caseSensitive)
 
         case .pathContains(let value):
-            return textContains(node.path, value, caseSensitive: options.caseSensitive)
+            return textContains(path, value, caseSensitive: options.caseSensitive)
 
         case .pathUnder(let ancestor):
-            // node.path and the parsed ancestor are both normalized already.
-            return SearchPath.hasNormalizedPrefix(node.path, of: ancestor)
+            return SearchPath.hasNormalizedPrefix(path, of: ancestor)
 
         case .size(let predicate):
             return !node.isDirectory && predicate.matches(node.size)
 
         case .modified(let predicate):
-            return predicate.matches(node.modifiedDate)
+            let modifiedDate = Date(timeIntervalSinceReferenceDate: node.modifiedTime)
+            return predicate.matches(modifiedDate)
         }
     }
 

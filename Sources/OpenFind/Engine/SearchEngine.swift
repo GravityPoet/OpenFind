@@ -62,7 +62,7 @@ enum SearchEngine {
     }
 
     private static func searchContents(
-        candidates: [IndexedFileNode],
+        candidates: [ResolvedNode],
         matchers: [Matcher],
         options: SearchOptions,
         continuation: AsyncStream<SearchResult>.Continuation
