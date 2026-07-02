@@ -12,6 +12,7 @@ final class SearchViewModel {
     var scopes: [URL]
     var results: [SearchResult] = []
     var recentSearches: [String]
+    var hasFullDiskAccess = true
 
     var isSearching = false
     var isBroadContentSearchBlocked = false
@@ -32,8 +33,12 @@ final class SearchViewModel {
     init() {
         options = Preferences.loadOptions()
         let stored = ScopeStore.load()
-        scopes = stored.isEmpty ? [FileManager.default.homeDirectoryForCurrentUser] : stored
+        scopes = stored.isEmpty ? [
+            FileManager.default.homeDirectoryForCurrentUser,
+            URL(fileURLWithPath: "/Applications")
+        ] : stored
         recentSearches = Preferences.recentSearches
+        hasFullDiskAccess = SearchViewModel.checkFullDiskAccess()
         refreshIndex()
         startIndexStatsObserver()
     }
@@ -107,6 +112,15 @@ final class SearchViewModel {
         searchTask = nil
         stopElapsedClock()
         if isSearching { finish() }
+    }
+
+    func setScopes(_ newScopes: [URL]) {
+        for scope in scopes {
+            ScopeStore.releaseAccess(scope)
+        }
+        scopes = newScopes
+        ScopeStore.save(scopes)
+        refreshIndex()
     }
 
     func addScope(_ url: URL) {
@@ -205,11 +219,18 @@ final class SearchViewModel {
     private func refreshIndex() {
         let currentScopes = scopes
         Task { [weak self] in
+            let fda = SearchViewModel.checkFullDiskAccess()
             let stats = await SearchIndexStore.shared.prepare(scopes: currentScopes)
             await MainActor.run {
+                self?.hasFullDiskAccess = fda
                 self?.indexStats = stats
             }
         }
+    }
+
+    private static func checkFullDiskAccess() -> Bool {
+        let mailURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mail")
+        return (try? FileManager.default.contentsOfDirectory(at: mailURL, includingPropertiesForKeys: nil)) != nil
     }
 
     private func startIndexStatsObserver() {
@@ -217,7 +238,9 @@ final class SearchViewModel {
         indexStatsTask = Task { [weak self] in
             while !Task.isCancelled {
                 let stats = await SearchIndexStore.shared.stats()
+                let fda = SearchViewModel.checkFullDiskAccess()
                 await MainActor.run {
+                    self?.hasFullDiskAccess = fda
                     self?.indexStats = stats
                 }
                 try? await Task.sleep(for: .seconds(1))

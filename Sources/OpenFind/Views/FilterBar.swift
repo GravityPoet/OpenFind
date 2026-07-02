@@ -39,6 +39,14 @@ struct FilterBar: View {
             // Scope Management Menu
             Menu {
                 Button(action: {
+                    viewModel.setScopes([URL(fileURLWithPath: "/System/Volumes/Data")])
+                }) {
+                    Label(L("Search Whole Mac"), systemImage: "laptopcomputer")
+                }
+
+                Divider()
+
+                Button(action: {
                     let urls = FileActions.chooseDirectories()
                     for url in urls {
                         viewModel.addScope(url)
@@ -60,7 +68,7 @@ struct FilterBar: View {
                         Button(action: {
                             viewModel.removeScopes(IndexSet(integer: index))
                         }) {
-                            Label(scope.path, systemImage: "folder.badge.minus")
+                            Label(scope.path == "/System/Volumes/Data" ? L("Whole Mac") : scope.path, systemImage: "folder.badge.minus")
                         }
                     }
                 }
@@ -86,6 +94,9 @@ struct FilterBar: View {
         if viewModel.scopes.isEmpty {
             return L("No Search Scopes")
         } else if viewModel.scopes.count == 1 {
+            if viewModel.scopes[0].path == "/System/Volumes/Data" {
+                return L("Whole Mac")
+            }
             return viewModel.scopes[0].lastPathComponent
         } else {
             return String(format: L("%lld folders"), Int64(viewModel.scopes.count))

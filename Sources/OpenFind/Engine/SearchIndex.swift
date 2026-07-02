@@ -226,11 +226,12 @@ actor SearchIndexStore {
     private var rebuildTask: Task<SearchIndexStats, Never>?
     private var rebuildGeneration = 0
     private var persistTask: Task<Void, Never>?
+    private var inProgressTempNodes: [TempNode] = []
 
     func snapshot(for scopes: [URL]) async -> SearchIndex {
         let signature = SearchIndexSignature(scopes: scopes)
-        if currentSignature == signature, let index {
-            return index
+        if currentSignature == signature {
+            return index ?? SearchIndex(signature: signature, nodes: [])
         }
 
         _ = await prepare(scopes: scopes)
@@ -333,16 +334,25 @@ actor SearchIndexStore {
         }
 
         currentStats.isIndexing = true
-        let buildTask = Task.detached(priority: .utility) {
-            await SearchIndexBuilder.build(signature: signature) { files, directories in
-                Task {
-                    await SearchIndexStore.shared.updateBuildProgress(
-                        signature: signature,
-                        files: files,
-                        directories: directories
-                    )
+        inProgressTempNodes = []
+        let buildTask = Task.detached(priority: .utility) { [signature] in
+            await SearchIndexBuilder.build(
+                signature: signature,
+                progress: { files, directories in
+                    Task {
+                        await SearchIndexStore.shared.updateBuildProgress(
+                            signature: signature,
+                            files: files,
+                            directories: directories
+                        )
+                    }
+                },
+                onBatch: { batch in
+                    Task {
+                        await SearchIndexStore.shared.appendBuildBatch(batch, signature: signature)
+                    }
                 }
-            }
+            )
         }
         let nodes = await withTaskCancellationHandler {
             await buildTask.value
@@ -353,15 +363,47 @@ actor SearchIndexStore {
         guard rebuildGeneration == generation else { return currentStats }
 
         let nextIndex = SearchIndex(signature: signature, nodes: nodes)
-        index = nextIndex
-
         var stats = nextIndex.stats
+        stats.isIndexing = false
         stats.processedEvents = currentStats.processedEvents
         currentStats = stats
+
+        index = nextIndex
 
         persist(nextIndex)
         startWatching(signature: signature)
         return currentStats
+    }
+
+    private func appendBuildBatch(_ batch: [TempNode], signature: SearchIndexSignature) {
+        guard currentSignature == signature, currentStats.isIndexing else { return }
+        inProgressTempNodes.append(contentsOf: batch)
+        let uniqueTemp = SearchIndexBuilder.deduplicatedTempNodes(inProgressTempNodes)
+
+        var pathToIndex: [String: Int32] = [:]
+        pathToIndex.reserveCapacity(uniqueTemp.count)
+        for i in 0..<uniqueTemp.count {
+            pathToIndex[uniqueTemp[i].path] = Int32(i)
+        }
+
+        var finalNodes: [IndexedFileNode] = []
+        finalNodes.reserveCapacity(uniqueTemp.count)
+        for node in uniqueTemp {
+            let parentPath = (node.path as NSString).deletingLastPathComponent
+            let parentIdx = pathToIndex[parentPath] ?? -1
+            let nameToStore = (parentIdx == -1) ? node.path : node.name
+            finalNodes.append(IndexedFileNode(
+                name: nameToStore,
+                parentIndex: parentIdx,
+                isDirectory: node.isDirectory,
+                size: node.size,
+                modifiedTime: node.modifiedTime,
+                isHiddenScope: node.isHiddenScope,
+                isPackageDescendant: node.isPackageDescendant
+            ))
+        }
+
+        self.index = SearchIndex(signature: signature, nodes: finalNodes)
     }
 
     private func updateBuildProgress(signature: SearchIndexSignature, files: Int, directories: Int) {
@@ -488,7 +530,8 @@ enum SearchIndexBuilder {
 
     static func build(
         signature: SearchIndexSignature,
-        progress: @escaping @Sendable (_ files: Int, _ directories: Int) -> Void = { _, _ in }
+        progress: @escaping @Sendable (_ files: Int, _ directories: Int) -> Void = { _, _ in },
+        onBatch: @escaping @Sendable ([TempNode]) -> Void = { _ in }
     ) async -> [IndexedFileNode] {
         let ignoredPaths = effectiveIgnoredPaths(for: signature)
         let tracker = ProgressTracker(progress: progress)
@@ -597,6 +640,7 @@ enum SearchIndexBuilder {
             var combined: [TempNode] = []
             for await taskNodes in group {
                 combined.append(contentsOf: taskNodes)
+                onBatch(taskNodes)
             }
             return combined
         }
@@ -772,7 +816,7 @@ enum SearchIndexBuilder {
         )
     }
 
-    private static func deduplicatedTempNodes(_ nodes: [TempNode]) -> [TempNode] {
+    fileprivate static func deduplicatedTempNodes(_ nodes: [TempNode]) -> [TempNode] {
         var seen = Set<String>()
         seen.reserveCapacity(nodes.count)
         return nodes.filter { seen.insert($0.path).inserted }

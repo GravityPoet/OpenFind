@@ -48,13 +48,29 @@ struct StatusBar: View {
                 .buttonStyle(.borderless)
             }
 
-            if viewModel.truncated {
-                Spacer()
-                HStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                    Text(String(format: L("showing first %lld"), Int64(viewModel.resultCount)))
+            Spacer()
+
+            HStack(spacing: 16) {
+                if !viewModel.hasFullDiskAccess {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.shield.fill")
+                        Text(L("Full Disk Access disabled"))
+                        Button(L("Enable...")) {
+                            FileActions.openSystemPrivacySettings()
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.blue)
+                    }
+                    .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(.orange)
+
+                if viewModel.truncated {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text(String(format: L("showing first %lld"), Int64(viewModel.resultCount)))
+                    }
+                    .foregroundStyle(.orange)
+                }
             }
         }
         .font(.caption)

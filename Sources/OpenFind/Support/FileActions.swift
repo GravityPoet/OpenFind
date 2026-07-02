@@ -32,4 +32,10 @@ enum FileActions {
         panel.message = L("Select folders to search")
         return panel.runModal() == .OK ? panel.urls : []
     }
+
+    static func openSystemPrivacySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
+        }
+    }
 }

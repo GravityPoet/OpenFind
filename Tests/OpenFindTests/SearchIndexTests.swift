@@ -223,4 +223,32 @@ struct SearchIndexTests {
         let loadedPaths = (0..<loadedIndex.nodes.count).map { loadedIndex.path(for: $0) }
         #expect(Set(originalPaths) == Set(loadedPaths))
     }
+
+    @Test func testIncrementalIndexingReturnsPartialResults() async throws {
+        await SearchIndexStore.shared.resetForTesting()
+        let root = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sub1 = root.appendingPathComponent("dir1")
+        try FileManager.default.createDirectory(at: sub1, withIntermediateDirectories: true)
+        try writeFile(at: sub1.appendingPathComponent("apple_in_dir1.txt"))
+
+        let sub2 = root.appendingPathComponent("dir2")
+        try FileManager.default.createDirectory(at: sub2, withIntermediateDirectories: true)
+        try writeFile(at: sub2.appendingPathComponent("apple_in_dir2.txt"))
+
+        let prepareTask = Task {
+            await SearchIndexStore.shared.prepare(scopes: [root])
+        }
+
+        try? await Task.sleep(for: .milliseconds(50))
+
+        let partialIndex = await SearchIndexStore.shared.snapshot(for: [root])
+        #expect(partialIndex.signature.scopes == [root.path])
+
+        _ = await prepareTask.value
+
+        let finalIndex = await SearchIndexStore.shared.snapshot(for: [root])
+        #expect(finalIndex.nodes.count > 0)
+    }
 }
