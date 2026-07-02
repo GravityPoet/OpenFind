@@ -95,7 +95,9 @@ struct SearchIndex: Sendable {
         guard index >= 0 && index < nodes.count else { return "" }
         var pathComponents: [String] = []
         var currentIndex = index
+        // Depth cap: a corrupted cache with a parentIndex cycle must not hang.
         while currentIndex >= 0 && currentIndex < nodes.count {
+            guard pathComponents.count <= 512 else { return "" }
             let node = nodes[currentIndex]
             pathComponents.append(node.name)
             currentIndex = Int(node.parentIndex)
@@ -115,12 +117,14 @@ struct SearchIndex: Sendable {
 
     func nameMatches(query: CompiledSearchQuery, options: SearchOptions) -> [ResolvedNode] {
         var results: [ResolvedNode] = []
+        let pinyin = query.matchesPinyin
         for i in 0..<nodes.count {
             let node = nodes[i]
-            guard query.matchesNameFilter(node.name) else { continue }
+            let shortName = node.name.hasPrefix("/") ? (node.name as NSString).lastPathComponent : node.name
+            guard query.matchesNameFilter(shortName, matchesPinyin: pinyin) else { continue }
 
             let nodePath = path(for: i)
-            if query.matchesNameBranch(node, path: nodePath, options: options) {
+            if query.matchesNameBranch(name: shortName, node: node, path: nodePath, options: options, matchesPinyin: pinyin) {
                 results.append(ResolvedNode(node: node, path: nodePath))
             }
         }
@@ -129,13 +133,15 @@ struct SearchIndex: Sendable {
 
     func contentCandidates(query: CompiledSearchQuery, options: SearchOptions, excluding excludedPaths: Set<String> = []) -> [ResolvedNode] {
         var results: [ResolvedNode] = []
+        let pinyin = query.matchesPinyin
         for i in 0..<nodes.count {
             let node = nodes[i]
             guard !node.isDirectory else { continue }
             let nodePath = path(for: i)
             guard !excludedPaths.contains(nodePath) else { continue }
 
-            if query.matchesContentCandidate(node, path: nodePath, options: options) {
+            let shortName = node.name.hasPrefix("/") ? (node.name as NSString).lastPathComponent : node.name
+            if query.matchesContentCandidate(name: shortName, node: node, path: nodePath, options: options, matchesPinyin: pinyin) {
                 results.append(ResolvedNode(node: node, path: nodePath))
             }
         }
@@ -226,7 +232,10 @@ actor SearchIndexStore {
     private var rebuildTask: Task<SearchIndexStats, Never>?
     private var rebuildGeneration = 0
     private var persistTask: Task<Void, Never>?
-    private var inProgressTempNodes: [TempNode] = []
+    private var inProgressSeen = Set<String>()
+    private var inProgressPathToIndex: [String: Int32] = [:]
+    private var inProgressNodes: [IndexedFileNode] = []
+    private var lastPartialPublish: ContinuousClock.Instant?
 
     func snapshot(for scopes: [URL]) async -> SearchIndex {
         let signature = SearchIndexSignature(scopes: scopes)
@@ -280,13 +289,6 @@ actor SearchIndexStore {
         scheduleEventRefresh()
     }
 
-    func resetForTesting() {
-        cancelPipeline()
-        index = nil
-        currentSignature = nil
-        currentStats = SearchIndexStats()
-    }
-
     private func cancelPipeline() {
         stopWatching()
         eventRefreshTask?.cancel()
@@ -295,6 +297,14 @@ actor SearchIndexStore {
         rebuildTask = nil
         rebuildGeneration += 1
         pendingEventPaths.removeAll()
+        clearInProgressBuild()
+    }
+
+    private func clearInProgressBuild() {
+        inProgressSeen = []
+        inProgressPathToIndex = [:]
+        inProgressNodes = []
+        lastPartialPublish = nil
     }
 
     private func startRebuild(signature: SearchIndexSignature, tryCache: Bool) async -> SearchIndexStats {
@@ -334,14 +344,15 @@ actor SearchIndexStore {
         }
 
         currentStats.isIndexing = true
-        inProgressTempNodes = []
-        let buildTask = Task.detached(priority: .utility) { [signature] in
+        clearInProgressBuild()
+        let buildTask = Task.detached(priority: .utility) { [signature, generation] in
             await SearchIndexBuilder.build(
                 signature: signature,
                 progress: { files, directories in
                     Task {
-                        await SearchIndexStore.shared.updateBuildProgress(
+                        await self.updateBuildProgress(
                             signature: signature,
+                            generation: generation,
                             files: files,
                             directories: directories
                         )
@@ -349,7 +360,7 @@ actor SearchIndexStore {
                 },
                 onBatch: { batch in
                     Task {
-                        await SearchIndexStore.shared.appendBuildBatch(batch, signature: signature)
+                        await self.appendBuildBatch(batch, signature: signature, generation: generation)
                     }
                 }
             )
@@ -369,30 +380,28 @@ actor SearchIndexStore {
         currentStats = stats
 
         index = nextIndex
+        clearInProgressBuild()
 
         persist(nextIndex)
         startWatching(signature: signature)
         return currentStats
     }
 
-    private func appendBuildBatch(_ batch: [TempNode], signature: SearchIndexSignature) {
-        guard currentSignature == signature, currentStats.isIndexing else { return }
-        inProgressTempNodes.append(contentsOf: batch)
-        let uniqueTemp = SearchIndexBuilder.deduplicatedTempNodes(inProgressTempNodes)
-
-        var pathToIndex: [String: Int32] = [:]
-        pathToIndex.reserveCapacity(uniqueTemp.count)
-        for i in 0..<uniqueTemp.count {
-            pathToIndex[uniqueTemp[i].path] = Int32(i)
-        }
-
-        var finalNodes: [IndexedFileNode] = []
-        finalNodes.reserveCapacity(uniqueTemp.count)
-        for node in uniqueTemp {
+    /// Incrementally appends one scan batch to the in-progress index so
+    /// searches during a build see already-scanned files. Append-only with a
+    /// persistent path table (O(batch)); a node arriving before its parent
+    /// stores its absolute path, which `path(for:)` returns verbatim, and the
+    /// final full build replaces this partial index anyway. Publishing a
+    /// snapshot is throttled because `SearchIndex.init` is O(n).
+    private func appendBuildBatch(_ batch: [TempNode], signature: SearchIndexSignature, generation: Int) {
+        guard rebuildGeneration == generation, currentSignature == signature, currentStats.isIndexing else { return }
+        for node in batch {
+            guard inProgressSeen.insert(node.path).inserted else { continue }
             let parentPath = (node.path as NSString).deletingLastPathComponent
-            let parentIdx = pathToIndex[parentPath] ?? -1
+            let parentIdx = inProgressPathToIndex[parentPath] ?? -1
             let nameToStore = (parentIdx == -1) ? node.path : node.name
-            finalNodes.append(IndexedFileNode(
+            inProgressPathToIndex[node.path] = Int32(inProgressNodes.count)
+            inProgressNodes.append(IndexedFileNode(
                 name: nameToStore,
                 parentIndex: parentIdx,
                 isDirectory: node.isDirectory,
@@ -403,11 +412,14 @@ actor SearchIndexStore {
             ))
         }
 
-        self.index = SearchIndex(signature: signature, nodes: finalNodes)
+        let now = ContinuousClock.now
+        if let last = lastPartialPublish, now - last < .milliseconds(300) { return }
+        lastPartialPublish = now
+        index = SearchIndex(signature: signature, nodes: inProgressNodes)
     }
 
-    private func updateBuildProgress(signature: SearchIndexSignature, files: Int, directories: Int) {
-        guard currentSignature == signature, currentStats.isIndexing else { return }
+    private func updateBuildProgress(signature: SearchIndexSignature, generation: Int, files: Int, directories: Int) {
+        guard rebuildGeneration == generation, currentSignature == signature, currentStats.isIndexing else { return }
         currentStats.indexedFiles = files
         currentStats.indexedDirectories = directories
     }
@@ -416,7 +428,7 @@ actor SearchIndexStore {
         backgroundRefreshTask = Task {
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
-            await SearchIndexStore.shared.refreshIfCurrent(signature: signature)
+            await self.refreshIfCurrent(signature: signature)
         }
     }
 
@@ -431,7 +443,7 @@ actor SearchIndexStore {
         eventRefreshTask = Task {
             try? await Task.sleep(for: .milliseconds(700))
             guard !Task.isCancelled else { return }
-            await SearchIndexStore.shared.applyPendingEvents(expectedSignature: signature)
+            await self.applyPendingEvents(expectedSignature: signature)
         }
     }
 
@@ -469,9 +481,9 @@ actor SearchIndexStore {
 
     private func startWatching(signature: SearchIndexSignature) {
         stopWatching()
-        watcher = FileSystemEventWatcher(paths: signature.scopes) { paths in
+        watcher = FileSystemEventWatcher(paths: signature.scopes) { [weak self] paths in
             Task {
-                await SearchIndexStore.shared.noteFileEvents(paths: paths)
+                await self?.noteFileEvents(paths: paths)
             }
         }
     }
@@ -790,8 +802,10 @@ enum SearchIndexBuilder {
         }
     }
 
+    private static let resourceKeySet = Set(resourceKeys)
+
     private static func makeTempNode(url: URL) -> TempNode? {
-        let values = try? url.resourceValues(forKeys: Set(resourceKeys))
+        let values = try? url.resourceValues(forKeys: resourceKeySet)
         let path = SearchPath.normalize(url.path(percentEncoded: false))
         let name = values?.name ?? url.lastPathComponent
         let isDirectory = values?.isDirectory ?? false
@@ -958,19 +972,20 @@ enum SearchIndexPersistence {
         }
     }
 
-    static func load(signature: SearchIndexSignature) -> SearchIndex? {
-        let url = cacheURL
-        guard let data = try? Data(contentsOf: url) else { return nil }
+    static func load(signature: SearchIndexSignature, from url: URL? = nil) -> SearchIndex? {
+        let targetURL = url ?? cacheURL
+        guard let data = try? Data(contentsOf: targetURL) else { return nil }
         return decode(data, expectedSignature: signature)
     }
 
-    static func save(index: SearchIndex) {
+    static func save(index: SearchIndex, to url: URL? = nil) {
         let data = encode(index)
+        let targetURL = url ?? cacheURL
         do {
-            try FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: cacheURL, options: .atomic)
+            try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: targetURL, options: .atomic)
 
-            let oldURL = cacheURL.deletingLastPathComponent().appendingPathComponent("search-index-v1.plist")
+            let oldURL = targetURL.deletingLastPathComponent().appendingPathComponent("search-index-v1.plist")
             try? FileManager.default.removeItem(at: oldURL)
         } catch {
             // Cache persistence failure should not break search
@@ -1154,6 +1169,17 @@ enum SearchPath {
     }
 
     static func normalize(_ path: String) -> String {
+        // Fast path: enumerator-produced paths are already absolute and clean,
+        // and this runs once per scanned node. The URL round-trip below costs
+        // microseconds each, which is seconds over a few hundred thousand nodes.
+        // "/private" paths must take the slow path: standardizingPath strips the
+        // "/private" prefix (e.g. enumerators yield /private/var for /var scopes).
+        if path.hasPrefix("/"), path.count > 1, !path.hasSuffix("/"),
+           !path.hasPrefix("/private"),
+           !path.contains("//"), !path.contains("/./"), !path.contains("/../"),
+           !path.hasSuffix("/."), !path.hasSuffix("/..") {
+            return path
+        }
         let expanded = (path as NSString).expandingTildeInPath
         let standardized = URL(fileURLWithPath: expanded).standardizedFileURL.path(percentEncoded: false)
         guard standardized != "/" else { return "/" }
@@ -1171,5 +1197,40 @@ enum SearchPath {
         let ancestorBytes = ancestor.utf8
         if pathBytes.count == ancestorBytes.count { return true }
         return pathBytes.dropFirst(ancestorBytes.count).first == UInt8(ascii: "/")
+    }
+
+    /// Scalar-range Han detection. This runs on the per-node hot path during
+    /// name matching, where a `\p{Han}` regex would recompile per call.
+    static func isHanScalar(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3400...0x4DBF,      // CJK Extension A
+             0x4E00...0x9FFF,      // CJK Unified Ideographs
+             0xF900...0xFAFF,      // CJK Compatibility Ideographs
+             0x20000...0x2FA1F:    // CJK Extensions B-F
+            return true
+        default:
+            return false
+        }
+    }
+
+    static func containsHan(_ string: String) -> Bool {
+        string.unicodeScalars.contains(where: isHanScalar)
+    }
+
+    static func pinyinFirstLetters(from string: String) -> String {
+        var result = ""
+        for char in string {
+            if char.unicodeScalars.contains(where: isHanScalar) {
+                let mutable = NSMutableString(string: String(char)) as CFMutableString
+                CFStringTransform(mutable, nil, kCFStringTransformToLatin, false)
+                CFStringTransform(mutable, nil, kCFStringTransformStripDiacritics, false)
+                if let first = (mutable as String).first {
+                    result.append(first)
+                }
+            } else {
+                result.append(char)
+            }
+        }
+        return result.lowercased()
     }
 }

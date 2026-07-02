@@ -72,3 +72,9 @@
 "Max Content File Size (MB)" = "Max Content File Size (MB)";
 "Clear Recent Searches" = "Clear Recent Searches";
 "Durable Defaults" = "Durable Defaults";
+
+/* Whole Mac & TCC */
+"Search Whole Mac" = "Search Whole Mac";
+"Whole Mac" = "Whole Mac";
+"Full Disk Access disabled" = "Full Disk Access disabled";
+"Enable..." = "Enable...";

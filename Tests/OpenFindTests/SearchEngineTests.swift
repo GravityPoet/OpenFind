@@ -23,6 +23,8 @@ struct SearchEngineTests {
             try? FileManager.default.removeItem(at: root)
         }
         
+        let store = SearchIndexStore()
+        
         let file1 = root.appendingPathComponent("apple_name.txt")
         let file2 = root.appendingPathComponent("banana_name.txt")
         let hiddenFile = root.appendingPathComponent(".hidden_apple.txt")
@@ -49,7 +51,7 @@ struct SearchEngineTests {
             options.includeHidden = true
             options.includePackages = true
             
-            let stream = SearchEngine.search(scopes: [root], options: options)
+            let stream = SearchEngine.search(scopes: [root], options: options, store: store)
             var results: [SearchResult] = []
             for await result in stream {
                 results.append(result)
@@ -71,7 +73,7 @@ struct SearchEngineTests {
             options.includePackages = false
             options.maxContentFileSize = 1024 * 1024
             
-            let stream = SearchEngine.search(scopes: [root], options: options)
+            let stream = SearchEngine.search(scopes: [root], options: options, store: store)
             var results: [SearchResult] = []
             for await result in stream {
                 results.append(result)
@@ -95,7 +97,7 @@ struct SearchEngineTests {
             options.includePackages = false
             options.maxContentFileSize = 100
             
-            let stream = SearchEngine.search(scopes: [root], options: options)
+            let stream = SearchEngine.search(scopes: [root], options: options, store: store)
             var results: [SearchResult] = []
             for await result in stream {
                 results.append(result)
@@ -114,7 +116,7 @@ struct SearchEngineTests {
             options.includeHidden = true
             options.includePackages = false
             
-            let stream = SearchEngine.search(scopes: [root], options: options)
+            let stream = SearchEngine.search(scopes: [root], options: options, store: store)
             var results: [SearchResult] = []
             for await result in stream {
                 results.append(result)
@@ -131,6 +133,8 @@ struct SearchEngineTests {
             try? FileManager.default.removeItem(at: root)
         }
         
+        let store = SearchIndexStore()
+        
         for i in 0..<100 {
             let file = root.appendingPathComponent("file_\(i).txt")
             try writeFile(at: file, content: "This is test query \(i) to cancel.")
@@ -140,7 +144,7 @@ struct SearchEngineTests {
         options.query = "query"
         options.target = .content
         
-        let stream = SearchEngine.search(scopes: [root], options: options)
+        let stream = SearchEngine.search(scopes: [root], options: options, store: store)
         
         actor SafeCounter {
             var count = 0
@@ -164,5 +168,32 @@ struct SearchEngineTests {
         
         let finalCount = await counter.get()
         #expect(finalCount <= 5)
+    }
+
+    @Test func testPinyinMatching() async throws {
+        let root = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = SearchIndexStore()
+
+        try writeFile(at: root.appendingPathComponent("报告.docx"), content: "")
+        try writeFile(at: root.appendingPathComponent("表格.xlsx"), content: "")
+        try writeFile(at: root.appendingPathComponent("other.txt"), content: "")
+
+        var options = SearchOptions()
+        options.target = .name
+
+        options.query = "bg"
+        let stream = SearchEngine.search(scopes: [root], options: options, store: store)
+        var results: [SearchResult] = []
+        for await result in stream {
+            results.append(result)
+        }
+        let names = Set(results.map { $0.name })
+        
+        // "bg" should match "报告.docx" (bao gao -> bg) and "表格.xlsx" (biao ge -> bg)
+        #expect(names.contains("报告.docx"))
+        #expect(names.contains("表格.xlsx"))
+        #expect(!names.contains("other.txt"))
     }
 }

@@ -72,3 +72,9 @@
 "Max Content File Size (MB)" = "内容搜索最大文件体积 (MB)";
 "Clear Recent Searches" = "清除最近搜索记录";
 "Durable Defaults" = "持久化默认值";
+
+/* Whole Mac & TCC */
+"Search Whole Mac" = "搜索整台 Mac";
+"Whole Mac" = "整台 Mac";
+"Full Disk Access disabled" = "完全磁盘访问权限未启用";
+"Enable..." = "启用...";

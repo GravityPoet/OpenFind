@@ -7,6 +7,7 @@ struct OpenFindApp: App {
         WindowGroup("OpenFind") {
             ContentView(viewModel: viewModel)
         }
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 900, height: 600)
         .commands {
             AppCommands(viewModel: viewModel)

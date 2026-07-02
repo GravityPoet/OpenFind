@@ -154,6 +154,13 @@ struct CompiledSearchQuery: Sendable {
     let explicitContentMatchers: [Matcher]
     let excludedMatchers: [Matcher]
 
+    var matchesPinyin: Bool {
+        guard !plan.plainTerms.isEmpty else { return false }
+        return plan.plainTerms.allSatisfy { term in
+            term.range(of: "^[a-zA-Z0-9\\s]+$", options: .regularExpression) != nil
+        }
+    }
+
     var hasExplicitContentFilter: Bool {
         !explicitContentMatchers.isEmpty
     }
@@ -179,21 +186,42 @@ struct CompiledSearchQuery: Sendable {
         hasExplicitContentFilter || options.target == .content || (options.target == .both && !plainMatchers.isEmpty)
     }
 
-    func matchesNameFilter(_ name: String) -> Bool {
+    func matchesNameFilter(_ name: String, matchesPinyin: Bool = false) -> Bool {
         if plainMatchers.isEmpty { return true }
-        return plainMatchers.allSatisfy { $0.matches(name) }
+        return plainMatchers.allSatisfy { matcher in
+            if matcher.matches(name) { return true }
+            if matchesPinyin, SearchPath.containsHan(name) {
+                let pinyin = SearchPath.pinyinFirstLetters(from: name)
+                return matcher.matches(pinyin)
+            }
+            return false
+        }
     }
 
-    func matchesNameBranch(_ node: IndexedFileNode, path: String, options: SearchOptions) -> Bool {
+    func matchesNameBranch(name: String, node: IndexedFileNode, path: String, options: SearchOptions, matchesPinyin: Bool = false) -> Bool {
         guard options.target != .content, !hasExplicitContentFilter else { return false }
         guard matchesBase(node, path: path, options: options) else { return false }
-        return plainMatchers.allSatisfy { $0.matches(node.name) }
+        return plainMatchers.allSatisfy { matcher in
+            if matcher.matches(name) { return true }
+            if matchesPinyin, SearchPath.containsHan(name) {
+                let pinyin = SearchPath.pinyinFirstLetters(from: name)
+                return matcher.matches(pinyin)
+            }
+            return false
+        }
     }
 
-    func matchesContentCandidate(_ node: IndexedFileNode, path: String, options: SearchOptions) -> Bool {
+    func matchesContentCandidate(name: String, node: IndexedFileNode, path: String, options: SearchOptions, matchesPinyin: Bool = false) -> Bool {
         guard !node.isDirectory, matchesBase(node, path: path, options: options) else { return false }
         if hasExplicitContentFilter {
-            return plainMatchers.allSatisfy { $0.matches(node.name) }
+            return plainMatchers.allSatisfy { matcher in
+                if matcher.matches(name) { return true }
+                if matchesPinyin, SearchPath.containsHan(name) {
+                    let pinyin = SearchPath.pinyinFirstLetters(from: name)
+                    return matcher.matches(pinyin)
+                }
+                return false
+            }
         }
         return true
     }
@@ -202,7 +230,8 @@ struct CompiledSearchQuery: Sendable {
         guard node.isVisible(with: options) else { return false }
         guard plan.filters.allSatisfy({ $0.matches(node: node, path: path, options: options) }) else { return false }
         guard !plan.excludedFilters.contains(where: { $0.matches(node: node, path: path, options: options) }) else { return false }
-        guard !excludedMatchers.contains(where: { $0.matches(node.name) || $0.matches(path) }) else { return false }
+        let shortName = node.name.hasPrefix("/") ? (node.name as NSString).lastPathComponent : node.name
+        guard !excludedMatchers.contains(where: { $0.matches(shortName) || $0.matches(path) }) else { return false }
         return true
     }
 }
@@ -234,7 +263,8 @@ enum SearchQueryFilter: Sendable, Equatable {
 
         case .kindAndName(let kind, let value):
             guard SearchQueryFilter.kind(kind).matches(node: node, path: path, options: options) else { return false }
-            return textContains(node.name, value, caseSensitive: options.caseSensitive)
+            let shortName = node.name.hasPrefix("/") ? (node.name as NSString).lastPathComponent : node.name
+            return textContains(shortName, value, caseSensitive: options.caseSensitive)
 
         case .pathContains(let value):
             return textContains(path, value, caseSensitive: options.caseSensitive)

@@ -4,81 +4,97 @@ struct FilterBar: View {
     @Bindable var viewModel: SearchViewModel
 
     var body: some View {
-        HStack(spacing: 16) {
-            // Target Picker (Name / Contents / Both)
-            Picker(L("Target"), selection: $viewModel.options.target) {
-                Text(L("Name")).tag(SearchTarget.name)
-                Text(L("Contents")).tag(SearchTarget.content)
-                Text(L("Name or Contents")).tag(SearchTarget.both)
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 320)
-
-            // Options Dropdown Menu
-            Menu {
-                Picker(L("Default Match Mode"), selection: $viewModel.options.matchMode) {
-                    Text(L("Contains")).tag(MatchMode.substring)
-                    Text(L("Whole Word")).tag(MatchMode.wholeWord)
-                    Text(L("Wildcard")).tag(MatchMode.wildcard)
-                    Text(L("Regular Expression")).tag(MatchMode.regex)
+        GlassEffectContainer {
+            HStack(spacing: 16) {
+                // Target Picker (Name / Contents / Both)
+                Picker(L("Target"), selection: $viewModel.options.target) {
+                    Text(L("Name")).tag(SearchTarget.name)
+                    Text(L("Contents")).tag(SearchTarget.content)
+                    Text(L("Name or Contents")).tag(SearchTarget.both)
                 }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 320)
+                .glassEffect(in: .rect(cornerRadius: 6))
 
-                Divider()
-
-                Toggle(L("Case Sensitive"), isOn: $viewModel.options.caseSensitive)
-                Toggle(L("Include Hidden Files"), isOn: $viewModel.options.includeHidden)
-                Toggle(L("Search Inside Packages"), isOn: $viewModel.options.includePackages)
-            } label: {
-                Label(L("Options"), systemImage: "slider.horizontal.3")
-            }
-            .menuStyle(.borderlessButton)
-            .frame(width: 100)
-
-            Spacer()
-
-            // Scope Management Menu
-            Menu {
-                Button(action: {
-                    viewModel.setScopes([URL(fileURLWithPath: "/System/Volumes/Data")])
-                }) {
-                    Label(L("Search Whole Mac"), systemImage: "laptopcomputer")
-                }
-
-                Divider()
-
-                Button(action: {
-                    let urls = FileActions.chooseDirectories()
-                    for url in urls {
-                        viewModel.addScope(url)
-                    }
-                }) {
-                    Label(L("Add Folder..."), systemImage: "plus")
-                }
-
-                if !viewModel.scopes.isEmpty {
-                    Button(role: .destructive, action: {
-                        viewModel.removeScopes(IndexSet(0..<viewModel.scopes.count))
-                    }) {
-                        Label(L("Clear Scopes"), systemImage: "trash")
+                // Options Dropdown Menu
+                Menu {
+                    Picker(L("Default Match Mode"), selection: $viewModel.options.matchMode) {
+                        Text(L("Contains")).tag(MatchMode.substring)
+                        Text(L("Whole Word")).tag(MatchMode.wholeWord)
+                        Text(L("Wildcard")).tag(MatchMode.wildcard)
+                        Text(L("Regular Expression")).tag(MatchMode.regex)
                     }
 
                     Divider()
 
-                    ForEach(Array(viewModel.scopes.enumerated()), id: \.element) { index, scope in
-                        Button(action: {
-                            viewModel.removeScopes(IndexSet(integer: index))
+                    Toggle(L("Case Sensitive"), isOn: $viewModel.options.caseSensitive)
+                    Toggle(L("Include Hidden Files"), isOn: $viewModel.options.includeHidden)
+                    Toggle(L("Search Inside Packages"), isOn: $viewModel.options.includePackages)
+                } label: {
+                    Label(L("Options"), systemImage: "slider.horizontal.3")
+                }
+                .menuStyle(.borderlessButton)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .glassEffect(in: .rect(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                )
+
+                Spacer()
+
+                // Scope Management Menu
+                Menu {
+                    Button(action: {
+                        viewModel.setScopes([URL(fileURLWithPath: "/System/Volumes/Data")])
+                    }) {
+                        Label(L("Search Whole Mac"), systemImage: "laptopcomputer")
+                    }
+
+                    Divider()
+
+                    Button(action: {
+                        let urls = FileActions.chooseDirectories()
+                        for url in urls {
+                            viewModel.addScope(url)
+                        }
+                    }) {
+                        Label(L("Add Folder..."), systemImage: "plus")
+                    }
+
+                    if !viewModel.scopes.isEmpty {
+                        Button(role: .destructive, action: {
+                            viewModel.removeScopes(IndexSet(0..<viewModel.scopes.count))
                         }) {
-                            Label(scope.path == "/System/Volumes/Data" ? L("Whole Mac") : scope.path, systemImage: "folder.badge.minus")
+                            Label(L("Clear Scopes"), systemImage: "trash")
+                        }
+
+                        Divider()
+
+                        ForEach(Array(viewModel.scopes.enumerated()), id: \.element) { index, scope in
+                            Button(action: {
+                                viewModel.removeScopes(IndexSet(integer: index))
+                            }) {
+                                Label(scope.path == "/System/Volumes/Data" ? L("Whole Mac") : scope.path, systemImage: "folder.badge.minus")
+                            }
                         }
                     }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder")
+                        Text(scopeButtonLabel)
+                    }
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "folder")
-                    Text(scopeButtonLabel)
-                }
+                .menuStyle(.borderlessButton)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .glassEffect(in: .rect(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                )
             }
-            .menuStyle(.borderlessButton)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

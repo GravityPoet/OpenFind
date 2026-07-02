@@ -13,10 +13,10 @@ enum SearchEngine {
     /// Starts a search and returns an incremental result stream. The underlying
     /// traversal is cancelled automatically when the consumer stops iterating or
     /// the stream is otherwise terminated.
-    static func search(scopes: [URL], options: SearchOptions) -> AsyncStream<SearchResult> {
+    static func search(scopes: [URL], options: SearchOptions, store: SearchIndexStore = .shared) -> AsyncStream<SearchResult> {
         AsyncStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task.detached(priority: .userInitiated) {
-                await run(scopes: scopes, options: options, continuation: continuation)
+                await run(scopes: scopes, options: options, store: store, continuation: continuation)
                 continuation.finish()
             }
             continuation.onTermination = { _ in task.cancel() }
@@ -26,6 +26,7 @@ enum SearchEngine {
     private static func run(
         scopes: [URL],
         options: SearchOptions,
+        store: SearchIndexStore,
         continuation: AsyncStream<SearchResult>.Continuation
     ) async {
         let compiledQuery: CompiledSearchQuery
@@ -35,7 +36,7 @@ enum SearchEngine {
             return // Empty query or invalid regex: finish silently; the UI guards empty queries.
         }
 
-        let index = await SearchIndexStore.shared.snapshot(for: scopes)
+        let index = await store.snapshot(for: scopes)
 
         var nameHitPaths = Set<String>()
         if options.target != .content {

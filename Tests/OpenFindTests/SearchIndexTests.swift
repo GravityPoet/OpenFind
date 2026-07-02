@@ -16,7 +16,6 @@ struct SearchIndexTests {
     }
 
     @Test func indexedNameSearchFindsFilesWithoutTraversalOptions() async throws {
-        await SearchIndexStore.shared.resetForTesting()
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -29,23 +28,15 @@ struct SearchIndexTests {
         options.query = "cardinal"
         options.target = .name
 
-        var results: [SearchResult] = []
-        for await result in SearchEngine.search(scopes: [root], options: options) {
-            results.append(result)
-        }
-
+        let results = await collect(scopes: [root], options: options)
         #expect(results.map(\.name) == ["cardinal_report.txt"])
 
         options.includeHidden = true
-        var hiddenResults: [SearchResult] = []
-        for await result in SearchEngine.search(scopes: [root], options: options) {
-            hiddenResults.append(result)
-        }
+        let hiddenResults = await collect(scopes: [root], options: options)
         #expect(Set(hiddenResults.map(\.name)) == Set(["cardinal_report.txt", ".cardinal_secret.txt"]))
     }
 
     @Test func contentSearchUsesIndexedCandidates() async throws {
-        await SearchIndexStore.shared.resetForTesting()
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -56,11 +47,7 @@ struct SearchIndexTests {
         options.query = "needle"
         options.target = .content
 
-        var results: [SearchResult] = []
-        for await result in SearchEngine.search(scopes: [root], options: options) {
-            results.append(result)
-        }
-
+        let results = await collect(scopes: [root], options: options)
         #expect(results.map(\.name) == ["body.txt"])
         #expect(results.first?.matchedContent == true)
     }
@@ -82,7 +69,6 @@ struct SearchIndexTests {
     }
 
     @Test func querySyntaxFiltersIndexedResults() async throws {
-        await SearchIndexStore.shared.resetForTesting()
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -116,7 +102,6 @@ struct SearchIndexTests {
     }
 
     @Test func contentFilterRunsEvenWhenTargetIsName() async throws {
-        await SearchIndexStore.shared.resetForTesting()
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -135,7 +120,6 @@ struct SearchIndexTests {
     }
 
     @Test func nameResultsRankByMatchQuality() async throws {
-        await SearchIndexStore.shared.resetForTesting()
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -166,7 +150,6 @@ struct SearchIndexTests {
     }
 
     @Test func modifiedDateFilterMatchesIsoDay() async throws {
-        await SearchIndexStore.shared.resetForTesting()
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -195,8 +178,9 @@ struct SearchIndexTests {
     }
 
     private func collect(scopes: [URL], options: SearchOptions) async -> [SearchResult] {
+        let store = SearchIndexStore()
         var results: [SearchResult] = []
-        for await result in SearchEngine.search(scopes: scopes, options: options) {
+        for await result in SearchEngine.search(scopes: scopes, options: options, store: store) {
             results.append(result)
         }
         return results
@@ -213,9 +197,10 @@ struct SearchIndexTests {
         let nodes = await SearchIndexBuilder.build(signature: signature)
         let originalIndex = SearchIndex(signature: signature, nodes: nodes)
 
-        SearchIndexPersistence.save(index: originalIndex)
+        let testIndexURL = root.appendingPathComponent("search-index-test.bin")
+        SearchIndexPersistence.save(index: originalIndex, to: testIndexURL)
 
-        let loadedIndex = try #require(SearchIndexPersistence.load(signature: signature))
+        let loadedIndex = try #require(SearchIndexPersistence.load(signature: signature, from: testIndexURL))
         #expect(loadedIndex.signature == originalIndex.signature)
         #expect(loadedIndex.nodes.count == originalIndex.nodes.count)
 
@@ -225,7 +210,6 @@ struct SearchIndexTests {
     }
 
     @Test func testIncrementalIndexingReturnsPartialResults() async throws {
-        await SearchIndexStore.shared.resetForTesting()
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -237,18 +221,19 @@ struct SearchIndexTests {
         try FileManager.default.createDirectory(at: sub2, withIntermediateDirectories: true)
         try writeFile(at: sub2.appendingPathComponent("apple_in_dir2.txt"))
 
+        let store = SearchIndexStore()
         let prepareTask = Task {
-            await SearchIndexStore.shared.prepare(scopes: [root])
+            await store.prepare(scopes: [root])
         }
 
         try? await Task.sleep(for: .milliseconds(50))
 
-        let partialIndex = await SearchIndexStore.shared.snapshot(for: [root])
+        let partialIndex = await store.snapshot(for: [root])
         #expect(partialIndex.signature.scopes == [root.path])
 
         _ = await prepareTask.value
 
-        let finalIndex = await SearchIndexStore.shared.snapshot(for: [root])
+        let finalIndex = await store.snapshot(for: [root])
         #expect(finalIndex.nodes.count > 0)
     }
 }

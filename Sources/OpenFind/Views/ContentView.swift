@@ -16,12 +16,15 @@ struct ContentView: View {
             Divider()
 
             resultsView
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(NSColor.controlBackgroundColor))
 
             Divider()
 
             StatusBar(viewModel: viewModel)
         }
         .frame(minWidth: 800, minHeight: 500)
+        .ignoresSafeArea()
     }
 
     @ViewBuilder
