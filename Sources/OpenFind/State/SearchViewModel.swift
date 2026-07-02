@@ -32,6 +32,10 @@ final class SearchViewModel {
     /// Item count at the last auto re-search, so a growing index re-runs the
     /// current query at most once per observed growth tick.
     private var lastAutoSearchItems = -1
+    /// Set when the index finishes while a search is still running: that search
+    /// saw only a partial index, so re-run once it completes. `justFinished`
+    /// fires on a single stats tick and would otherwise be lost.
+    private var pendingFinalAutoSearch = false
 
     init() {
         options = Preferences.loadOptions()
@@ -75,6 +79,7 @@ final class SearchViewModel {
     /// (fired while the index is still filling) pass `recordRecent: false`.
     func startSearch(recordRecent: Bool = true) {
         guard canSearch else { return }
+        pendingFinalAutoSearch = false
         debounceTask?.cancel()
         cancel()
         refreshIndex()
@@ -112,6 +117,7 @@ final class SearchViewModel {
 
     /// Cancels the current search, keeping any results already found.
     func cancel() {
+        pendingFinalAutoSearch = false
         searchTask?.cancel()
         searchTask = nil
         stopElapsedClock()
@@ -172,7 +178,19 @@ final class SearchViewModel {
             }
         }
         flush(&pending)
-        if !Task.isCancelled { finish() }
+        if !Task.isCancelled {
+            finish()
+            runPendingAutoSearchIfNeeded()
+        }
+    }
+
+    /// Follow-up for a search that ran against a still-filling index: once the
+    /// index finished mid-search, re-run so results cover the whole index.
+    private func runPendingAutoSearchIfNeeded() {
+        guard pendingFinalAutoSearch else { return }
+        pendingFinalAutoSearch = false
+        guard canSearch, !truncated, !isBroadContentSearchBlocked else { return }
+        startSearch(recordRecent: false)
     }
 
     /// Merges a buffered batch into `results`, truncating at the limit.
@@ -262,7 +280,13 @@ final class SearchViewModel {
         let stillGrowing = stats.isIndexing && stats.indexedItems != lastAutoSearchItems
         let justFinished = wasIndexing && !stats.isIndexing
         guard stillGrowing || justFinished else { return }
-        guard canSearch, !isBroadContentSearchBlocked, !isSearching else { return }
+        guard canSearch, !isBroadContentSearchBlocked else { return }
+        if isSearching {
+            // The running search saw a partial index; justFinished only fires
+            // on this one tick, so park it and re-run after the search ends.
+            if justFinished { pendingFinalAutoSearch = true }
+            return
+        }
         lastAutoSearchItems = stats.indexedItems
         startSearch(recordRecent: false)
     }
