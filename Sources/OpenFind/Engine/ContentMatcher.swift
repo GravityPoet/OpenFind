@@ -10,6 +10,13 @@ enum ContentMatcher {
     /// Returns the first matching line (trimmed) in `url`, or nil when the file
     /// is oversized, binary, unreadable, or has no match.
     static func firstMatchingLine(in url: URL, matcher: Matcher, maxSize: Int64) -> String? {
+        firstMatchingLine(in: url, matchers: [matcher], maxSize: maxSize)
+    }
+
+    /// Returns the first line matching all predicates. Multiple predicates are
+    /// used for query syntax such as `report content:budget`.
+    static func firstMatchingLine(in url: URL, matchers: [Matcher], maxSize: Int64) -> String? {
+        guard !matchers.isEmpty else { return nil }
         guard let sizeValue = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
               Int64(sizeValue) <= maxSize, sizeValue > 0 else { return nil }
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe), !data.isEmpty else { return nil }
@@ -21,8 +28,9 @@ enum ContentMatcher {
         else { return nil }
 
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            if matcher.matches(String(line)) {
-                return String(line).trimmingCharacters(in: .whitespacesAndNewlines)
+            let lineText = String(line)
+            if matchers.allSatisfy({ $0.matches(lineText) }) {
+                return lineText.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
         return nil

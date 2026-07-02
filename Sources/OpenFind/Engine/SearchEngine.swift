@@ -1,13 +1,13 @@
 import Foundation
 
-/// Index-free, real-time search engine.
+/// Indexed search engine.
 ///
-/// Each search root is walked with a `FileManager` enumerator (metadata
-/// traversal is fast). Name matching happens inline; content matching is the
-/// expensive part and is offloaded to a bounded-concurrency `TaskGroup` that
-/// delegates the actual read to `ContentMatcher`. Results stream out through an
-/// `AsyncStream` so the UI can display them as they arrive. Cancellation
-/// propagates through `Task`.
+/// Search roots are scanned into a persistent path/name index by
+/// `SearchIndexStore`. Name searches run entirely against that in-memory
+/// snapshot. Content searches still read file contents on demand, but they now
+/// use indexed files as candidates instead of walking the filesystem for every
+/// query. Results stream out through an `AsyncStream` so the UI can display
+/// them as they arrive. Cancellation propagates through `Task`.
 enum SearchEngine {
 
     /// Starts a search and returns an incremental result stream. The underlying
@@ -23,104 +23,80 @@ enum SearchEngine {
         }
     }
 
-    private static let resourceKeys: Set<URLResourceKey> = [
-        .isDirectoryKey, .fileSizeKey, .contentModificationDateKey, .nameKey,
-    ]
-
     private static func run(
         scopes: [URL],
         options: SearchOptions,
         continuation: AsyncStream<SearchResult>.Continuation
     ) async {
-        let matcher: Matcher
+        let compiledQuery: CompiledSearchQuery
         do {
-            matcher = try Matcher(options: options)
+            compiledQuery = try SearchQueryPlan.parse(options.query).compile(options: options)
         } catch {
             return // Empty query or invalid regex: finish silently; the UI guards empty queries.
         }
 
-        var enumOptions: FileManager.DirectoryEnumerationOptions = []
-        if !options.includeHidden { enumOptions.insert(.skipsHiddenFiles) }
-        if !options.includePackages { enumOptions.insert(.skipsPackageDescendants) }
+        let index = await SearchIndexStore.shared.snapshot(for: scopes)
 
+        var nameHitPaths = Set<String>()
+        if options.target != .content {
+            let nameResults = index.nameMatches(query: compiledQuery, options: options)
+            for node in nameResults {
+                if Task.isCancelled { return }
+                nameHitPaths.insert(node.path)
+                continuation.yield(node.searchResult(matchedContent: false, preview: nil))
+            }
+        }
+
+        guard compiledQuery.shouldRunContentBranch(options: options) else { return }
+
+        let candidates = index.contentCandidates(query: compiledQuery, options: options, excluding: nameHitPaths)
+        let contentMatchers = compiledQuery.contentMatchers(for: options)
+        if contentMatchers.isEmpty {
+            for node in candidates {
+                if Task.isCancelled { return }
+                continuation.yield(node.searchResult(matchedContent: false, preview: nil))
+            }
+            return
+        }
+        await searchContents(candidates: candidates, matchers: contentMatchers, options: options, continuation: continuation)
+    }
+
+    private static func searchContents(
+        candidates: [IndexedFileNode],
+        matchers: [Matcher],
+        options: SearchOptions,
+        continuation: AsyncStream<SearchResult>.Continuation
+    ) async {
         let maxConcurrency = max(4, ProcessInfo.processInfo.activeProcessorCount * 2)
-        let keys = resourceKeys
 
-        await withTaskGroup(of: Void.self) { group in
+        await withTaskGroup(of: SearchResult?.self) { group in
             var inFlight = 0
 
-            for scope in scopes {
-                guard let enumerator = FileManager.default.enumerator(
-                    at: scope,
-                    includingPropertiesForKeys: Array(keys),
-                    options: enumOptions
-                ) else { continue }
+            for node in candidates {
+                if Task.isCancelled { return }
 
-                while let object = enumerator.nextObject() {
-                    guard let url = object as? URL else { continue }
-                    if Task.isCancelled { return }
-
-                    let values = try? url.resourceValues(forKeys: keys)
-                    let isDirectory = values?.isDirectory ?? false
-                    let name = values?.name ?? url.lastPathComponent
-
-                    let nameHit = matcher.matches(name)
-
-                    // Name hit: emit immediately and skip content check (counts as
-                    // a hit in `both` mode too).
-                    if options.target != .content, nameHit {
-                        continuation.yield(makeResult(url: url, values: values,
-                                                      isDirectory: isDirectory, name: name,
-                                                      matchedContent: false, preview: nil))
-                        continue
+                while inFlight >= maxConcurrency {
+                    if let result = await group.next(), let result {
+                        continuation.yield(result)
                     }
-                    if options.target == .name { continue }
+                    inFlight -= 1
+                }
 
-                    // Content check needed: files only, name miss (both) or pure content mode.
-                    if isDirectory { continue }
+                inFlight += 1
+                let maxSize = options.maxContentFileSize
+                group.addTask {
+                    if Task.isCancelled { return nil }
+                    guard let preview = ContentMatcher.firstMatchingLine(in: node.url, matchers: matchers, maxSize: maxSize)
+                    else { return nil }
+                    return node.searchResult(matchedContent: true, preview: preview)
+                }
+            }
 
-                    // Bounded concurrency: when the window is full, wait for one
-                    // in-flight task to finish before submitting a new one.
-                    while inFlight >= maxConcurrency {
-                        await group.next()
-                        inFlight -= 1
-                    }
-                    inFlight += 1
-
-                    let capturedURL = url
-                    let capturedValues = values
-                    let capturedName = name
-                    let maxSize = options.maxContentFileSize
-                    group.addTask {
-                        if Task.isCancelled { return }
-                        guard let preview = ContentMatcher.firstMatchingLine(in: capturedURL, matcher: matcher, maxSize: maxSize)
-                        else { return }
-                        continuation.yield(makeResult(url: capturedURL, values: capturedValues,
-                                                      isDirectory: false, name: capturedName,
-                                                      matchedContent: true, preview: preview))
-                    }
+            while let result = await group.next() {
+                if let result {
+                    continuation.yield(result)
                 }
             }
         }
-    }
-
-    private static func makeResult(
-        url: URL,
-        values: URLResourceValues?,
-        isDirectory: Bool,
-        name: String,
-        matchedContent: Bool,
-        preview: String?
-    ) -> SearchResult {
-        SearchResult(
-            url: url,
-            name: name,
-            path: url.path(percentEncoded: false),
-            isDirectory: isDirectory,
-            size: Int64(values?.fileSize ?? 0),
-            modified: values?.contentModificationDate ?? .distantPast,
-            matchedContent: matchedContent,
-            contentPreview: preview
-        )
     }
 }

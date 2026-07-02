@@ -19,6 +19,35 @@ struct StatusBar: View {
             Text(String(format: L("elapsed: %.2fs"), viewModel.elapsed))
                 .foregroundStyle(.secondary)
 
+            Text("·")
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 4) {
+                if viewModel.indexStats.isIndexing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.65)
+                }
+                Text(indexStatusText)
+            }
+            .foregroundStyle(.secondary)
+
+            Text("·")
+                .foregroundStyle(.secondary)
+
+            Text(String(format: L("%lld events"), Int64(viewModel.indexStats.processedEvents)))
+                .foregroundStyle(.secondary)
+
+            if viewModel.isSearching {
+                Button {
+                    viewModel.cancel()
+                } label: {
+                    Label(L("Stop Search"), systemImage: "stop.circle")
+                }
+                .labelStyle(.titleAndIcon)
+                .buttonStyle(.borderless)
+            }
+
             if viewModel.truncated {
                 Spacer()
                 HStack(spacing: 4) {
@@ -33,5 +62,15 @@ struct StatusBar: View {
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(NSColor.windowBackgroundColor))
+    }
+
+    private var indexStatusText: String {
+        if viewModel.indexStats.isIndexing {
+            return String(format: L("indexing %lld items"), Int64(viewModel.indexStats.indexedItems))
+        }
+        if viewModel.indexStats.loadedFromDisk {
+            return String(format: L("index ready: %lld items cached"), Int64(viewModel.indexStats.indexedItems))
+        }
+        return String(format: L("index ready: %lld items"), Int64(viewModel.indexStats.indexedItems))
     }
 }

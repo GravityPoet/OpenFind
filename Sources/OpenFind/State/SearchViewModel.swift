@@ -14,7 +14,9 @@ final class SearchViewModel {
     var recentSearches: [String]
 
     var isSearching = false
+    var isBroadContentSearchBlocked = false
     var elapsed: TimeInterval = 0
+    var indexStats = SearchIndexStats()
     /// Set once the result limit is reached, so the UI can flag truncation.
     var truncated = false
 
@@ -22,13 +24,18 @@ final class SearchViewModel {
     private let resultLimit = 20_000
     private var searchTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
+    private var elapsedTask: Task<Void, Never>?
+    private var indexStatsTask: Task<Void, Never>?
     private var startedAt: Date?
+    private var allowBroadContentSearch = false
 
     init() {
         options = Preferences.loadOptions()
         let stored = ScopeStore.load()
         scopes = stored.isEmpty ? [FileManager.default.homeDirectoryForCurrentUser] : stored
         recentSearches = Preferences.recentSearches
+        refreshIndex()
+        startIndexStatsObserver()
     }
 
     var canSearch: Bool {
@@ -41,10 +48,12 @@ final class SearchViewModel {
     /// 350 ms without further changes. Durable options are persisted here.
     func scheduleSearch(delay: Duration = .milliseconds(350)) {
         Preferences.saveOptions(options)
+        allowBroadContentSearch = false
         debounceTask?.cancel()
         guard canSearch else {
             cancel()
             results = []
+            isBroadContentSearchBlocked = false
             return
         }
         debounceTask = Task { [weak self] in
@@ -59,7 +68,19 @@ final class SearchViewModel {
         guard canSearch else { return }
         debounceTask?.cancel()
         cancel()
+        refreshIndex()
 
+        if SearchScopeGuard.needsBroadContentConfirmation(options: options, scopes: scopes),
+           !allowBroadContentSearch {
+            results = []
+            truncated = false
+            elapsed = 0
+            isBroadContentSearchBlocked = true
+            return
+        }
+
+        isBroadContentSearchBlocked = false
+        allowBroadContentSearch = false
         recordRecentSearch()
         let currentOptions = options
         let currentScopes = scopes
@@ -68,16 +89,23 @@ final class SearchViewModel {
         isSearching = true
         elapsed = 0
         startedAt = Date()
+        startElapsedClock()
 
         searchTask = Task { [weak self] in
             await self?.consume(scopes: currentScopes, options: currentOptions)
         }
     }
 
+    func startBroadContentSearchAnyway() {
+        allowBroadContentSearch = true
+        startSearch()
+    }
+
     /// Cancels the current search, keeping any results already found.
     func cancel() {
         searchTask?.cancel()
         searchTask = nil
+        stopElapsedClock()
         if isSearching { finish() }
     }
 
@@ -85,6 +113,7 @@ final class SearchViewModel {
         guard !scopes.contains(url) else { return }
         scopes.append(url)
         ScopeStore.save(scopes)
+        refreshIndex()
     }
 
     func removeScopes(_ offsets: IndexSet) {
@@ -93,6 +122,7 @@ final class SearchViewModel {
         }
         scopes.remove(atOffsets: offsets)
         ScopeStore.save(scopes)
+        refreshIndex()
     }
 
     func applyRecentSearch(_ query: String) {
@@ -143,11 +173,55 @@ final class SearchViewModel {
             results.append(contentsOf: pending)
         }
         pending.removeAll(keepingCapacity: true)
-        if let startedAt { elapsed = Date().timeIntervalSince(startedAt) }
+        updateElapsed()
     }
 
     private func finish() {
         isSearching = false
+        stopElapsedClock()
+        updateElapsed()
+    }
+
+    private func startElapsedClock() {
+        elapsedTask?.cancel()
+        elapsedTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                self?.updateElapsed()
+            }
+        }
+    }
+
+    private func stopElapsedClock() {
+        elapsedTask?.cancel()
+        elapsedTask = nil
+    }
+
+    private func updateElapsed() {
         if let startedAt { elapsed = Date().timeIntervalSince(startedAt) }
+    }
+
+    private func refreshIndex() {
+        let currentScopes = scopes
+        Task { [weak self] in
+            let stats = await SearchIndexStore.shared.prepare(scopes: currentScopes)
+            await MainActor.run {
+                self?.indexStats = stats
+            }
+        }
+    }
+
+    private func startIndexStatsObserver() {
+        indexStatsTask?.cancel()
+        indexStatsTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let stats = await SearchIndexStore.shared.stats()
+                await MainActor.run {
+                    self?.indexStats = stats
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
     }
 }

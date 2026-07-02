@@ -42,12 +42,28 @@
 "showing first %lld" = "仅显示前 %lld 个";
 "elapsed: %.2fs" = "用时：%.2f秒";
 "%lld folders" = "%lld 个文件夹";
+"Stop Search" = "停止搜索";
+"%lld events" = "%lld 个事件";
+"indexing %lld items" = "正在索引 %lld 项";
+"index ready: %lld items" = "索引就绪：%lld 项";
+"index ready: %lld items cached" = "索引就绪：%lld 项缓存";
 
 /* Placeholders & Empty States */
 "Start searching by typing a query" = "输入关键词开始搜索";
+"Content Search Needs a Smaller Scope" = "内容搜索需要更小的范围";
+"Content search over your home folder scans file contents without an index and can take a very long time. Narrow the scope, or use name search for quick file lookup." = "在个人主目录里搜索文件内容会无索引扫描大量文件，可能非常慢。请缩小搜索范围，或改用名称搜索快速找文件。";
+"Content search over your home folder still reads candidate file contents on demand and can take a very long time. Narrow the scope, or use name search for quick file lookup." = "在个人主目录里搜索文件内容仍会按需读取候选文件，可能非常慢。请缩小搜索范围，或改用名称搜索快速找文件。";
+"Search Names Only" = "只搜索名称";
+"Search Contents Anyway" = "仍然搜索内容";
 "No Results Found" = "未找到结果";
+"No Results for %@" = "未找到“%@”";
+"Only file names were searched. Check spelling, or search names and contents." = "当前只搜索了文件名。请检查拼写，或改搜名称和内容。";
+"Only file contents were searched. Check spelling, or search names and contents." = "当前只搜索了文件内容。请检查拼写，或改搜名称和内容。";
+"Check spelling, try a broader term, or adjust search options." = "请检查拼写、换一个更宽泛的关键词，或调整搜索选项。";
+"Search Names and Contents" = "搜索名称和内容";
 "No Search Scopes" = "没有搜索范围";
 "Add a folder to search in" = "请先添加搜索范围文件夹";
+"Clear Search" = "清空搜索";
 
 /* Settings Window */
 "Settings" = "设置";

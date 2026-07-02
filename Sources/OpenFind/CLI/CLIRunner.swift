@@ -54,6 +54,7 @@ enum CLIRunner {
             count += 1
         }
         FileHandle.standardError.write(Data("\u{2014} \(count) result(s) \u{2014}\n".utf8))
+        await SearchIndexStore.shared.flushPersistence()
         exit(0)
     }
 

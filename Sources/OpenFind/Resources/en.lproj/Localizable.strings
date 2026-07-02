@@ -42,12 +42,28 @@
 "showing first %lld" = "showing first %lld";
 "elapsed: %.2fs" = "elapsed: %.2fs";
 "%lld folders" = "%lld folders";
+"Stop Search" = "Stop Search";
+"%lld events" = "%lld events";
+"indexing %lld items" = "indexing %lld items";
+"index ready: %lld items" = "index ready: %lld items";
+"index ready: %lld items cached" = "index ready: %lld items cached";
 
 /* Placeholders & Empty States */
 "Start searching by typing a query" = "Start searching by typing a query";
+"Content Search Needs a Smaller Scope" = "Content Search Needs a Smaller Scope";
+"Content search over your home folder scans file contents without an index and can take a very long time. Narrow the scope, or use name search for quick file lookup." = "Content search over your home folder scans file contents without an index and can take a very long time. Narrow the scope, or use name search for quick file lookup.";
+"Content search over your home folder still reads candidate file contents on demand and can take a very long time. Narrow the scope, or use name search for quick file lookup." = "Content search over your home folder still reads candidate file contents on demand and can take a very long time. Narrow the scope, or use name search for quick file lookup.";
+"Search Names Only" = "Search Names Only";
+"Search Contents Anyway" = "Search Contents Anyway";
 "No Results Found" = "No Results Found";
+"No Results for %@" = "No Results for %@";
+"Only file names were searched. Check spelling, or search names and contents." = "Only file names were searched. Check spelling, or search names and contents.";
+"Only file contents were searched. Check spelling, or search names and contents." = "Only file contents were searched. Check spelling, or search names and contents.";
+"Check spelling, try a broader term, or adjust search options." = "Check spelling, try a broader term, or adjust search options.";
+"Search Names and Contents" = "Search Names and Contents";
 "No Search Scopes" = "No Search Scopes";
 "Add a folder to search in" = "Add a folder to search in";
+"Clear Search" = "Clear Search";
 
 /* Settings Window */
 "Settings" = "Settings";
