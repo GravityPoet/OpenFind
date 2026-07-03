@@ -12,6 +12,7 @@ struct SearchIndexStats: Sendable, Equatable {
 
 struct SearchIndexSignature: Codable, Equatable, Sendable {
     let scopes: [String]
+    let scopeAliases: [String]
     /// When true the builder drops the noise-filtering ignore list (keeping
     /// only firmlink duplicates), so caches, logs, /Volumes etc. are indexed.
     let deepIndex: Bool
@@ -21,7 +22,16 @@ struct SearchIndexSignature: Codable, Equatable, Sendable {
             .map { SearchPath.normalize($0.path(percentEncoded: false)) }
             .filter { !$0.isEmpty }
         self.scopes = SearchIndexSignature.collapsedScopes(Array(Set(normalized)))
+        self.scopeAliases = SearchIndexSignature.collapsedScopes(Array(Set(
+            self.scopes.flatMap(SearchPath.dataVolumeAliases)
+        )))
         self.deepIndex = deepIndex
+    }
+
+    func contains(path: String) -> Bool {
+        let normalized = SearchPath.normalize(path)
+        return scopes.contains { SearchPath.hasNormalizedPrefix(normalized, of: $0) }
+            || scopeAliases.contains { SearchPath.hasNormalizedPrefix(normalized, of: $0) }
     }
 
     private static func collapsedScopes(_ scopes: [String]) -> [String] {
@@ -720,7 +730,7 @@ enum SearchIndexBuilder {
 
                         for child in children {
                             let childPath = SearchPath.normalize(child.path(percentEncoded: false))
-                            guard signature.scopes.contains(where: { SearchPath.hasNormalizedPrefix(childPath, of: $0) }) else {
+                            guard signature.contains(path: childPath) else {
                                 continue
                             }
                             if isIgnored(childPath, ignoredPaths: ignoredPaths) { continue }
@@ -856,7 +866,7 @@ enum SearchIndexBuilder {
     static func collapseEventPaths(_ paths: [String], signature: SearchIndexSignature) -> [String] {
         let scoped = paths
             .map(SearchPath.normalize)
-            .filter { path in signature.scopes.contains { SearchPath.hasNormalizedPrefix(path, of: $0) } }
+            .filter { path in signature.contains(path: path) }
             .sorted { lhs, rhs in
                 let leftDepth = lhs.split(separator: "/").count
                 let rightDepth = rhs.split(separator: "/").count
@@ -881,7 +891,7 @@ enum SearchIndexBuilder {
         ignoredPaths: [String],
         into nodes: inout [TempNode]
     ) {
-        guard signature.scopes.contains(where: { SearchPath.hasNormalizedPrefix(path, of: $0) }),
+        guard signature.contains(path: path),
               !isIgnored(path, ignoredPaths: ignoredPaths) else { return }
 
         let url = URL(fileURLWithPath: path)
@@ -899,7 +909,7 @@ enum SearchIndexBuilder {
                 while let item = enumerator.nextObject() as? URL {
                     if Task.isCancelled { return }
                     let itemPath = SearchPath.normalize(item.path(percentEncoded: false))
-                    guard signature.scopes.contains(where: { SearchPath.hasNormalizedPrefix(itemPath, of: $0) }) else {
+                    guard signature.contains(path: itemPath) else {
                         continue
                     }
 
@@ -967,7 +977,7 @@ enum SearchIndexBuilder {
 
 enum SearchIndexPersistence {
     private static let magic = "OFIX"
-    private static let version: UInt32 = 4
+    private static let version: UInt32 = 5
 
     private struct BinaryWriter {
         var data = Data()
@@ -1111,7 +1121,7 @@ enum SearchIndexPersistence {
             try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: targetURL, options: .atomic)
 
-            for legacy in ["search-index-v1.plist", "search-index-v2.bin", "search-index-v3.bin"] {
+            for legacy in ["search-index-v1.plist", "search-index-v2.bin", "search-index-v3.bin", "search-index-v4.bin"] {
                 let oldURL = targetURL.deletingLastPathComponent().appendingPathComponent(legacy)
                 try? FileManager.default.removeItem(at: oldURL)
             }
@@ -1124,7 +1134,7 @@ enum SearchIndexPersistence {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return base.appendingPathComponent("OpenFind", isDirectory: true)
-            .appendingPathComponent("search-index-v4.bin")
+            .appendingPathComponent("search-index-v5.bin")
     }
 
     private static func encode(_ index: SearchIndex) -> Data {
@@ -1290,10 +1300,25 @@ enum SearchIndexPersistence {
 }
 
 enum SearchPath {
+    private static let dataVolumePath = "/System/Volumes/Data"
+    private static let dataVolumeAliasRoots: Set<String> = [
+        "/Applications",
+        "/Library",
+        "/Users",
+        "/Volumes",
+        "/private",
+        "/opt",
+        "/pkg",
+        "/cores",
+        "/home",
+        "/mnt",
+        "/sw",
+    ]
+
     static var defaultIgnoredPaths: [String] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path(percentEncoded: false)
         return [
-            "/System/Volumes/Data",
+            dataVolumePath,
             "/Volumes",
             "\(home)/Library/CloudStorage",
             "\(home)/Library/Biome",
@@ -1310,7 +1335,26 @@ enum SearchPath {
     /// Minimal ignore list for deep indexing: only the Data-volume firmlink,
     /// which is the same tree as "/" and would double every node.
     static var deepIndexIgnoredPaths: [String] {
-        ["/System/Volumes/Data"].map(normalize)
+        [dataVolumePath].map(normalize)
+    }
+
+    static func dataVolumeAliases(for scope: String) -> [String] {
+        let normalized = normalize(scope)
+        guard normalized == dataVolumePath || hasNormalizedPrefix(normalized, of: dataVolumePath) else {
+            return []
+        }
+
+        if normalized == dataVolumePath {
+            return dataVolumeAliasRoots.sorted()
+        }
+
+        let suffix = normalized.dropFirst(dataVolumePath.count)
+        guard suffix.first == "/" else { return [] }
+        let alias = String(suffix)
+        guard let topLevel = alias.dropFirst().split(separator: "/", maxSplits: 1).first else { return [] }
+        let root = "/" + String(topLevel)
+        guard dataVolumeAliasRoots.contains(root) else { return [] }
+        return [alias]
     }
 
     static func normalize(_ path: String) -> String {

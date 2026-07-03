@@ -164,6 +164,16 @@ struct SearchIndexTests {
         #expect(signature.scopes == [root.path, sibling.path])
     }
 
+    @Test func dataVolumeScopeContainsFirmlinkAliases() {
+        let signature = SearchIndexSignature(scopes: [URL(fileURLWithPath: "/System/Volumes/Data")])
+
+        #expect(signature.contains(path: "/System/Volumes/Data/MobileSoftwareUpdate/restore.log"))
+        #expect(signature.contains(path: "/Applications/ChordVox.app"))
+        #expect(signature.contains(path: "/Users/moonlitpoet/Tools/ChordVox-IME"))
+        #expect(signature.contains(path: "/Library/Application Support"))
+        #expect(!signature.contains(path: "/System/Library/CoreServices"))
+    }
+
     @Test func modifiedDateFilterMatchesIsoDay() async throws {
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
