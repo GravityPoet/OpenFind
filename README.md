@@ -30,7 +30,7 @@ To package the project into a native macOS app bundle (`OpenFind.app`), execute 
 bash Scripts/build_app.sh
 ```
 
-This compiles a production build, renders the application icon programmatically, moves localization assets into the bundle structures, and performs ad-hoc signing. The resulting package is output to `dist/OpenFind.app`.
+This compiles a production build, generates the application icon from the bundled source asset, moves localization assets into the bundle structures, and performs ad-hoc signing. The resulting package is output to `dist/OpenFind.app`.
 
 ## Architecture & Layers
 
