@@ -40,10 +40,7 @@ final class SearchViewModel {
     init() {
         options = Preferences.loadOptions()
         let stored = ScopeStore.load()
-        scopes = stored.isEmpty ? [
-            FileManager.default.homeDirectoryForCurrentUser,
-            URL(fileURLWithPath: "/Applications")
-        ] : stored
+        scopes = stored.isEmpty ? [SearchScopes.wholeMacURL] : stored
         recentSearches = Preferences.recentSearches
         hasFullDiskAccess = SearchViewModel.checkFullDiskAccess()
         refreshIndex()
