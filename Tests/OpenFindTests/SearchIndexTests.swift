@@ -174,6 +174,47 @@ struct SearchIndexTests {
         #expect(!signature.contains(path: "/System/Library/CoreServices"))
     }
 
+    @Test func dataVolumeFirmlinkPathsCanonicalizeForDeduplication() {
+        #expect(SearchPath.canonicalAliasPath("/System/Volumes/Data/Users/moonlitpoet/Tools/ChordVox-IME") == "/Users/moonlitpoet/Tools/ChordVox-IME")
+        #expect(SearchPath.canonicalAliasPath("/System/Volumes/Data/Applications/ChordVox.app") == "/Applications/ChordVox.app")
+        #expect(SearchPath.canonicalAliasPath("/System/Volumes/Data/MobileSoftwareUpdate/restore.log") == "/System/Volumes/Data/MobileSoftwareUpdate/restore.log")
+    }
+
+    @Test func searchResultsDeduplicateDataVolumeFirmlinkAliases() throws {
+        let signature = SearchIndexSignature(scopes: [URL(fileURLWithPath: "/System/Volumes/Data")])
+        let modified = Date().timeIntervalSinceReferenceDate
+        let duplicateNodes = [
+            IndexedFileNode(
+                name: "/System/Volumes/Data/Users/moonlitpoet/Tools/ChordVox-IME",
+                parentIndex: -1,
+                isDirectory: true,
+                size: 0,
+                modifiedTime: modified,
+                isHiddenScope: false,
+                isPackageDescendant: false
+            ),
+            IndexedFileNode(
+                name: "/Users/moonlitpoet/Tools/ChordVox-IME",
+                parentIndex: -1,
+                isDirectory: true,
+                size: 0,
+                modifiedTime: modified,
+                isHiddenScope: false,
+                isPackageDescendant: false
+            ),
+        ]
+        let index = SearchIndex(signature: signature, nodes: duplicateNodes)
+        var options = SearchOptions()
+        options.target = .name
+        options.query = "chordvox"
+        let query = try SearchQueryPlan.parse(options.query).compile(options: options)
+
+        let results = index.nameMatches(query: query, options: options)
+
+        #expect(results.count == 1)
+        #expect(SearchPath.canonicalAliasPath(results[0].path) == "/Users/moonlitpoet/Tools/ChordVox-IME")
+    }
+
     @Test func modifiedDateFilterMatchesIsoDay() async throws {
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

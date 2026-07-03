@@ -43,7 +43,7 @@ enum SearchEngine {
             let nameResults = index.nameMatches(query: compiledQuery, options: options)
             for node in nameResults {
                 if Task.isCancelled { return }
-                nameHitPaths.insert(node.path)
+                nameHitPaths.insert(SearchPath.canonicalAliasPath(node.path))
                 continuation.yield(node.searchResult(matchedContent: false, preview: nil))
             }
         }
