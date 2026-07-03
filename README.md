@@ -45,3 +45,7 @@ Views -> State (ViewModel) -> Engine -> Models
 - **State:** Persistent settings and state management.
 - **Views:** SwiftUI-based minimal and responsive visual components.
 - **App:** Entry dispatcher handling both command-line arguments and GUI scenes.
+
+## License
+
+OpenFind is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
