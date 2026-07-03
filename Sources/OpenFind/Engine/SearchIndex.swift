@@ -970,7 +970,8 @@ enum SearchIndexBuilder {
     }
 
     private static func effectiveIgnoredPaths(for signature: SearchIndexSignature) -> [String] {
-        let base = signature.deepIndex ? SearchPath.deepIndexIgnoredPaths : SearchPath.defaultIgnoredPaths
+        let wholeMacScope = signature.scopes.contains(SearchScopes.wholeMacPath)
+        let base = (signature.deepIndex || wholeMacScope) ? SearchPath.deepIndexIgnoredPaths : SearchPath.defaultIgnoredPaths
         return base.filter { ignored in
             !signature.scopes.contains { scope in
                 SearchPath.hasNormalizedPrefix(scope, of: ignored)

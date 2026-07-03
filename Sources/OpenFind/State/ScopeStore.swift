@@ -1,5 +1,26 @@
 import Foundation
 
+enum SearchScopes {
+    static let wholeMacPath = "/"
+    static let legacyWholeMacPath = "/System/Volumes/Data"
+    static let wholeMacURL = URL(fileURLWithPath: wholeMacPath)
+
+    static func isWholeMac(_ url: URL) -> Bool {
+        let path = normalizedPath(url)
+        return path == wholeMacPath || path == legacyWholeMacPath
+    }
+
+    static func normalized(_ url: URL) -> URL {
+        isWholeMac(url) ? wholeMacURL : url
+    }
+
+    private static func normalizedPath(_ url: URL) -> String {
+        let path = url.standardizedFileURL.path(percentEncoded: false)
+        guard path != wholeMacPath else { return wholeMacPath }
+        return path.hasSuffix("/") ? String(path.dropLast()) : path
+    }
+}
+
 /// Persists user-selected folders as security-scoped bookmarks so access
 /// survives relaunch. This is required under App Sandbox and harmless outside
 /// it (the scoped-access calls are simply no-ops when unsandboxed).
@@ -22,8 +43,10 @@ enum ScopeStore {
                                      relativeTo: nil,
                                      bookmarkDataIsStale: &isStale) else { continue }
             _ = url.startAccessingSecurityScopedResource()
-            urls.append(url)
-            if isStale, let fresh = try? url.bookmarkData(options: [.withSecurityScope]) {
+            let normalizedURL = SearchScopes.normalized(url)
+            urls.append(normalizedURL)
+            if (isStale || normalizedURL != url),
+               let fresh = try? normalizedURL.bookmarkData(options: [.withSecurityScope]) {
                 refreshed.append(fresh)
             } else {
                 refreshed.append(data)
@@ -35,7 +58,8 @@ enum ScopeStore {
 
     /// Persists the given URLs as security-scoped bookmarks, replacing any prior set.
     static func save(_ urls: [URL]) {
-        let data = urls.compactMap { try? $0.bookmarkData(options: [.withSecurityScope]) }
+        let normalized = urls.map(SearchScopes.normalized)
+        let data = normalized.compactMap { try? $0.bookmarkData(options: [.withSecurityScope]) }
         defaults.set(data, forKey: key)
     }
 

@@ -10,6 +10,6 @@ enum SearchScopeGuard {
     private static func isBroadScope(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path
         let homePath = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
-        return path == "/" || path == "/Users" || path == homePath
+        return SearchScopes.isWholeMac(url) || path == "/Users" || path == homePath
     }
 }
