@@ -15,6 +15,11 @@ struct SearchEngineTests {
     private func writeFile(at url: URL, content: String) throws {
         try content.write(to: url, atomically: true, encoding: .utf8)
     }
+
+    private func createCacheURL() -> URL {
+        URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("OpenFindEngineCache-\(UUID().uuidString).bin")
+    }
     
     @Test func testSearchEngineOptionsAndFilters() async throws {
         let root = try createTempDirectory()
@@ -23,7 +28,9 @@ struct SearchEngineTests {
             try? FileManager.default.removeItem(at: root)
         }
         
-        let store = SearchIndexStore()
+        let cacheURL = createCacheURL()
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let store = SearchIndexStore(persistenceURL: cacheURL)
         
         let file1 = root.appendingPathComponent("apple_name.txt")
         let file2 = root.appendingPathComponent("banana_name.txt")
@@ -133,7 +140,9 @@ struct SearchEngineTests {
             try? FileManager.default.removeItem(at: root)
         }
         
-        let store = SearchIndexStore()
+        let cacheURL = createCacheURL()
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let store = SearchIndexStore(persistenceURL: cacheURL)
         
         for i in 0..<100 {
             let file = root.appendingPathComponent("file_\(i).txt")
@@ -174,7 +183,9 @@ struct SearchEngineTests {
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let store = SearchIndexStore()
+        let cacheURL = createCacheURL()
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let store = SearchIndexStore(persistenceURL: cacheURL)
 
         try writeFile(at: root.appendingPathComponent("报告.docx"), content: "")
         try writeFile(at: root.appendingPathComponent("表格.xlsx"), content: "")

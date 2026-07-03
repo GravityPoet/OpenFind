@@ -20,8 +20,26 @@ struct SearchIndexSignature: Codable, Equatable, Sendable {
         let normalized = scopes
             .map { SearchPath.normalize($0.path(percentEncoded: false)) }
             .filter { !$0.isEmpty }
-        self.scopes = Array(Set(normalized)).sorted()
+        self.scopes = SearchIndexSignature.collapsedScopes(Array(Set(normalized)))
         self.deepIndex = deepIndex
+    }
+
+    private static func collapsedScopes(_ scopes: [String]) -> [String] {
+        let sorted = scopes.sorted { lhs, rhs in
+            let leftDepth = lhs.split(separator: "/").count
+            let rightDepth = rhs.split(separator: "/").count
+            if leftDepth == rightDepth { return lhs < rhs }
+            return leftDepth < rightDepth
+        }
+
+        var selected: [String] = []
+        for scope in sorted {
+            if selected.contains(where: { SearchPath.hasNormalizedPrefix(scope, of: $0) }) {
+                continue
+            }
+            selected.append(scope)
+        }
+        return selected.sorted()
     }
 }
 
@@ -69,12 +87,14 @@ struct ResolvedNode: Sendable {
 struct SearchIndex: Sendable {
     let signature: SearchIndexSignature
     let nodes: [IndexedFileNode]
+    let lastEventID: UInt64?
     private let fileCount: Int
     private let directoryCount: Int
 
-    init(signature: SearchIndexSignature, nodes: [IndexedFileNode]) {
+    init(signature: SearchIndexSignature, nodes: [IndexedFileNode], lastEventID: UInt64? = nil) {
         self.signature = signature
         self.nodes = nodes
+        self.lastEventID = lastEventID
 
         var files = 0
         var directories = 0
@@ -226,11 +246,14 @@ extension IndexedFileNode {
 actor SearchIndexStore {
     static let shared = SearchIndexStore()
 
+    private let persistenceURL: URL?
     private var index: SearchIndex?
     private var currentSignature: SearchIndexSignature?
     private var currentStats = SearchIndexStats()
     private var watcher: FileSystemEventWatcher?
     private var pendingEventPaths = Set<String>()
+    private var pendingEventID: UInt64?
+    private var pendingEventsRequireFullRebuild = false
     private var eventRefreshTask: Task<Void, Never>?
     private var backgroundRefreshTask: Task<Void, Never>?
     private var rebuildTask: Task<SearchIndexStats, Never>?
@@ -240,6 +263,10 @@ actor SearchIndexStore {
     private var inProgressPathToIndex: [String: Int32] = [:]
     private var inProgressNodes: [IndexedFileNode] = []
     private var lastPartialPublish: ContinuousClock.Instant?
+
+    init(persistenceURL: URL? = nil) {
+        self.persistenceURL = persistenceURL
+    }
 
     func snapshot(for scopes: [URL], deepIndex: Bool = false) async -> SearchIndex {
         let signature = SearchIndexSignature(scopes: scopes, deepIndex: deepIndex)
@@ -280,15 +307,40 @@ actor SearchIndexStore {
         return await startRebuild(signature: signature, tryCache: true)
     }
 
+    @discardableResult
+    func refresh(scopes: [URL], deepIndex: Bool = false) async -> SearchIndexStats {
+        let signature = SearchIndexSignature(scopes: scopes, deepIndex: deepIndex)
+        guard !signature.scopes.isEmpty else {
+            cancelPipeline()
+            index = SearchIndex(signature: signature, nodes: [])
+            currentSignature = signature
+            currentStats = SearchIndexStats()
+            return currentStats
+        }
+
+        cancelPipeline()
+        currentSignature = signature
+        currentStats = SearchIndexStats()
+        return await startRebuild(signature: signature, tryCache: false)
+    }
+
     func stats() -> SearchIndexStats {
         currentStats
     }
 
-    func noteFileEvents(paths: [String]) {
-        guard !paths.isEmpty else { return }
-        currentStats.processedEvents += paths.count
-        for path in paths {
-            pendingEventPaths.insert(SearchPath.normalize(path))
+    func noteFileEvents(_ events: [FileSystemEvent]) {
+        guard !events.isEmpty else { return }
+        currentStats.processedEvents += events.count
+        for event in events {
+            if event.eventID > 0 {
+                pendingEventID = max(pendingEventID ?? 0, event.eventID)
+            }
+            if event.requiresFullRescan {
+                pendingEventsRequireFullRebuild = true
+            }
+            if let path = event.path {
+                pendingEventPaths.insert(SearchPath.normalize(path))
+            }
         }
         scheduleEventRefresh()
     }
@@ -301,6 +353,8 @@ actor SearchIndexStore {
         rebuildTask = nil
         rebuildGeneration += 1
         pendingEventPaths.removeAll()
+        pendingEventID = nil
+        pendingEventsRequireFullRebuild = false
         clearInProgressBuild()
     }
 
@@ -331,8 +385,9 @@ actor SearchIndexStore {
         }
 
         if tryCache {
+            let persistenceURL = persistenceURL
             let cached = await Task.detached(priority: .utility) {
-                SearchIndexPersistence.load(signature: signature)
+                SearchIndexPersistence.load(signature: signature, from: persistenceURL)
             }.value
             guard rebuildGeneration == generation else { return currentStats }
             if let cached {
@@ -341,7 +396,7 @@ actor SearchIndexStore {
                 stats.loadedFromDisk = true
                 stats.processedEvents = currentStats.processedEvents
                 currentStats = stats
-                startWatching(signature: signature)
+                startWatching(signature: signature, sinceEventID: cached.lastEventID)
                 scheduleBackgroundRefresh(signature: signature)
                 return currentStats
             }
@@ -349,6 +404,7 @@ actor SearchIndexStore {
 
         currentStats.isIndexing = true
         clearInProgressBuild()
+        let baselineEventID = FileSystemEventWatcher.currentEventID()
         let buildTask = Task.detached(priority: .utility) { [signature, generation] in
             await SearchIndexBuilder.build(
                 signature: signature,
@@ -377,7 +433,7 @@ actor SearchIndexStore {
 
         guard rebuildGeneration == generation else { return currentStats }
 
-        let nextIndex = SearchIndex(signature: signature, nodes: nodes)
+        let nextIndex = SearchIndex(signature: signature, nodes: nodes, lastEventID: baselineEventID)
         var stats = nextIndex.stats
         stats.isIndexing = false
         stats.processedEvents = currentStats.processedEvents
@@ -387,7 +443,7 @@ actor SearchIndexStore {
         clearInProgressBuild()
 
         persist(nextIndex)
-        startWatching(signature: signature)
+        startWatching(signature: signature, sinceEventID: nextIndex.lastEventID)
         return currentStats
     }
 
@@ -457,8 +513,30 @@ actor SearchIndexStore {
               let index else { return }
 
         let paths = Array(pendingEventPaths)
+        let latestEventID = pendingEventID
+        let requiresFullRebuild = pendingEventsRequireFullRebuild
         pendingEventPaths.removeAll()
-        guard !paths.isEmpty else { return }
+        pendingEventID = nil
+        pendingEventsRequireFullRebuild = false
+
+        if requiresFullRebuild {
+            currentStats.isIndexing = true
+            _ = await startRebuild(signature: signature, tryCache: false)
+            return
+        }
+
+        guard !paths.isEmpty else {
+            if let latestEventID, latestEventID > (index.lastEventID ?? 0) {
+                let updatedIndex = SearchIndex(
+                    signature: index.signature,
+                    nodes: index.nodes,
+                    lastEventID: latestEventID
+                )
+                self.index = updatedIndex
+                persist(updatedIndex)
+            }
+            return
+        }
 
         currentStats.isIndexing = true
         let updatedIndex = await Task.detached(priority: .utility) {
@@ -466,16 +544,22 @@ actor SearchIndexStore {
         }.value
         guard expectedSignature == currentSignature else { return }
 
-        self.index = updatedIndex
-        var stats = updatedIndex.stats
+        let persistedIndex = SearchIndex(
+            signature: updatedIndex.signature,
+            nodes: updatedIndex.nodes,
+            lastEventID: latestEventID ?? index.lastEventID
+        )
+        self.index = persistedIndex
+        var stats = persistedIndex.stats
         stats.processedEvents = currentStats.processedEvents
         currentStats = stats
-        persist(updatedIndex)
+        persist(persistedIndex)
     }
 
     private func persist(_ index: SearchIndex) {
+        let persistenceURL = persistenceURL
         persistTask = Task.detached(priority: .utility) {
-            SearchIndexPersistence.save(index: index)
+            SearchIndexPersistence.save(index: index, to: persistenceURL)
         }
     }
 
@@ -483,11 +567,11 @@ actor SearchIndexStore {
         await persistTask?.value
     }
 
-    private func startWatching(signature: SearchIndexSignature) {
+    private func startWatching(signature: SearchIndexSignature, sinceEventID: UInt64?) {
         stopWatching()
-        watcher = FileSystemEventWatcher(paths: signature.scopes) { [weak self] paths in
+        watcher = FileSystemEventWatcher(paths: signature.scopes, sinceEventID: sinceEventID) { [weak self] events in
             Task {
-                await self?.noteFileEvents(paths: paths)
+                await self?.noteFileEvents(events)
             }
         }
     }
@@ -883,7 +967,7 @@ enum SearchIndexBuilder {
 
 enum SearchIndexPersistence {
     private static let magic = "OFIX"
-    private static let version: UInt32 = 3
+    private static let version: UInt32 = 4
 
     private struct BinaryWriter {
         var data = Data()
@@ -906,6 +990,11 @@ enum SearchIndexPersistence {
 
         mutating func write(_ value: Int64) {
             let val = UInt64(bitPattern: value).littleEndian
+            write(val)
+        }
+
+        mutating func write(_ value: UInt64) {
+            let val = value.littleEndian
             data.append(UInt8(val & 0xFF))
             data.append(UInt8((val >> 8) & 0xFF))
             data.append(UInt8((val >> 16) & 0xFF))
@@ -960,6 +1049,11 @@ enum SearchIndexPersistence {
         }
 
         mutating func readInt64() -> Int64? {
+            guard let val = readUInt64() else { return nil }
+            return Int64(bitPattern: val)
+        }
+
+        mutating func readUInt64() -> UInt64? {
             guard offset + 8 <= data.count else { return nil }
             let b0 = UInt64(data[offset])
             let b1 = UInt64(data[offset + 1])
@@ -971,7 +1065,7 @@ enum SearchIndexPersistence {
             let b7 = UInt64(data[offset + 7])
             offset += 8
             let val = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24) | (b4 << 32) | (b5 << 40) | (b6 << 48) | (b7 << 56)
-            return Int64(bitPattern: val)
+            return val
         }
 
         mutating func readDouble() -> Double? {
@@ -1017,7 +1111,7 @@ enum SearchIndexPersistence {
             try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: targetURL, options: .atomic)
 
-            for legacy in ["search-index-v1.plist", "search-index-v2.bin"] {
+            for legacy in ["search-index-v1.plist", "search-index-v2.bin", "search-index-v3.bin"] {
                 let oldURL = targetURL.deletingLastPathComponent().appendingPathComponent(legacy)
                 try? FileManager.default.removeItem(at: oldURL)
             }
@@ -1030,7 +1124,7 @@ enum SearchIndexPersistence {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return base.appendingPathComponent("OpenFind", isDirectory: true)
-            .appendingPathComponent("search-index-v3.bin")
+            .appendingPathComponent("search-index-v4.bin")
     }
 
     private static func encode(_ index: SearchIndex) -> Data {
@@ -1040,6 +1134,7 @@ enum SearchIndexPersistence {
         writer.write(UInt8(index.signature.deepIndex ? 1 : 0))
         writer.write(UInt32(index.signature.scopes.count))
         writer.write(UInt32(index.nodes.count))
+        writer.write(index.lastEventID ?? 0)
 
         var stringPool: [String] = []
         var stringToIndex: [String: UInt32] = [:]
@@ -1111,6 +1206,7 @@ enum SearchIndexPersistence {
         guard let deepIndexByte = reader.readUInt8() else { return nil }
         guard let scopesCount = reader.readUInt32() else { return nil }
         guard let nodesCount = reader.readUInt32() else { return nil }
+        guard let encodedLastEventID = reader.readUInt64() else { return nil }
 
         var scopeIndices: [UInt32] = []
         for _ in 0..<scopesCount {
@@ -1185,7 +1281,11 @@ enum SearchIndexPersistence {
             ))
         }
 
-        return SearchIndex(signature: loadedSignature, nodes: nodes)
+        return SearchIndex(
+            signature: loadedSignature,
+            nodes: nodes,
+            lastEventID: encodedLastEventID == 0 ? nil : encodedLastEventID
+        )
     }
 }
 

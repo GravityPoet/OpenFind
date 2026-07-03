@@ -42,6 +42,7 @@ enum CLIRunner {
         options.includeHidden = flags.contains("--hidden")
         options.includePackages = flags.contains("--packages")
         if flags.contains("--deep") { options.deepIndex = true }
+        let refresh = flags.contains("--refresh")
 
         let scopes = (paths.isEmpty ? [FileManager.default.currentDirectoryPath] : paths)
             .map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
@@ -55,8 +56,13 @@ enum CLIRunner {
             FileHandle.standardError.write(Data("timing \(label)=\(ms)ms\n".utf8))
         }
 
-        _ = await SearchIndexStore.shared.snapshot(for: scopes, deepIndex: options.deepIndex)
-        mark("snapshot")
+        if refresh {
+            _ = await SearchIndexStore.shared.refresh(scopes: scopes, deepIndex: options.deepIndex)
+            mark("refresh")
+        } else {
+            _ = await SearchIndexStore.shared.snapshot(for: scopes, deepIndex: options.deepIndex)
+            mark("snapshot")
+        }
 
         var count = 0
         for await result in SearchEngine.search(scopes: scopes, options: options) {
@@ -85,6 +91,7 @@ enum CLIRunner {
           --hidden     include hidden files
           --packages   search inside .app / .bundle packages
           --deep       index everything (no ignore list)
+          --refresh    rebuild the index before searching
 
         """
         FileHandle.standardError.write(Data(usage.utf8))

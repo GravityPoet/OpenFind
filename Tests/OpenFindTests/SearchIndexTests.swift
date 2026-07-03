@@ -15,6 +15,11 @@ struct SearchIndexTests {
         try content.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    private func createCacheURL() -> URL {
+        URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("OpenFindIndexCache-\(UUID().uuidString).bin")
+    }
+
     @Test func indexedNameSearchFindsFilesWithoutTraversalOptions() async throws {
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -149,6 +154,16 @@ struct SearchIndexTests {
         #expect(SearchPath.hasNormalizedPrefix("/a", of: "/"))
     }
 
+    @Test func nestedScopesCollapseToMinimalAncestors() {
+        let root = URL(fileURLWithPath: "/tmp/openfind-scope")
+        let nested = root.appendingPathComponent("child/grandchild")
+        let sibling = URL(fileURLWithPath: "/tmp/openfind-sibling")
+
+        let signature = SearchIndexSignature(scopes: [nested, sibling, root, root])
+
+        #expect(signature.scopes == [root.path, sibling.path])
+    }
+
     @Test func modifiedDateFilterMatchesIsoDay() async throws {
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -178,7 +193,13 @@ struct SearchIndexTests {
     }
 
     private func collect(scopes: [URL], options: SearchOptions) async -> [SearchResult] {
-        let store = SearchIndexStore()
+        let cacheURL = createCacheURL()
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let store = SearchIndexStore(persistenceURL: cacheURL)
+        return await collect(scopes: scopes, options: options, store: store)
+    }
+
+    private func collect(scopes: [URL], options: SearchOptions, store: SearchIndexStore) async -> [SearchResult] {
         var results: [SearchResult] = []
         for await result in SearchEngine.search(scopes: scopes, options: options, store: store) {
             results.append(result)
@@ -195,7 +216,7 @@ struct SearchIndexTests {
 
         let signature = SearchIndexSignature(scopes: [root])
         let nodes = await SearchIndexBuilder.build(signature: signature)
-        let originalIndex = SearchIndex(signature: signature, nodes: nodes)
+        let originalIndex = SearchIndex(signature: signature, nodes: nodes, lastEventID: 12345)
 
         let testIndexURL = root.appendingPathComponent("search-index-test.bin")
         SearchIndexPersistence.save(index: originalIndex, to: testIndexURL)
@@ -203,6 +224,7 @@ struct SearchIndexTests {
         let loadedIndex = try #require(SearchIndexPersistence.load(signature: signature, from: testIndexURL))
         #expect(loadedIndex.signature == originalIndex.signature)
         #expect(loadedIndex.nodes.count == originalIndex.nodes.count)
+        #expect(loadedIndex.lastEventID == 12345)
 
         let originalPaths = (0..<originalIndex.nodes.count).map { originalIndex.path(for: $0) }
         let loadedPaths = (0..<loadedIndex.nodes.count).map { loadedIndex.path(for: $0) }
@@ -220,6 +242,76 @@ struct SearchIndexTests {
         #expect(SearchIndexPersistence.load(signature: signature, from: deepURL) == nil)
     }
 
+    @Test func refreshRebuildsStalePersistentCache() async throws {
+        let root = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let cacheURL = createCacheURL()
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+
+        try writeFile(at: root.appendingPathComponent("old_cli_cache_marker.txt"))
+        let primingStore = SearchIndexStore(persistenceURL: cacheURL)
+        await primingStore.refresh(scopes: [root])
+        await primingStore.flushPersistence()
+
+        let freshFile = root.appendingPathComponent("fresh_cli_refresh_target.txt")
+        try writeFile(at: freshFile)
+
+        var options = SearchOptions()
+        options.target = .name
+        options.query = "fresh_cli_refresh_target"
+
+        let staleStore = SearchIndexStore(persistenceURL: cacheURL)
+        let staleResults = await collect(scopes: [root], options: options, store: staleStore)
+        #expect(staleResults.isEmpty)
+
+        await staleStore.refresh(scopes: [root])
+        await staleStore.flushPersistence()
+        let refreshedResults = await collect(scopes: [root], options: options, store: staleStore)
+        #expect(refreshedResults.map(\.name) == ["fresh_cli_refresh_target.txt"])
+
+        let reloadedStore = SearchIndexStore(persistenceURL: cacheURL)
+        let reloadedResults = await collect(scopes: [root], options: options, store: reloadedStore)
+        #expect(reloadedResults.map(\.name) == ["fresh_cli_refresh_target.txt"])
+    }
+
+    @Test func cachedIndexReplaysEventsSinceLastEventID() async throws {
+        let root = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let cacheURL = createCacheURL()
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+
+        try writeFile(at: root.appendingPathComponent("old_replay_marker.txt"))
+        let signature = SearchIndexSignature(scopes: [root])
+        let baselineEventID = FileSystemEventWatcher.currentEventID()
+        let nodes = await SearchIndexBuilder.build(signature: signature)
+        SearchIndexPersistence.save(
+            index: SearchIndex(signature: signature, nodes: nodes, lastEventID: baselineEventID),
+            to: cacheURL
+        )
+
+        try writeFile(at: root.appendingPathComponent("fresh_replay_target.txt"))
+
+        let store = SearchIndexStore(persistenceURL: cacheURL)
+        await store.prepare(scopes: [root])
+
+        var options = SearchOptions()
+        options.target = .name
+        options.query = "fresh_replay_target"
+
+        var replayedResults: [SearchResult] = []
+        for _ in 0..<30 {
+            replayedResults = await collect(scopes: [root], options: options, store: store)
+            if replayedResults.contains(where: { $0.name == "fresh_replay_target.txt" }) {
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+
+        #expect(replayedResults.map(\.name) == ["fresh_replay_target.txt"])
+    }
+
     @Test func testIncrementalIndexingReturnsPartialResults() async throws {
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -232,7 +324,9 @@ struct SearchIndexTests {
         try FileManager.default.createDirectory(at: sub2, withIntermediateDirectories: true)
         try writeFile(at: sub2.appendingPathComponent("apple_in_dir2.txt"))
 
-        let store = SearchIndexStore()
+        let cacheURL = createCacheURL()
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let store = SearchIndexStore(persistenceURL: cacheURL)
         let prepareTask = Task {
             await store.prepare(scopes: [root])
         }
