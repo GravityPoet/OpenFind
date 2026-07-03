@@ -32,4 +32,14 @@ struct SearchScopeGuardTests {
         #expect(SearchScopes.isWholeMac(legacy))
         #expect(SearchScopes.normalized(legacy) == SearchScopes.wholeMacURL)
     }
+
+    @Test func addingCustomScopeReplacesWholeMacScope() {
+        let custom = URL(fileURLWithPath: "/Users/test/Project")
+        let other = URL(fileURLWithPath: "/tmp")
+
+        #expect(SearchScopes.adding(custom, to: [SearchScopes.wholeMacURL]) == [custom])
+        #expect(SearchScopes.adding(custom, to: [other]) == [other, custom])
+        #expect(SearchScopes.adding(custom, to: [custom]) == [custom])
+        #expect(SearchScopes.adding(SearchScopes.wholeMacURL, to: [custom]) == [SearchScopes.wholeMacURL])
+    }
 }

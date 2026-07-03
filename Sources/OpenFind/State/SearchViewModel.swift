@@ -132,8 +132,12 @@ final class SearchViewModel {
     }
 
     func addScope(_ url: URL) {
-        guard !scopes.contains(url) else { return }
-        scopes.append(url)
+        let newScopes = SearchScopes.adding(url, to: scopes)
+        guard newScopes != scopes else { return }
+        for scope in scopes where !newScopes.contains(scope) {
+            ScopeStore.releaseAccess(scope)
+        }
+        scopes = newScopes
         ScopeStore.save(scopes)
         refreshIndex()
     }

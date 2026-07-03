@@ -14,6 +14,24 @@ enum SearchScopes {
         isWholeMac(url) ? wholeMacURL : url
     }
 
+    static func isWholeMacOnly(_ urls: [URL]) -> Bool {
+        urls.count == 1 && urls.contains(where: isWholeMac)
+    }
+
+    static func adding(_ url: URL, to scopes: [URL]) -> [URL] {
+        let normalizedURL = normalized(url)
+        if isWholeMac(normalizedURL) {
+            return [wholeMacURL]
+        }
+
+        var customScopes = scopes
+            .map(normalized)
+            .filter { !isWholeMac($0) }
+        guard !customScopes.contains(normalizedURL) else { return customScopes }
+        customScopes.append(normalizedURL)
+        return customScopes
+    }
+
     private static func normalizedPath(_ url: URL) -> String {
         let path = url.standardizedFileURL.path(percentEncoded: false)
         guard path != wholeMacPath else { return wholeMacPath }
