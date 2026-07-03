@@ -151,6 +151,7 @@ struct SearchIndex: Sendable {
 
     func nameMatches(query: CompiledSearchQuery, options: SearchOptions) -> [ResolvedNode] {
         var results: [ResolvedNode] = []
+        var seenPaths = Set<String>()
         let pinyin = query.matchesPinyin
         for i in 0..<nodes.count {
             let node = nodes[i]
@@ -158,6 +159,7 @@ struct SearchIndex: Sendable {
             guard query.matchesNameFilter(shortName, matchesPinyin: pinyin) else { continue }
 
             let nodePath = path(for: i)
+            guard seenPaths.insert(SearchPath.canonicalAliasPath(nodePath)).inserted else { continue }
             if query.matchesNameBranch(name: shortName, node: node, path: nodePath, options: options, matchesPinyin: pinyin) {
                 results.append(ResolvedNode(node: node, path: nodePath))
             }
@@ -167,12 +169,15 @@ struct SearchIndex: Sendable {
 
     func contentCandidates(query: CompiledSearchQuery, options: SearchOptions, excluding excludedPaths: Set<String> = []) -> [ResolvedNode] {
         var results: [ResolvedNode] = []
+        var seenPaths = Set<String>()
         let pinyin = query.matchesPinyin
         for i in 0..<nodes.count {
             let node = nodes[i]
             guard !node.isDirectory else { continue }
             let nodePath = path(for: i)
-            guard !excludedPaths.contains(nodePath) else { continue }
+            let canonicalPath = SearchPath.canonicalAliasPath(nodePath)
+            guard !excludedPaths.contains(canonicalPath) else { continue }
+            guard seenPaths.insert(canonicalPath).inserted else { continue }
 
             let shortName = node.name.hasPrefix("/") ? (node.name as NSString).lastPathComponent : node.name
             if query.matchesContentCandidate(name: shortName, node: node, path: nodePath, options: options, matchesPinyin: pinyin) {
@@ -744,7 +749,7 @@ enum SearchIndexBuilder {
                                 // indexed via its real path, and cycles must not hang.
                                 let isSymlink = (try? child.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
                                 if !isSymlink {
-                                    subdirectories.append(childPath)
+                                    subdirectories.append(node.path)
                                 }
                             } else {
                                 localFiles += 1
@@ -831,7 +836,10 @@ enum SearchIndexBuilder {
             if signature.scopes.contains(path) {
                 return SearchIndex(signature: signature, nodes: await build(signature: signature))
             }
-            tempNodes.removeAll { SearchPath.hasNormalizedPrefix($0.path, of: path) }
+            let canonicalPath = SearchPath.canonicalAliasPath(path)
+            tempNodes.removeAll {
+                SearchPath.hasNormalizedPrefix(SearchPath.canonicalAliasPath($0.path), of: canonicalPath)
+            }
             scanTempPath(path, signature: signature, ignoredPaths: ignoredPaths, into: &tempNodes)
         }
 
@@ -865,7 +873,7 @@ enum SearchIndexBuilder {
 
     static func collapseEventPaths(_ paths: [String], signature: SearchIndexSignature) -> [String] {
         let scoped = paths
-            .map(SearchPath.normalize)
+            .map { SearchPath.canonicalAliasPath(SearchPath.normalize($0)) }
             .filter { path in signature.contains(path: path) }
             .sorted { lhs, rhs in
                 let leftDepth = lhs.split(separator: "/").count
@@ -931,7 +939,7 @@ enum SearchIndexBuilder {
 
     private static func makeTempNode(url: URL) -> TempNode? {
         let values = try? url.resourceValues(forKeys: resourceKeySet)
-        let path = SearchPath.normalize(url.path(percentEncoded: false))
+        let path = SearchPath.canonicalAliasPath(url.path(percentEncoded: false))
         let name = values?.name ?? url.lastPathComponent
         let isDirectory = values?.isDirectory ?? false
         let size = Int64(values?.fileSize ?? 0)
@@ -958,7 +966,7 @@ enum SearchIndexBuilder {
     fileprivate static func deduplicatedTempNodes(_ nodes: [TempNode]) -> [TempNode] {
         var seen = Set<String>()
         seen.reserveCapacity(nodes.count)
-        return nodes.filter { seen.insert($0.path).inserted }
+        return nodes.filter { seen.insert(SearchPath.canonicalAliasPath($0.path)).inserted }
     }
 
     private static func effectiveIgnoredPaths(for signature: SearchIndexSignature) -> [String] {
@@ -977,7 +985,7 @@ enum SearchIndexBuilder {
 
 enum SearchIndexPersistence {
     private static let magic = "OFIX"
-    private static let version: UInt32 = 5
+    private static let version: UInt32 = 6
 
     private struct BinaryWriter {
         var data = Data()
@@ -1121,7 +1129,7 @@ enum SearchIndexPersistence {
             try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: targetURL, options: .atomic)
 
-            for legacy in ["search-index-v1.plist", "search-index-v2.bin", "search-index-v3.bin", "search-index-v4.bin"] {
+            for legacy in ["search-index-v1.plist", "search-index-v2.bin", "search-index-v3.bin", "search-index-v4.bin", "search-index-v5.bin"] {
                 let oldURL = targetURL.deletingLastPathComponent().appendingPathComponent(legacy)
                 try? FileManager.default.removeItem(at: oldURL)
             }
@@ -1134,7 +1142,7 @@ enum SearchIndexPersistence {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return base.appendingPathComponent("OpenFind", isDirectory: true)
-            .appendingPathComponent("search-index-v5.bin")
+            .appendingPathComponent("search-index-v6.bin")
     }
 
     private static func encode(_ index: SearchIndex) -> Data {
@@ -1355,6 +1363,23 @@ enum SearchPath {
         let root = "/" + String(topLevel)
         guard dataVolumeAliasRoots.contains(root) else { return [] }
         return [alias]
+    }
+
+    static func canonicalAliasPath(_ path: String) -> String {
+        let normalized = normalize(path)
+        guard normalized != dataVolumePath,
+              hasNormalizedPrefix(normalized, of: dataVolumePath) else {
+            return normalized
+        }
+
+        let suffix = normalized.dropFirst(dataVolumePath.count)
+        guard suffix.first == "/" else { return normalized }
+        let alias = String(suffix)
+        guard let topLevel = alias.dropFirst().split(separator: "/", maxSplits: 1).first else {
+            return normalized
+        }
+        let root = "/" + String(topLevel)
+        return dataVolumeAliasRoots.contains(root) ? alias : normalized
     }
 
     static func normalize(_ path: String) -> String {
