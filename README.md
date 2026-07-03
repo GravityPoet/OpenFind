@@ -46,6 +46,20 @@ Views -> State (ViewModel) -> Engine -> Models
 - **Views:** SwiftUI-based minimal and responsive visual components.
 - **App:** Entry dispatcher handling both command-line arguments and GUI scenes.
 
-## License
+## License and Commercial Use
 
-OpenFind is licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
+OpenFind is licensed under the GNU Affero General Public License v3.0 only
+(`AGPL-3.0-only`). See [LICENSE](LICENSE).
+
+Organizations that want to embed, redistribute, modify, or provide OpenFind-based
+software under proprietary terms can request a separate commercial license. See
+[COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
+
+External contributions require an accepted contributor license agreement before
+merge so the project can keep offering both the AGPL release and separate
+commercial licenses. See [CONTRIBUTING.md](CONTRIBUTING.md) and
+[CONTRIBUTOR_LICENSE_AGREEMENT.md](CONTRIBUTOR_LICENSE_AGREEMENT.md).
+
+The AGPL grants copyright permissions for covered files, but it does not grant
+trademark rights in the OpenFind name, logo, or icon as brand identifiers. See
+[TRADEMARKS.md](TRADEMARKS.md).
