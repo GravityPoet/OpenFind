@@ -48,4 +48,4 @@ Views -> State (ViewModel) -> Engine -> Models
 
 ## License
 
-OpenFind is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
+OpenFind is licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
