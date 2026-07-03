@@ -76,8 +76,9 @@ final class SearchViewModel {
     }
 
     /// Starts a new search, cancelling any previous one. Auto re-searches
-    /// (fired while the index is still filling) pass `recordRecent: false`.
-    func startSearch(recordRecent: Bool = true) {
+    /// (fired while the index is still filling) preserve existing rows so the
+    /// table does not flicker empty between partial-index passes.
+    func startSearch(recordRecent: Bool = true, clearResults: Bool = true) {
         guard canSearch else { return }
         pendingFinalAutoSearch = false
         debounceTask?.cancel()
@@ -86,7 +87,7 @@ final class SearchViewModel {
 
         if SearchScopeGuard.needsBroadContentConfirmation(options: options, scopes: scopes),
            !allowBroadContentSearch {
-            results = []
+            if clearResults { results = [] }
             truncated = false
             elapsed = 0
             isBroadContentSearchBlocked = true
@@ -98,7 +99,7 @@ final class SearchViewModel {
         if recordRecent { recordRecentSearch() }
         let currentOptions = options
         let currentScopes = scopes
-        results = []
+        if clearResults { results = [] }
         truncated = false
         isSearching = true
         elapsed = 0
@@ -190,12 +191,16 @@ final class SearchViewModel {
         guard pendingFinalAutoSearch else { return }
         pendingFinalAutoSearch = false
         guard canSearch, !truncated, !isBroadContentSearchBlocked else { return }
-        startSearch(recordRecent: false)
+        startSearch(recordRecent: false, clearResults: false)
     }
 
     /// Merges a buffered batch into `results`, truncating at the limit.
     private func flush(_ pending: inout [SearchResult]) {
         guard !pending.isEmpty else { return }
+        var seenPaths = Set(results.map { SearchPath.canonicalAliasPath($0.path) })
+        pending.removeAll { !seenPaths.insert(SearchPath.canonicalAliasPath($0.path)).inserted }
+        guard !pending.isEmpty else { return }
+
         let remaining = resultLimit - results.count
         if remaining <= 0 {
             truncated = true
@@ -288,6 +293,6 @@ final class SearchViewModel {
             return
         }
         lastAutoSearchItems = stats.indexedItems
-        startSearch(recordRecent: false)
+        startSearch(recordRecent: false, clearResults: false)
     }
 }
