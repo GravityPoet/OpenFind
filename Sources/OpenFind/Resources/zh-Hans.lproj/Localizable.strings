@@ -76,6 +76,7 @@
 /* Whole Mac & TCC */
 "Search Whole Mac" = "搜索整台 Mac";
 "Whole Mac" = "整台 Mac";
+"Whole Mac Enabled" = "整台 Mac 已启用";
 "Full Disk Access disabled" = "完全磁盘访问权限未启用";
 "Enable..." = "启用...";
 

@@ -50,10 +50,17 @@ struct FilterBar: View {
 
                 // Scope Management Menu
                 Menu {
-                    Button(action: {
-                        viewModel.setScopes([SearchScopes.wholeMacURL])
-                    }) {
-                        Label(L("Search Whole Mac"), systemImage: "laptopcomputer")
+                    if isWholeMacOnly {
+                        Button(action: {}) {
+                            Label(L("Whole Mac Enabled"), systemImage: "checkmark.circle")
+                        }
+                        .disabled(true)
+                    } else {
+                        Button(action: {
+                            viewModel.setScopes([SearchScopes.wholeMacURL])
+                        }) {
+                            Label(L("Search Whole Mac"), systemImage: "laptopcomputer")
+                        }
                     }
 
                     Divider()
@@ -74,13 +81,15 @@ struct FilterBar: View {
                             Label(L("Clear Scopes"), systemImage: "trash")
                         }
 
-                        Divider()
+                        if !isWholeMacOnly {
+                            Divider()
 
-                        ForEach(Array(viewModel.scopes.enumerated()), id: \.element) { index, scope in
-                            Button(action: {
-                                viewModel.removeScopes(IndexSet(integer: index))
-                            }) {
-                                Label(scopeLabel(scope), systemImage: "folder.badge.minus")
+                            ForEach(Array(viewModel.scopes.enumerated()), id: \.element) { index, scope in
+                                Button(action: {
+                                    viewModel.removeScopes(IndexSet(integer: index))
+                                }) {
+                                    Label(scopeLabel(scope), systemImage: "folder.badge.minus")
+                                }
                             }
                         }
                     }
@@ -108,6 +117,10 @@ struct FilterBar: View {
         .onChange(of: viewModel.scopes) {
             viewModel.scheduleSearch()
         }
+    }
+
+    private var isWholeMacOnly: Bool {
+        SearchScopes.isWholeMacOnly(viewModel.scopes)
     }
 
     private var scopeButtonLabel: String {
