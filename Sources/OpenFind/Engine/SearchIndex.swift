@@ -1,5 +1,6 @@
 import CoreServices
 import Compression
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -319,6 +320,10 @@ struct ResolvedNode: Sendable {
     var pathDepth: Int { pathReference.depth }
     var identity: ResolvedNodeIdentity { pathReference.identity }
     var isPathDeferred: Bool { pathReference.isDeferred }
+    var indexedOrder: Int32? {
+        if case .indexed(_, let index) = pathReference { return index }
+        return nil
+    }
 
     /// The index already knows the node kind. Supplying the directory hint is
     /// essential for broad searches: Foundation otherwise calls `lstat` while
@@ -415,79 +420,229 @@ struct SearchIndexObservation: Sendable {
 /// carrying that name. Whole-Mac indexes contain many repeated names; checking
 /// each unique name once preserves exact results while avoiding millions of
 /// duplicate matcher evaluations on every query.
-fileprivate final class SearchNameIndex: Sendable {
-    static let namesPerBlock = 16
+fileprivate final class MappedSearchNameIndexFile: @unchecked Sendable {
+    let data: Data
 
-    let names: [String]
-    let offsets: [Int32]
-    let nodeIndices: [Int32]
-    let blockSignatures: [UInt64]
+    init(data: Data) {
+        self.data = data
+    }
+
+    @inline(__always)
+    func int32(at offset: Int) -> Int32 {
+        data.withUnsafeBytes {
+            Int32(bitPattern: $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self).littleEndian)
+        }
+    }
+
+    @inline(__always)
+    func uint64(at offset: Int) -> UInt64 {
+        data.withUnsafeBytes {
+            $0.loadUnaligned(fromByteOffset: offset, as: UInt64.self).littleEndian
+        }
+    }
+
+    func allInt32(
+        at offset: Int,
+        count: Int,
+        satisfy predicate: (Int32) -> Bool
+    ) -> Bool {
+        data.withUnsafeBytes { bytes in
+            for index in 0..<count {
+                let value = Int32(bitPattern: bytes.loadUnaligned(
+                    fromByteOffset: offset + index * MemoryLayout<UInt32>.stride,
+                    as: UInt32.self
+                ).littleEndian)
+                if !predicate(value) { return false }
+            }
+            return true
+        }
+    }
+}
+
+fileprivate enum SearchNameIndexInt32Storage: Sendable {
+    case heap([Int32])
+    case mapped(MappedSearchNameIndexFile, offset: Int, count: Int)
+
+    var count: Int {
+        switch self {
+        case .heap(let values): values.count
+        case .mapped(_, _, let count): count
+        }
+    }
+
+    @inline(__always)
+    func value(at index: Int) -> Int32 {
+        switch self {
+        case .heap(let values):
+            values[index]
+        case .mapped(let file, let offset, _):
+            file.int32(at: offset + index * MemoryLayout<UInt32>.stride)
+        }
+    }
+
+    func appendRawLittleEndian(to data: inout Data) {
+        switch self {
+        case .heap(let values):
+            values.withUnsafeBufferPointer {
+                data.append(contentsOf: UnsafeRawBufferPointer($0))
+            }
+        case .mapped(let file, let offset, let count):
+            data.append(file.data[offset..<(offset + count * MemoryLayout<UInt32>.stride)])
+        }
+    }
+}
+
+fileprivate enum SearchNameIndexUInt64Storage: Sendable {
+    case heap([UInt64])
+    case mapped(MappedSearchNameIndexFile, offset: Int, count: Int)
+
+    var count: Int {
+        switch self {
+        case .heap(let values): values.count
+        case .mapped(_, _, let count): count
+        }
+    }
+
+    @inline(__always)
+    func value(at index: Int) -> UInt64 {
+        switch self {
+        case .heap(let values):
+            values[index]
+        case .mapped(let file, let offset, _):
+            file.uint64(at: offset + index * MemoryLayout<UInt64>.stride)
+        }
+    }
+
+    func appendRawLittleEndian(to data: inout Data) {
+        switch self {
+        case .heap(let values):
+            values.withUnsafeBufferPointer {
+                data.append(contentsOf: UnsafeRawBufferPointer($0))
+            }
+        case .mapped(let file, let offset, let count):
+            data.append(file.data[offset..<(offset + count * MemoryLayout<UInt64>.stride)])
+        }
+    }
+}
+
+final class SearchNameIndex: Sendable {
+    static let namesPerBlock = 16
+    private static let maximumStableCandidateNodes = 100_000
+
+    private static let sidecarMagic = "OFNI"
+    private static let sidecarVersion: UInt32 = 1
+    private static let sidecarHeaderBytes = 56
+    private static let sidecarChecksumBytes = 32
+    private static let minimumPersistedNodeCount = 1_024
+    private static let maximumSidecarBytes: Int64 = 2 * 1_024 * 1_024 * 1_024
+
+    private let heapNames: [String]?
+    private let baseNodes: [IndexedFileNode]?
+    private let representativeNodeIndices: [Int32]
+    private let postingOffsets: [Int32]
+    private let postingNodeIndices: SearchNameIndexInt32Storage
+    private let blockSignatures: SearchNameIndexUInt64Storage
     /// Character / bigram signatures used for short ASCII queries. Trigram
     /// filtering cannot help with a one- or two-character term, yet those
     /// terms are common broad searches on a whole-Mac index.
-    let shortBlockSignatures: [UInt64]
+    private let shortBlockSignatures: SearchNameIndexUInt64Storage
     /// Name-group-level trigram postings. Block signatures are intentionally
     /// coarse (16 names per block) and saturate on a whole-Mac index. These
     /// transposed bitsets retain the same lossless hash prefilter while
     /// jumping directly to candidate names. A collision only adds a group;
     /// it can never hide a real match.
     private let groupBitsetWordCount: Int
-    private let groupPresence: [UInt64]
+    private let groupPresence: SearchNameIndexUInt64Storage
 
-    convenience init?(nodes: [IndexedFileNode]) {
-        self.init(nameCount: nodes.count) { index in
+    var nameCount: Int { representativeNodeIndices.count }
+    var isMapped: Bool {
+        if case .mapped = postingNodeIndices { return true }
+        return false
+    }
+
+    convenience init?(
+        nodes: [IndexedFileNode],
+        yieldsToForegroundSearches: Bool = false
+    ) {
+        self.init(
+            nameCount: nodes.count,
+            yieldsToForegroundSearches: yieldsToForegroundSearches
+        ) { index in
             let name = nodes[index].name
             return name.hasPrefix("/") ? (name as NSString).lastPathComponent : name
         }
     }
 
     convenience init?(tempNodes: [TempNode]) {
-        self.init(nameCount: tempNodes.count) { tempNodes[$0].name }
+        self.init(nameCount: tempNodes.count, yieldsToForegroundSearches: false) {
+            tempNodes[$0].name
+        }
     }
 
-    private init?(nameCount: Int, nameAt: (Int) -> String) {
+    private init?(
+        nameCount: Int,
+        yieldsToForegroundSearches: Bool,
+        nameAt: (Int) -> String
+    ) {
         guard nameCount > 0, nameCount <= Int(Int32.max) else { return nil }
 
         var uniqueNames: [String] = []
         uniqueNames.reserveCapacity(min(nameCount, 1_000_000))
+        var representatives: [Int32] = []
+        representatives.reserveCapacity(min(nameCount, 1_000_000))
         var nameToGroup: [String: Int32] = [:]
         nameToGroup.reserveCapacity(min(nameCount, 1_000_000))
         var groupForNode: [Int32] = []
         groupForNode.reserveCapacity(nameCount)
 
         for index in 0..<nameCount {
+            if yieldsToForegroundSearches, index.isMultiple(of: 4_096) {
+                SearchWorkCoordinator.shared.waitForSearchesToFinish()
+            }
             let shortName = nameAt(index)
             if let group = nameToGroup[shortName] {
                 groupForNode.append(group)
             } else {
                 let group = Int32(uniqueNames.count)
                 uniqueNames.append(shortName)
+                representatives.append(Int32(index))
                 nameToGroup[shortName] = group
                 groupForNode.append(group)
             }
         }
 
         var counts = [Int32](repeating: 0, count: uniqueNames.count)
-        for group in groupForNode {
+        for (index, group) in groupForNode.enumerated() {
+            if yieldsToForegroundSearches, index.isMultiple(of: 4_096) {
+                SearchWorkCoordinator.shared.waitForSearchesToFinish()
+            }
             counts[Int(group)] += 1
         }
 
         var groupOffsets = [Int32](repeating: 0, count: uniqueNames.count + 1)
         for group in counts.indices {
+            if yieldsToForegroundSearches, group.isMultiple(of: 4_096) {
+                SearchWorkCoordinator.shared.waitForSearchesToFinish()
+            }
             groupOffsets[group + 1] = groupOffsets[group] + counts[group]
         }
         var cursors = Array(groupOffsets.dropLast())
         var groupedNodeIndices = [Int32](repeating: 0, count: nameCount)
         for (nodeIndex, group) in groupForNode.enumerated() {
+            if yieldsToForegroundSearches, nodeIndex.isMultiple(of: 4_096) {
+                SearchWorkCoordinator.shared.waitForSearchesToFinish()
+            }
             let groupIndex = Int(group)
             let destination = Int(cursors[groupIndex])
             groupedNodeIndices[destination] = Int32(nodeIndex)
             cursors[groupIndex] += 1
         }
 
-        names = uniqueNames
-        offsets = groupOffsets
-        nodeIndices = groupedNodeIndices
+        heapNames = uniqueNames
+        baseNodes = nil
+        representativeNodeIndices = representatives
+        postingOffsets = groupOffsets
+        postingNodeIndices = .heap(groupedNodeIndices)
 
         let blockCount = (uniqueNames.count + Self.namesPerBlock - 1) / Self.namesPerBlock
         var signatures = [UInt64](repeating: 0, count: blockCount * 4)
@@ -497,6 +652,9 @@ fileprivate final class SearchNameIndex: Sendable {
         var trigramScratch = [UInt64](repeating: 0, count: 4)
         var shortScratch = [UInt64](repeating: 0, count: 4)
         for (group, name) in uniqueNames.enumerated() {
+            if yieldsToForegroundSearches, group.isMultiple(of: 4_096) {
+                SearchWorkCoordinator.shared.waitForSearchesToFinish()
+            }
             let base = (group / Self.namesPerBlock) * 4
             for lane in 0..<4 {
                 trigramScratch[lane] = 0
@@ -526,10 +684,216 @@ fileprivate final class SearchNameIndex: Sendable {
                 }
             }
         }
-        blockSignatures = signatures
-        shortBlockSignatures = shortSignatures
+        blockSignatures = .heap(signatures)
+        shortBlockSignatures = .heap(shortSignatures)
         groupBitsetWordCount = groupWordCount
-        groupPresence = groupBits
+        groupPresence = .heap(groupBits)
+    }
+
+    private init(
+        baseNodes: [IndexedFileNode],
+        representativeNodeIndices: [Int32],
+        postingOffsets: [Int32],
+        postingNodeIndices: SearchNameIndexInt32Storage,
+        blockSignatures: SearchNameIndexUInt64Storage,
+        shortBlockSignatures: SearchNameIndexUInt64Storage,
+        groupBitsetWordCount: Int,
+        groupPresence: SearchNameIndexUInt64Storage
+    ) {
+        heapNames = nil
+        self.baseNodes = baseNodes
+        self.representativeNodeIndices = representativeNodeIndices
+        self.postingOffsets = postingOffsets
+        self.postingNodeIndices = postingNodeIndices
+        self.blockSignatures = blockSignatures
+        self.shortBlockSignatures = shortBlockSignatures
+        self.groupBitsetWordCount = groupBitsetWordCount
+        self.groupPresence = groupPresence
+    }
+
+    @inline(__always)
+    func name(at group: Int) -> String {
+        if let heapNames { return heapNames[group] }
+        guard let baseNodes else { return "" }
+        let rawName = baseNodes[Int(representativeNodeIndices[group])].name
+        return rawName.hasPrefix("/") ? (rawName as NSString).lastPathComponent : rawName
+    }
+
+    @inline(__always)
+    func postingRange(for group: Int) -> Range<Int> {
+        Int(postingOffsets[group])..<Int(postingOffsets[group + 1])
+    }
+
+    @inline(__always)
+    func nodeIndex(at posting: Int) -> Int {
+        Int(postingNodeIndices.value(at: posting))
+    }
+
+    static func loadMapped(
+        nodes: [IndexedFileNode],
+        baseDigest: Data,
+        from url: URL
+    ) -> SearchNameIndex? {
+        guard baseDigest.count == SHA256.Digest.byteCount,
+              let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+              Int64(data.count) <= maximumSidecarBytes,
+              data.count >= sidecarHeaderBytes + sidecarChecksumBytes,
+              data.starts(with: sidecarMagic.utf8) else { return nil }
+
+        let file = MappedSearchNameIndexFile(data: data)
+        guard UInt32(bitPattern: file.int32(at: 4)) == sidecarVersion,
+              Data(data[8..<40]) == baseDigest else { return nil }
+
+        let nodeCount = Int(UInt32(bitPattern: file.int32(at: 40)))
+        let groupCount = Int(UInt32(bitPattern: file.int32(at: 44)))
+        let storedBlockCount = Int(UInt32(bitPattern: file.int32(at: 48)))
+        let storedGroupWordCount = Int(UInt32(bitPattern: file.int32(at: 52)))
+        guard nodeCount == nodes.count,
+              nodeCount >= minimumPersistedNodeCount,
+              groupCount > 0,
+              groupCount <= nodeCount,
+              storedBlockCount == (groupCount + namesPerBlock - 1) / namesPerBlock,
+              storedGroupWordCount == (groupCount + 63) / 64,
+              expectedSidecarByteCount(nodeCount: nodeCount, groupCount: groupCount) == data.count else {
+            return nil
+        }
+
+        let checksumOffset = data.count - sidecarChecksumBytes
+        let expectedChecksum = Data(data[checksumOffset..<data.count])
+        let actualChecksum = Data(SHA256.hash(data: data.prefix(checksumOffset)))
+        guard actualChecksum == expectedChecksum else { return nil }
+
+        let representativesOffset = sidecarHeaderBytes
+        let offsetsOffset = representativesOffset + groupCount * MemoryLayout<UInt32>.stride
+        let nodeIndicesOffset = offsetsOffset + (groupCount + 1) * MemoryLayout<UInt32>.stride
+        let blockSignaturesOffset = nodeIndicesOffset + nodeCount * MemoryLayout<UInt32>.stride
+        let blockSignatureCount = storedBlockCount * 4
+        let shortBlockSignaturesOffset = blockSignaturesOffset
+            + blockSignatureCount * MemoryLayout<UInt64>.stride
+        let groupPresenceOffset = shortBlockSignaturesOffset
+            + blockSignatureCount * MemoryLayout<UInt64>.stride
+        let groupPresenceCount = 256 * storedGroupWordCount
+        guard groupPresenceOffset + groupPresenceCount * MemoryLayout<UInt64>.stride == checksumOffset,
+              file.allInt32(at: nodeIndicesOffset, count: nodeCount, satisfy: {
+                  $0 >= 0 && Int($0) < nodeCount
+              }) else { return nil }
+
+        var representatives: [Int32] = []
+        representatives.reserveCapacity(groupCount)
+        for group in 0..<groupCount {
+            let value = file.int32(
+                at: representativesOffset + group * MemoryLayout<UInt32>.stride
+            )
+            guard value >= 0, Int(value) < nodeCount else { return nil }
+            representatives.append(value)
+        }
+
+        var offsets: [Int32] = []
+        offsets.reserveCapacity(groupCount + 1)
+        var previous: Int32 = 0
+        for group in 0...groupCount {
+            let value = file.int32(at: offsetsOffset + group * MemoryLayout<UInt32>.stride)
+            guard value >= previous, Int(value) <= nodeCount else { return nil }
+            if group == 0, value != 0 { return nil }
+            previous = value
+            offsets.append(value)
+        }
+        guard offsets.last == Int32(nodeCount) else { return nil }
+
+        return SearchNameIndex(
+            baseNodes: nodes,
+            representativeNodeIndices: representatives,
+            postingOffsets: offsets,
+            postingNodeIndices: .mapped(file, offset: nodeIndicesOffset, count: nodeCount),
+            blockSignatures: .mapped(
+                file,
+                offset: blockSignaturesOffset,
+                count: blockSignatureCount
+            ),
+            shortBlockSignatures: .mapped(
+                file,
+                offset: shortBlockSignaturesOffset,
+                count: blockSignatureCount
+            ),
+            groupBitsetWordCount: storedGroupWordCount,
+            groupPresence: .mapped(
+                file,
+                offset: groupPresenceOffset,
+                count: groupPresenceCount
+            )
+        )
+    }
+
+    func sidecarData(baseDigest: Data) -> Data? {
+        guard baseDigest.count == SHA256.Digest.byteCount,
+              nameCount > 0,
+              nameCount <= Int(UInt32.max),
+              postingOffsets.count == nameCount + 1,
+              postingNodeIndices.count <= Int(UInt32.max),
+              representativeNodeIndices.count == nameCount else { return nil }
+
+        let nodeCount = postingNodeIndices.count
+        guard nodeCount >= Self.minimumPersistedNodeCount else { return nil }
+        let blockCount = (nameCount + Self.namesPerBlock - 1) / Self.namesPerBlock
+        let blockSignatureCount = blockCount * 4
+        let expectedGroupWordCount = (nameCount + 63) / 64
+        let groupPresenceCount = 256 * expectedGroupWordCount
+        guard blockSignatures.count == blockSignatureCount,
+              shortBlockSignatures.count == blockSignatureCount,
+              groupBitsetWordCount == expectedGroupWordCount,
+              groupPresence.count == groupPresenceCount,
+              let expectedBytes = Self.expectedSidecarByteCount(
+                  nodeCount: nodeCount,
+                  groupCount: nameCount
+              ),
+              Int64(expectedBytes) <= Self.maximumSidecarBytes else { return nil }
+
+        var data = Data()
+        data.reserveCapacity(expectedBytes)
+
+        func appendUInt32(_ value: UInt32) {
+            var littleEndian = value.littleEndian
+            withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+        }
+        func appendInt32Array(_ values: [Int32]) {
+            values.withUnsafeBufferPointer {
+                data.append(contentsOf: UnsafeRawBufferPointer($0))
+            }
+        }
+
+        data.append(contentsOf: Self.sidecarMagic.utf8)
+        appendUInt32(Self.sidecarVersion)
+        data.append(baseDigest)
+        appendUInt32(UInt32(nodeCount))
+        appendUInt32(UInt32(nameCount))
+        appendUInt32(UInt32(blockCount))
+        appendUInt32(UInt32(expectedGroupWordCount))
+        appendInt32Array(representativeNodeIndices)
+        appendInt32Array(postingOffsets)
+        postingNodeIndices.appendRawLittleEndian(to: &data)
+        blockSignatures.appendRawLittleEndian(to: &data)
+        shortBlockSignatures.appendRawLittleEndian(to: &data)
+        groupPresence.appendRawLittleEndian(to: &data)
+        data.append(contentsOf: SHA256.hash(data: data))
+        return data.count == expectedBytes ? data : nil
+    }
+
+    private static func expectedSidecarByteCount(
+        nodeCount: Int,
+        groupCount: Int
+    ) -> Int? {
+        guard nodeCount > 0, groupCount > 0, groupCount <= nodeCount else { return nil }
+        let blockCount = (groupCount + namesPerBlock - 1) / namesPerBlock
+        let groupWordCount = (groupCount + 63) / 64
+        let total = Int64(sidecarHeaderBytes)
+            + Int64(groupCount) * 4
+            + Int64(groupCount + 1) * 4
+            + Int64(nodeCount) * 4
+            + Int64(blockCount) * 4 * 8 * 2
+            + Int64(groupWordCount) * 256 * 8
+            + Int64(sidecarChecksumBytes)
+        guard total > 0, total <= maximumSidecarBytes, total <= Int64(Int.max) else { return nil }
+        return Int(total)
     }
 
     static func requiredSignature(for term: String) -> [UInt64]? {
@@ -546,7 +910,7 @@ fileprivate final class SearchNameIndex: Sendable {
 
     func blockMayContain(_ required: [UInt64], block: Int) -> Bool {
         let base = block * 4
-        for lane in 0..<4 where blockSignatures[base + lane] & required[lane] != required[lane] {
+        for lane in 0..<4 where blockSignatures.value(at: base + lane) & required[lane] != required[lane] {
             return false
         }
         return true
@@ -554,7 +918,7 @@ fileprivate final class SearchNameIndex: Sendable {
 
     func blockMayContainShort(_ required: [UInt64], block: Int) -> Bool {
         let base = block * 4
-        for lane in 0..<4 where shortBlockSignatures[base + lane] & required[lane] != required[lane] {
+        for lane in 0..<4 where shortBlockSignatures.value(at: base + lane) & required[lane] != required[lane] {
             return false
         }
         return true
@@ -581,12 +945,12 @@ fileprivate final class SearchNameIndex: Sendable {
                 let source = bit * groupBitsetWordCount
                 if !hasRequiredBit {
                     for word in 0..<groupBitsetWordCount {
-                        intersection[word] = groupPresence[source + word]
+                        intersection[word] = groupPresence.value(at: source + word)
                     }
                     hasRequiredBit = true
                 } else {
                     for word in 0..<groupBitsetWordCount {
-                        intersection[word] &= groupPresence[source + word]
+                        intersection[word] &= groupPresence.value(at: source + word)
                     }
                 }
                 requiredBits &= requiredBits &- 1
@@ -594,14 +958,14 @@ fileprivate final class SearchNameIndex: Sendable {
         }
 
         guard hasRequiredBit else { return nil }
-        let remainder = names.count % 64
+        let remainder = nameCount % 64
         if remainder != 0 {
             intersection[intersection.count - 1] &=
                 (UInt64(1) << UInt64(remainder)) &- 1
         }
 
         var groups: [Int] = []
-        groups.reserveCapacity(min(names.count, 256))
+        groups.reserveCapacity(min(nameCount, 256))
         for wordIndex in intersection.indices {
             var bits = intersection[wordIndex]
             while bits != 0 {
@@ -610,6 +974,26 @@ fileprivate final class SearchNameIndex: Sendable {
                 )
                 bits &= bits &- 1
             }
+        }
+        return groups
+    }
+
+    /// Name groups are stored in first-seen order, so expanding all groups can
+    /// interleave later duplicate nodes ahead of their original index order.
+    /// Restrict posting acceleration to selective queries whose final ranking
+    /// can cheaply use the durable node ID as a stable tie break. Short or very
+    /// broad terms retain the complete linear scan and therefore never change
+    /// order when this optional sidecar becomes ready in the background.
+    func stableCandidateGroups(for term: String?) -> [Int]? {
+        guard let term,
+              term.utf8.count >= 3,
+              let required = Self.requiredSignature(for: term),
+              let groups = candidateGroups(for: required) else { return nil }
+
+        var candidateNodes = 0
+        for group in groups {
+            candidateNodes += postingRange(for: group).count
+            if candidateNodes > Self.maximumStableCandidateNodes { return nil }
         }
         return groups
     }
@@ -667,18 +1051,28 @@ fileprivate final class SearchNameIndex: Sendable {
 
 /// Shares one lossless name-index build across the cached base and every
 /// overlay snapshot. Cache loading can publish its complete node set first and
-/// prewarm this structure in the background; an immediate query waits for the
-/// same build instead of falling back to a reduced result set.
+/// prewarm this structure in the background; an immediate query uses the full
+/// linear node scan until the optional accelerator is ready.
 fileprivate final class SearchNameIndexCache: @unchecked Sendable {
     private let nodes: [IndexedFileNode]
+    private let persistBuiltIndex: (@Sendable (SearchNameIndex) -> Void)?
     private let condition = NSCondition()
     private var index: SearchNameIndex?
     private var isBuilding = false
     private var isBuilt = false
 
-    init(nodes: [IndexedFileNode], buildImmediately: Bool) {
+    init(
+        nodes: [IndexedFileNode],
+        buildImmediately: Bool,
+        initialIndex: SearchNameIndex? = nil,
+        persistBuiltIndex: (@Sendable (SearchNameIndex) -> Void)? = nil
+    ) {
         self.nodes = nodes
-        if buildImmediately {
+        self.persistBuiltIndex = persistBuiltIndex
+        if let initialIndex {
+            index = initialIndex
+            isBuilt = true
+        } else if buildImmediately {
             index = SearchNameIndex(nodes: nodes)
             isBuilt = true
         }
@@ -710,8 +1104,13 @@ fileprivate final class SearchNameIndexCache: @unchecked Sendable {
         }
         isBuilding = true
         condition.unlock()
-        Task.detached(priority: .utility) { [self] in
-            finish(SearchNameIndex(nodes: nodes))
+        Task.detached(priority: .background) { [self] in
+            // Let an immediate launch-time query use the complete linear
+            // fallback before optional posting construction consumes CPU and
+            // memory. Once a search starts, remain behind the foreground gate.
+            try? await Task.sleep(for: .seconds(5))
+            SearchWorkCoordinator.shared.waitForSearchesToFinish()
+            finish(SearchNameIndex(nodes: nodes, yieldsToForegroundSearches: true))
         }
     }
 
@@ -722,6 +1121,18 @@ fileprivate final class SearchNameIndexCache: @unchecked Sendable {
         isBuilding = false
         condition.broadcast()
         condition.unlock()
+        if let built, let persistBuiltIndex {
+            Task.detached(priority: .utility) {
+                persistBuiltIndex(built)
+            }
+        }
+    }
+
+    func readyValue() -> SearchNameIndex? {
+        condition.lock()
+        let value = isBuilt ? index : nil
+        condition.unlock()
+        return value
     }
 }
 
@@ -1076,6 +1487,8 @@ struct SearchIndex: Sendable {
         existenceValidationRoots: [String] = [],
         buildNameIndex: Bool = true,
         deferNameIndexBuild: Bool = false,
+        initialNameIndex: SearchNameIndex? = nil,
+        persistBuiltNameIndex: (@Sendable (SearchNameIndex) -> Void)? = nil,
         basePathsAreCanonicalUnique: Bool? = nil
     ) {
         self.signature = signature
@@ -1101,7 +1514,12 @@ struct SearchIndex: Sendable {
         exactReplacementPaths = exactReplacementLookup.paths
         exactReplacementLeafNames = exactReplacementLookup.leafNames
         nameIndexCache = buildNameIndex
-            ? SearchNameIndexCache(nodes: nodes, buildImmediately: !deferNameIndexBuild)
+            ? SearchNameIndexCache(
+                nodes: nodes,
+                buildImmediately: !deferNameIndexBuild,
+                initialIndex: initialNameIndex,
+                persistBuiltIndex: persistBuiltNameIndex
+            )
             : nil
         let pathProvider = SearchIndexPathProvider(nodes: nodes)
         self.pathProvider = pathProvider
@@ -1290,6 +1708,14 @@ struct SearchIndex: Sendable {
         nameIndexCache?.prewarm()
     }
 
+    var usesPersistedMappedNameIndex: Bool {
+        nameIndexCache?.readyValue()?.isMapped == true
+    }
+
+    fileprivate func nameIndexForPersistence() -> SearchNameIndex? {
+        nameIndexCache?.value()
+    }
+
     func backgroundContentCandidates(
         in range: Range<Int>,
         maxFileSize: Int64,
@@ -1336,7 +1762,7 @@ struct SearchIndex: Sendable {
             )
         }
 
-        let nameIndex = nameIndexCache?.value()
+        let nameIndex = nameIndexCache?.readyValue()
         var references: [Int32] = []
         references.reserveCapacity(min(nodes.count, 250_000))
         var overlayNodes: [ResolvedNode] = []
@@ -1450,30 +1876,18 @@ struct SearchIndex: Sendable {
             )
         }
 
-        if let nameIndex, !query.plan.plainTerms.isEmpty {
-            let requiredTerm = query.requiredNameIndexTerm(options: options)
-            let requiredSignature = requiredTerm.flatMap { term in
-                term.utf8.count >= 3
-                    ? SearchNameIndex.requiredSignature(for: term)
-                    : SearchNameIndex.requiredShortSignature(for: term)
-            }
-            let usesShortSignature = requiredTerm.map { $0.utf8.count < 3 } ?? false
-            let candidateGroups: [Int]? = if !usesShortSignature, let requiredSignature {
-                nameIndex.candidateGroups(for: requiredSignature)
-            } else {
-                nil
-            }
-            let groups = candidateGroups ?? Array(0..<nameIndex.names.count)
+        if let nameIndex,
+           let groups = nameIndex.stableCandidateGroups(
+               for: query.requiredNameIndexTerm(options: options)
+           ) {
             for group in groups {
                 if group.isMultiple(of: 4_096), Task.isCancelled { return nil }
-                let shortName = nameIndex.names[group]
+                let shortName = nameIndex.name(at: group)
                 guard let rank = score(for: shortName) else { continue }
-                let start = Int(nameIndex.offsets[group])
-                let end = Int(nameIndex.offsets[group + 1])
-                for position in start..<end {
+                for position in nameIndex.postingRange(for: group) {
                     if position.isMultiple(of: 4_096), Task.isCancelled { return nil }
                     appendBase(
-                        index: Int(nameIndex.nodeIndices[position]),
+                        index: nameIndex.nodeIndex(at: position),
                         shortName: shortName,
                         rank: rank
                     )
@@ -1498,29 +1912,16 @@ struct SearchIndex: Sendable {
                 replacement.rootPath
             )
             if let replacementIndex = replacement.nameIndex,
-               !query.plan.plainTerms.isEmpty {
-                let requiredTerm = query.requiredNameIndexTerm(options: options)
-                let requiredSignature = requiredTerm.flatMap { term in
-                    term.utf8.count >= 3
-                        ? SearchNameIndex.requiredSignature(for: term)
-                        : SearchNameIndex.requiredShortSignature(for: term)
-                }
-                let usesShortSignature = requiredTerm.map { $0.utf8.count < 3 } ?? false
-                let candidateGroups: [Int]? = if !usesShortSignature, let requiredSignature {
-                    replacementIndex.candidateGroups(for: requiredSignature)
-                } else {
-                    nil
-                }
-                let groups = candidateGroups ?? Array(0..<replacementIndex.names.count)
+               let groups = replacementIndex.stableCandidateGroups(
+                   for: query.requiredNameIndexTerm(options: options)
+               ) {
                 for group in groups {
                     if group.isMultiple(of: 4_096), Task.isCancelled { return nil }
-                    let shortName = replacementIndex.names[group]
+                    let shortName = replacementIndex.name(at: group)
                     guard let rank = score(for: shortName) else { continue }
-                    let start = Int(replacementIndex.offsets[group])
-                    let end = Int(replacementIndex.offsets[group + 1])
-                    for position in start..<end {
+                    for position in replacementIndex.postingRange(for: group) {
                         appendReplacement(
-                            replacement.nodes[Int(replacementIndex.nodeIndices[position])],
+                            replacement.nodes[replacementIndex.nodeIndex(at: position)],
                             shortName: shortName,
                             replacementRoot: replacement.rootPath,
                             requiresOwnershipCheck: requiresOwnershipCheck,
@@ -1564,7 +1965,7 @@ struct SearchIndex: Sendable {
         usageSnapshot: SearchUsageSnapshot? = nil
     ) -> [ResolvedNode] {
         if let limit, limit <= 0 { return [] }
-        let nameIndex = nameIndexCache?.value()
+        let nameIndex = nameIndexCache?.readyValue()
         var results: [ResolvedNode] = []
         var rankingScores: [UInt8] = []
         var seenPaths = Set<String>()
@@ -1602,32 +2003,20 @@ struct SearchIndex: Sendable {
         var replacementCoverageResolver = baseReplacementCoverage == nil
             ? BaseReplacementCoverageResolver(replacements: replacements, nodeCount: nodes.count)
             : nil
-        if let nameIndex, !query.plan.plainTerms.isEmpty {
-            let requiredTerm = query.requiredNameIndexTerm(options: options)
-            let requiredSignature = requiredTerm.flatMap { term in
-                term.utf8.count >= 3
-                    ? SearchNameIndex.requiredSignature(for: term)
-                    : SearchNameIndex.requiredShortSignature(for: term)
-            }
-            let usesShortSignature = requiredTerm.map { $0.utf8.count < 3 } ?? false
-            let candidateGroups: [Int]? = if !usesShortSignature, let requiredSignature {
-                nameIndex.candidateGroups(for: requiredSignature)
-            } else {
-                nil
-            }
-            let groups = candidateGroups ?? Array(0..<nameIndex.names.count)
+        if let nameIndex,
+           let groups = nameIndex.stableCandidateGroups(
+               for: query.requiredNameIndexTerm(options: options)
+           ) {
             for group in groups {
                 if group.isMultiple(of: 4_096), Task.isCancelled { return [] }
-                    let shortName = nameIndex.names[group]
+                    let shortName = nameIndex.name(at: group)
                     let evaluation = evaluateName(shortName)
                     guard evaluation.matches else { continue }
-                    let start = Int(nameIndex.offsets[group])
-                    let end = Int(nameIndex.offsets[group + 1])
-                    for position in start..<end {
+                    for position in nameIndex.postingRange(for: group) {
                         if position.isMultiple(of: 4_096), Task.isCancelled { return [] }
                         let previousCount = results.count
                         appendBaseNameMatch(
-                            at: Int(nameIndex.nodeIndices[position]),
+                            at: nameIndex.nodeIndex(at: position),
                             shortName: shortName,
                             query: query,
                             options: options,
@@ -1682,31 +2071,19 @@ struct SearchIndex: Sendable {
             let requiresOwnershipCheck = replacementRootsRequiringOwnershipCheck.contains(
                 replacement.rootPath
             )
-            if let replacementIndex = replacement.nameIndex, !query.plan.plainTerms.isEmpty {
-                let requiredTerm = query.requiredNameIndexTerm(options: options)
-                let requiredSignature = requiredTerm.flatMap { term in
-                    term.utf8.count >= 3
-                        ? SearchNameIndex.requiredSignature(for: term)
-                        : SearchNameIndex.requiredShortSignature(for: term)
-                }
-                let usesShortSignature = requiredTerm.map { $0.utf8.count < 3 } ?? false
-                let candidateGroups: [Int]? = if !usesShortSignature, let requiredSignature {
-                    replacementIndex.candidateGroups(for: requiredSignature)
-                } else {
-                    nil
-                }
-                let groups = candidateGroups ?? Array(0..<replacementIndex.names.count)
+            if let replacementIndex = replacement.nameIndex,
+               let groups = replacementIndex.stableCandidateGroups(
+                   for: query.requiredNameIndexTerm(options: options)
+               ) {
                 for group in groups {
                     if group.isMultiple(of: 4_096), Task.isCancelled { return [] }
-                        let shortName = replacementIndex.names[group]
+                        let shortName = replacementIndex.name(at: group)
                         let evaluation = evaluateName(shortName)
                         guard evaluation.matches else { continue }
-                        let start = Int(replacementIndex.offsets[group])
-                        let end = Int(replacementIndex.offsets[group + 1])
-                        for position in start..<end {
+                        for position in replacementIndex.postingRange(for: group) {
                             let previousCount = results.count
                             appendReplacementNameMatch(
-                                replacement.nodes[Int(replacementIndex.nodeIndices[position])],
+                                replacement.nodes[replacementIndex.nodeIndex(at: position)],
                                 shortName: shortName,
                                 replacementRoot: replacement.rootPath,
                                 requiresOwnershipCheck: requiresOwnershipCheck,
@@ -2037,17 +2414,16 @@ struct SearchIndex: Sendable {
         rootIndices.reserveCapacity(selected.count)
         let nameIndex = nameIndexCache?.value()
         if let nameIndex {
-            // `SearchNameIndex.names` is grouped in insertion order rather
+            // Name groups are kept in insertion order rather
             // than sorted order. Looking up every replacement with
             // `firstIndex` made a large durable checkpoint O(roots × names).
             // Scan the name groups once and resolve paths only for matching
             // leaf names.
-            for (group, shortName) in nameIndex.names.enumerated() {
+            for group in 0..<nameIndex.nameCount {
+                let shortName = nameIndex.name(at: group)
                 guard let expectedRoots = rootsByLeafName[shortName] else { continue }
-                let start = Int(nameIndex.offsets[group])
-                let end = Int(nameIndex.offsets[group + 1])
-                for position in start..<end {
-                    let index = Int(nameIndex.nodeIndices[position])
+                for position in nameIndex.postingRange(for: group) {
+                    let index = nameIndex.nodeIndex(at: position)
                     let candidatePath = SearchPath.canonicalAliasPath(path(for: index))
                     if expectedRoots.contains(candidatePath) {
                         rootIndices.insert(index)
@@ -2248,11 +2624,12 @@ enum SearchRanking {
                     let usageOrder = usageOrder(lhs.usage, rhs.usage)
                     if usageOrder != 0 { return usageOrder < 0 }
                     if lhs.depth != rhs.depth { return lhs.depth < rhs.depth }
-                    // Index order is deterministic and already serves as the
-                    // broad-query tie break. Reusing it here avoids resolving
-                    // every full path solely to alphabetize equal-relevance
-                    // rows that are not yet visible.
-                    return lhs.ordinal < rhs.ordinal
+                    return stableNodeOrder(
+                        lhs.node,
+                        ordinal: lhs.ordinal,
+                        before: rhs.node,
+                        ordinal: rhs.ordinal
+                    )
                 }
                 .map(\.node)
             return sorted
@@ -2387,7 +2764,12 @@ enum SearchRanking {
                     let order = usageOrder(lhs.usage, rhs.usage)
                     if order != 0 { return order < 0 }
                     if lhs.depth != rhs.depth { return lhs.depth < rhs.depth }
-                    return lhs.ordinal < rhs.ordinal
+                    return stableReferenceOrder(
+                        lhs.reference,
+                        ordinal: lhs.ordinal,
+                        before: rhs.reference,
+                        ordinal: rhs.ordinal
+                    )
                 }
                 let usedOrdinals = Set(used.map(\.ordinal))
                 var output = used.map(\.reference)
@@ -2572,6 +2954,45 @@ enum SearchRanking {
                 return lhs.lastOpened > rhs.lastOpened ? -1 : 1
             }
             return 0
+        }
+    }
+
+    /// Optional posting indexes can enumerate equal-name nodes together. Use
+    /// the durable base-node ID instead of arrival order so the visible result
+    /// order is identical before and after a background name index is ready.
+    private static func stableNodeOrder(
+        _ lhs: ResolvedNode,
+        ordinal lhsOrdinal: Int,
+        before rhs: ResolvedNode,
+        ordinal rhsOrdinal: Int
+    ) -> Bool {
+        switch (lhs.indexedOrder, rhs.indexedOrder) {
+        case (.some(let left), .some(let right)) where left != right:
+            return left < right
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        default:
+            return lhsOrdinal < rhsOrdinal
+        }
+    }
+
+    private static func stableReferenceOrder(
+        _ lhs: Int32,
+        ordinal lhsOrdinal: Int,
+        before rhs: Int32,
+        ordinal rhsOrdinal: Int
+    ) -> Bool {
+        switch (lhs >= 0, rhs >= 0) {
+        case (true, true) where lhs != rhs:
+            return lhs < rhs
+        case (true, false):
+            return true
+        case (false, true):
+            return false
+        default:
+            return lhsOrdinal < rhsOrdinal
         }
     }
 
@@ -3298,7 +3719,8 @@ actor SearchIndexStore {
                 lastEventID: baselineEventID,
                 unresolvedPaths: queryReadyResult.unresolvedPaths,
                 pathsAreFresh: true,
-                hasCompleteMetadata: false
+                hasCompleteMetadata: false,
+                deferNameIndexBuild: true
             )
             index = queryReadyIndex
             knownUnavailablePaths = Set(
@@ -3369,7 +3791,8 @@ actor SearchIndexStore {
             nodes: enrichedNodes,
             lastEventID: baselineEventID,
             unresolvedPaths: buildResult.unresolvedPaths,
-            pathsAreFresh: true
+            pathsAreFresh: true,
+            deferNameIndexBuild: true
         )
         knownUnavailablePaths = Set(buildResult.unresolvedPaths.map(SearchPath.canonicalAliasPath))
         var stats = nextIndex.stats
@@ -5751,6 +6174,7 @@ enum SearchIndexPersistence {
     private static let deltaVersion = 4
     private static let maximumDeltaBytes = 128 * 1_024 * 1_024
     private static let maximumDeltaPaths = 500_000
+    private static let nameIndexPersistenceLock = NSLock()
 
     struct Delta: Sendable {
         let subtreePaths: [String]
@@ -5904,13 +6328,24 @@ enum SearchIndexPersistence {
     static func load(signature: SearchIndexSignature, from url: URL? = nil) -> SearchIndex? {
         let targetURL = url ?? cacheURL
         guard let storedData = try? Data(contentsOf: targetURL, options: .mappedIfSafe) else { return nil }
+        let baseDigest = Data(SHA256.hash(data: storedData))
         if storedData.starts(with: compressedMagic.utf8) {
             guard let data = decompress(storedData) else { return nil }
-            return decode(data, expectedSignature: signature)
+            return decode(
+                data,
+                expectedSignature: signature,
+                baseDigest: baseDigest,
+                baseURL: targetURL
+            )
         }
         // Raw OFIX v18 remains readable so the first optimized build can reuse
         // the user's existing index and compress it on the next safe save.
-        return decode(storedData, expectedSignature: signature)
+        return decode(
+            storedData,
+            expectedSignature: signature,
+            baseDigest: baseDigest,
+            baseURL: targetURL
+        )
     }
 
     static func loadDelta(
@@ -6073,6 +6508,11 @@ enum SearchIndexPersistence {
         return targetURL.deletingPathExtension().appendingPathExtension("delta.plist")
     }
 
+    static func nameIndexURL(for url: URL? = nil) -> URL {
+        let targetURL = url ?? cacheURL
+        return targetURL.deletingPathExtension().appendingPathExtension("names-v1.bin")
+    }
+
     /// Cache writes are visible in the event log but must not feed the index
     /// journal back into itself. MarkSelf identifies atomic temporary files;
     /// exact base/delta paths are also filtered during historical replay.
@@ -6081,8 +6521,12 @@ enum SearchIndexPersistence {
         let canonicalPath = SearchPath.canonicalAliasPath(path)
         let basePath = SearchPath.canonicalAliasPath(targetURL.path(percentEncoded: false))
         let deltaPath = SearchPath.canonicalAliasPath(deltaURL(for: targetURL).path(percentEncoded: false))
+        let nameIndexPath = SearchPath.canonicalAliasPath(
+            nameIndexURL(for: targetURL).path(percentEncoded: false)
+        )
         if canonicalPath == basePath
             || canonicalPath == deltaPath
+            || canonicalPath == nameIndexPath
             || ContentSearchIndex.isDatabaseEvent(path: canonicalPath, indexURL: targetURL) {
             return true
         }
@@ -6103,9 +6547,20 @@ enum SearchIndexPersistence {
         let rawData = encode(index)
         let data = compress(rawData) ?? rawData
         let targetURL = url ?? cacheURL
+        let baseDigest = Data(SHA256.hash(data: data))
+        let nameIndexData = index.nameIndexForPersistence()?.sidecarData(
+            baseDigest: baseDigest
+        )
+        nameIndexPersistenceLock.lock()
+        defer { nameIndexPersistenceLock.unlock() }
         do {
             try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: targetURL, options: .atomic)
+            if let nameIndexData {
+                try nameIndexData.write(to: nameIndexURL(for: targetURL), options: .atomic)
+            } else {
+                try? FileManager.default.removeItem(at: nameIndexURL(for: targetURL))
+            }
             if removeDelta {
                 try? FileManager.default.removeItem(at: deltaURL(for: targetURL))
             }
@@ -6120,6 +6575,7 @@ enum SearchIndexPersistence {
                 let artifacts = [
                     oldURL,
                     oldStem.appendingPathExtension("delta.plist"),
+                    oldStem.appendingPathExtension("names-v1.bin"),
                     oldStem.appendingPathExtension("content-v1.sqlite3"),
                     URL(fileURLWithPath: oldStem.path + ".content-v1.sqlite3-wal"),
                     URL(fileURLWithPath: oldStem.path + ".content-v1.sqlite3-shm"),
@@ -6131,6 +6587,19 @@ enum SearchIndexPersistence {
         } catch {
             // Cache persistence failure should not break search
         }
+    }
+
+    private static func persistBuiltNameIndex(
+        _ nameIndex: SearchNameIndex,
+        baseDigest: Data,
+        baseURL: URL
+    ) {
+        guard let sidecarData = nameIndex.sidecarData(baseDigest: baseDigest) else { return }
+        nameIndexPersistenceLock.lock()
+        defer { nameIndexPersistenceLock.unlock() }
+        guard let currentBase = try? Data(contentsOf: baseURL, options: .mappedIfSafe),
+              Data(SHA256.hash(data: currentBase)) == baseDigest else { return }
+        try? sidecarData.write(to: nameIndexURL(for: baseURL), options: .atomic)
     }
 
     static var cacheURL: URL {
@@ -6272,15 +6741,27 @@ enum SearchIndexPersistence {
         return decodedSize == decoded.count ? decoded : nil
     }
 
-    private static func decode(_ data: Data, expectedSignature: SearchIndexSignature) -> SearchIndex? {
+    private static func decode(
+        _ data: Data,
+        expectedSignature: SearchIndexSignature,
+        baseDigest: Data,
+        baseURL: URL
+    ) -> SearchIndex? {
         data.withUnsafeBytes { bytes in
-            decode(bytes, expectedSignature: expectedSignature)
+            decode(
+                bytes,
+                expectedSignature: expectedSignature,
+                baseDigest: baseDigest,
+                baseURL: baseURL
+            )
         }
     }
 
     private static func decode(
         _ bytes: UnsafeRawBufferPointer,
-        expectedSignature: SearchIndexSignature
+        expectedSignature: SearchIndexSignature,
+        baseDigest: Data,
+        baseURL: URL
     ) -> SearchIndex? {
         var reader = BinaryReader(bytes: bytes)
 
@@ -6393,12 +6874,25 @@ enum SearchIndexPersistence {
             ))
         }
 
+        let persistedNameIndex = SearchNameIndex.loadMapped(
+            nodes: nodes,
+            baseDigest: baseDigest,
+            from: nameIndexURL(for: baseURL)
+        )
         return SearchIndex(
             signature: loadedSignature,
             nodes: nodes,
             lastEventID: encodedLastEventID == 0 ? nil : encodedLastEventID,
             unresolvedPaths: canonicalUnresolvedPaths,
             deferNameIndexBuild: true,
+            initialNameIndex: persistedNameIndex,
+            persistBuiltNameIndex: { nameIndex in
+                SearchIndexPersistence.persistBuiltNameIndex(
+                    nameIndex,
+                    baseDigest: baseDigest,
+                    baseURL: baseURL
+                )
+            },
             basePathsAreCanonicalUnique: true
         )
     }

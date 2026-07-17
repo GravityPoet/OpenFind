@@ -1417,7 +1417,7 @@ struct SearchIndexTests {
     @Test func uniqueNameIndexMatchesSerialSearchWithoutDroppingDuplicatesOrPinyin() throws {
         let root = "/tmp/openfind-name-index"
         let signature = SearchIndexSignature(scopes: [URL(fileURLWithPath: root)], deepIndex: true)
-        let nodes = SearchIndexBuilder.assembleIndexedNodes(from: [
+        var tempNodes = [
             tempNode(path: root, isDirectory: true),
             tempNode(path: "\(root)/a", isDirectory: true),
             tempNode(path: "\(root)/b", isDirectory: true),
@@ -1425,9 +1425,25 @@ struct SearchIndexTests {
             tempNode(path: "\(root)/b/report.txt"),
             tempNode(path: "\(root)/b/notes.md"),
             tempNode(path: "\(root)/测试文件.txt"),
-        ])
+        ]
+        tempNodes.append(contentsOf: (0..<1_500).map { index in
+            tempNode(path: "\(root)/noise-\(index).txt")
+        })
+        let nodes = SearchIndexBuilder.assembleIndexedNodes(from: tempNodes)
         let indexed = SearchIndex(signature: signature, nodes: nodes)
         let serial = SearchIndex(signature: signature, nodes: nodes, buildNameIndex: false)
+        let cacheURL = createCacheURL()
+        let nameIndexURL = SearchIndexPersistence.nameIndexURL(for: cacheURL)
+        defer {
+            try? FileManager.default.removeItem(at: cacheURL)
+            try? FileManager.default.removeItem(at: nameIndexURL)
+        }
+        SearchIndexPersistence.save(index: indexed, to: cacheURL)
+        let mapped = try #require(SearchIndexPersistence.load(
+            signature: signature,
+            from: cacheURL
+        ))
+        #expect(mapped.usesPersistedMappedNameIndex)
 
         for rawQuery in ["report", "re", "a", "report OR ext:md", "cswj", "NOT report"] {
             var options = SearchOptions()
@@ -1436,7 +1452,9 @@ struct SearchIndexTests {
             let query = try SearchQueryPlan.parse(rawQuery).compile(options: options)
             let indexedPaths = indexed.nameMatches(query: query, options: options).map(\.path)
             let serialPaths = serial.nameMatches(query: query, options: options).map(\.path)
+            let mappedPaths = mapped.nameMatches(query: query, options: options).map(\.path)
             #expect(indexedPaths == serialPaths)
+            #expect(mappedPaths == serialPaths)
         }
     }
 
@@ -2168,6 +2186,8 @@ struct SearchIndexTests {
     @Test func largeBaseSnapshotUsesCompressedEnvelopeAndRejectsTruncation() throws {
         let cacheURL = createCacheURL()
         defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let nameIndexURL = SearchIndexPersistence.nameIndexURL(for: cacheURL)
+        defer { try? FileManager.default.removeItem(at: nameIndexURL) }
         let signature = SearchIndexSignature(scopes: [URL(fileURLWithPath: "/tmp")])
         var nodes = [IndexedFileNode(
             name: "/tmp",
@@ -2182,7 +2202,7 @@ struct SearchIndexTests {
         nodes.reserveCapacity(20_001)
         for index in 0..<20_000 {
             nodes.append(IndexedFileNode(
-                name: "repeated-name-\(index % 100).txt",
+                name: "repeated-name-\(index % 2_000).txt",
                 parentIndex: 0,
                 isDirectory: false,
                 size: Int64(index % 10),
@@ -2197,9 +2217,23 @@ struct SearchIndexTests {
 
         let stored = try Data(contentsOf: cacheURL)
         #expect(String(bytes: stored.prefix(4), encoding: .utf8) == "OFZ1")
+        #expect(FileManager.default.fileExists(atPath: nameIndexURL.path))
         let loaded = try #require(SearchIndexPersistence.load(signature: signature, from: cacheURL))
         #expect(loaded.nodes.count == nodes.count)
         #expect(loaded.nodes.last?.name == nodes.last?.name)
+        #expect(loaded.usesPersistedMappedNameIndex)
+
+        var options = SearchOptions(query: "repeated-name-1999")
+        options.target = .name
+        let query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(loaded.nameMatches(query: query, options: options).count == 10)
+
+        var corruptNameIndex = try Data(contentsOf: nameIndexURL)
+        corruptNameIndex[corruptNameIndex.count - 1] ^= 0xFF
+        try corruptNameIndex.write(to: nameIndexURL, options: .atomic)
+        let fallback = try #require(SearchIndexPersistence.load(signature: signature, from: cacheURL))
+        #expect(!fallback.usesPersistedMappedNameIndex)
+        #expect(fallback.nameMatches(query: query, options: options).count == 10)
 
         try stored.prefix(stored.count / 2).write(to: cacheURL, options: .atomic)
         #expect(SearchIndexPersistence.load(signature: signature, from: cacheURL) == nil)
@@ -2629,6 +2663,7 @@ struct SearchIndexTests {
     @Test func indexWatcherFiltersOnlyInternalPersistenceEvents() {
         let baseURL = URL(fileURLWithPath: "/tmp/OpenFind/search-index-v18.bin")
         let deltaURL = SearchIndexPersistence.deltaURL(for: baseURL)
+        let nameIndexURL = SearchIndexPersistence.nameIndexURL(for: baseURL)
         let ownFlags = UInt32(kFSEventStreamEventFlagOwnEvent | kFSEventStreamEventFlagItemIsFile)
 
         #expect(SearchIndexPersistence.isInternalIndexEvent(
@@ -2638,6 +2673,11 @@ struct SearchIndexTests {
         ))
         #expect(SearchIndexPersistence.isInternalIndexEvent(
             path: deltaURL.path,
+            flags: UInt32(kFSEventStreamEventFlagItemIsFile),
+            baseURL: baseURL
+        ))
+        #expect(SearchIndexPersistence.isInternalIndexEvent(
+            path: nameIndexURL.path,
             flags: UInt32(kFSEventStreamEventFlagItemIsFile),
             baseURL: baseURL
         ))

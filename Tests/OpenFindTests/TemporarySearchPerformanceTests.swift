@@ -122,6 +122,22 @@ struct TemporarySearchPerformanceTests {
             fileURLWithPath: environment["OPENFIND_PERF_SCOPE"] ?? "/",
             isDirectory: true
         )
+        if environment["OPENFIND_PERF_DIRECT_LOAD"] == "1" {
+            let directStarted = ContinuousClock.now
+            let direct = SearchIndexPersistence.load(
+                signature: SearchIndexSignature(
+                    scopes: [scope],
+                    deepIndex: true,
+                    hasFullDiskAccess: true
+                ),
+                from: URL(fileURLWithPath: cachePath)
+            )
+            print(
+                "perf direct-load=\(directStarted.duration(to: .now)) "
+                    + "nodes=\(direct?.nodes.count ?? 0) "
+                    + "mapped=\(direct?.usesPersistedMappedNameIndex ?? false)"
+            )
+        }
         let rounds = max(1, Int(environment["OPENFIND_PERF_ROUNDS"] ?? "6") ?? 6)
         let outputDirectory = environment["OPENFIND_PERF_OUTPUT_DIR"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
@@ -141,11 +157,37 @@ struct TemporarySearchPerformanceTests {
             : ["swiftui", "OpenFindAfterZ9A7C2"]
 
         options.query = "OpenFindWarmupZ9A7C2"
+        let snapshotStarted = ContinuousClock.now
+        let preparedIndex = await store.snapshot(
+            for: [scope],
+            deepIndex: true,
+            hasFullDiskAccess: true
+        )
+        print(
+            "perf cache-snapshot=\(snapshotStarted.duration(to: .now)) "
+                + "mapped=\(preparedIndex.usesPersistedMappedNameIndex)"
+        )
         let loadStarted = ContinuousClock.now
         _ = await SearchEngine.nameResultSnapshot(
             scopes: [scope], options: options, store: store
         )
         print("perf load-and-warm=\(loadStarted.duration(to: .now))")
+        if environment["OPENFIND_PERF_PERSIST_NAME_INDEX"] == "1" {
+            let index = await store.snapshot(
+                for: [scope],
+                deepIndex: true,
+                hasFullDiskAccess: true
+            )
+            SearchIndexPersistence.save(
+                index: index,
+                to: URL(fileURLWithPath: cachePath),
+                removeDelta: false
+            )
+            let persistedNameIndexPath = SearchIndexPersistence.nameIndexURL(
+                for: URL(fileURLWithPath: cachePath)
+            ).path
+            print("perf persisted-name-index=\(persistedNameIndexPath)")
+        }
 
         for round in 0..<rounds {
             for queryOffset in queries.indices {
@@ -170,6 +212,7 @@ struct TemporarySearchPerformanceTests {
                 )
             }
         }
+        print("perf peak-rss=\(peakResidentBytes())")
 
         if let outputDirectory {
             try FileManager.default.createDirectory(
@@ -209,6 +252,208 @@ struct TemporarySearchPerformanceTests {
                 )
             }
         }
+    }
+
+    @Test func generateConfiguredPersistedNameIndex() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let cachePath = environment["OPENFIND_NAME_BENCHMARK_CACHE"],
+              let rawNodeCount = environment["OPENFIND_NAME_BENCHMARK_NODES"],
+              let nodeCount = Int(rawNodeCount), nodeCount >= 1_024 else { return }
+
+        let cacheURL = URL(fileURLWithPath: cachePath)
+        let scope = URL(fileURLWithPath: "/openfind-generated-name-benchmark", isDirectory: true)
+        let signature = SearchIndexSignature(
+            scopes: [scope],
+            deepIndex: true,
+            hasFullDiskAccess: true
+        )
+        var nodes = [IndexedFileNode(
+            name: scope.path,
+            parentIndex: -1,
+            isDirectory: true,
+            size: 0,
+            modifiedTime: 0,
+            creationTime: 0,
+            isHiddenScope: false,
+            isPackageDescendant: false
+        )]
+        nodes.reserveCapacity(nodeCount + 1)
+        for index in 0..<nodeCount {
+            let name: String
+            if index.isMultiple(of: 997) {
+                name = "mappedneedle-\(index).swift"
+            } else if index.isMultiple(of: 4) {
+                name = "shared-name-\(index % 1_000).txt"
+            } else {
+                name = "generated-name-\(index).swift"
+            }
+            nodes.append(IndexedFileNode(
+                name: name,
+                parentIndex: 0,
+                isDirectory: false,
+                size: Int64(index),
+                modifiedTime: 0,
+                creationTime: 0,
+                isHiddenScope: false,
+                isPackageDescendant: false
+            ))
+        }
+
+        let index = SearchIndex(
+            signature: signature,
+            nodes: nodes,
+            pathsAreFresh: true
+        )
+        SearchIndexPersistence.save(index: index, to: cacheURL)
+        let nameIndexURL = SearchIndexPersistence.nameIndexURL(for: cacheURL)
+        #expect(FileManager.default.fileExists(atPath: cacheURL.path))
+        #expect(FileManager.default.fileExists(atPath: nameIndexURL.path))
+        let baseBytes = (try? cacheURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let nameBytes = (try? nameIndexURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        print(
+            "name-index-generate nodes=\(nodeCount) base=\(baseBytes) "
+                + "sidecar=\(nameBytes)"
+        )
+    }
+
+    @Test func compareConfiguredPersistedNameIndexWithLinearOracle() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let cachePath = environment["OPENFIND_NAME_EQUIVALENCE_CACHE"],
+              let scopePath = environment["OPENFIND_NAME_EQUIVALENCE_SCOPE"] else { return }
+        let cacheURL = URL(fileURLWithPath: cachePath)
+        let scope = URL(fileURLWithPath: scopePath, isDirectory: true)
+        let signature = SearchIndexSignature(
+            scopes: [scope],
+            deepIndex: true,
+            hasFullDiskAccess: true
+        )
+        let baseline = try #require(SearchIndexPersistence.load(
+            signature: signature,
+            from: cacheURL
+        ))
+        #expect(!baseline.usesPersistedMappedNameIndex)
+        let queries = (environment["OPENFIND_NAME_EQUIVALENCE_QUERIES"]
+            ?? "swiftui,OpenFindAfterZ9A7C2,package")
+            .split(separator: ",")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+
+        var baselinePaths: [String: [String]] = [:]
+        for rawQuery in queries {
+            var options = SearchOptions(query: rawQuery)
+            options.target = .name
+            options.deepIndex = true
+            options.includeHidden = true
+            options.includePackages = true
+            options.useFrequencyRanking = false
+            let query = try SearchQueryPlan.parse(rawQuery).compile(options: options)
+            baselinePaths[rawQuery] = baseline.nameMatches(
+                query: query,
+                options: options
+            ).map(\.path)
+        }
+
+        SearchIndexPersistence.save(index: baseline, to: cacheURL, removeDelta: false)
+        let mapped = try #require(SearchIndexPersistence.load(
+            signature: signature,
+            from: cacheURL
+        ))
+        #expect(mapped.usesPersistedMappedNameIndex)
+        for rawQuery in queries {
+            var options = SearchOptions(query: rawQuery)
+            options.target = .name
+            options.deepIndex = true
+            options.includeHidden = true
+            options.includePackages = true
+            options.useFrequencyRanking = false
+            let query = try SearchQueryPlan.parse(rawQuery).compile(options: options)
+            let mappedPaths = mapped.nameMatches(query: query, options: options).map(\.path)
+            let expectedPaths = baselinePaths[rawQuery] ?? []
+            let exact = mappedPaths == expectedPaths
+            if !exact {
+                let expectedSet = Set(expectedPaths)
+                let mappedSet = Set(mappedPaths)
+                let firstOrderDifference = zip(expectedPaths, mappedPaths)
+                    .first(where: { $0 != $1 })
+                print(
+                    "name-index-equivalence-difference query=\(rawQuery) "
+                        + "expected=\(expectedPaths.count) actual=\(mappedPaths.count) "
+                        + "missing=\(expectedSet.subtracting(mappedSet).prefix(3)) "
+                        + "extra=\(mappedSet.subtracting(expectedSet).prefix(3)) "
+                        + "firstOrder=\(String(describing: firstOrderDifference))"
+                )
+            }
+            #expect(exact)
+            print(
+                "name-index-equivalence query=\(rawQuery) "
+                    + "count=\(mappedPaths.count) exact=\(exact)"
+            )
+        }
+    }
+
+    @Test func measureConfiguredPersistedNameIndex() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let cachePath = environment["OPENFIND_NAME_BENCHMARK_CACHE"],
+              let rawNodeCount = environment["OPENFIND_NAME_BENCHMARK_NODES"],
+              let nodeCount = Int(rawNodeCount), nodeCount >= 1_024 else { return }
+
+        let cacheURL = URL(fileURLWithPath: cachePath)
+        let scope = URL(fileURLWithPath: "/openfind-generated-name-benchmark", isDirectory: true)
+        let signature = SearchIndexSignature(
+            scopes: [scope],
+            deepIndex: true,
+            hasFullDiskAccess: true
+        )
+        let loadStarted = ContinuousClock.now
+        let loaded = try #require(SearchIndexPersistence.load(
+            signature: signature,
+            from: cacheURL
+        ))
+        let loadElapsed = loadStarted.duration(to: .now)
+        #expect(loaded.usesPersistedMappedNameIndex)
+        #expect(loaded.nodes.count == nodeCount + 1)
+
+        var options = SearchOptions(query: "mappedneedle")
+        options.target = .name
+        options.deepIndex = true
+        options.includeHidden = true
+        options.includePackages = true
+        options.useFrequencyRanking = false
+        let query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        let queryStarted = ContinuousClock.now
+        let results = loaded.nameMatches(query: query, options: options)
+        let queryElapsed = queryStarted.duration(to: .now)
+        let expectedCount = (nodeCount + 996) / 997
+        #expect(results.count == expectedCount)
+        #expect(results.allSatisfy { $0.name.contains("mappedneedle") })
+
+        let loadMilliseconds = Self.milliseconds(loadElapsed)
+        let queryMilliseconds = Self.milliseconds(queryElapsed)
+        let peakRSS = peakResidentBytes()
+        let maximumLoadMilliseconds = Int64(
+            environment["OPENFIND_NAME_BENCHMARK_MAX_LOAD_MS"] ?? "5000"
+        ) ?? 5_000
+        let maximumQueryMilliseconds = Int64(
+            environment["OPENFIND_NAME_BENCHMARK_MAX_QUERY_MS"] ?? "1000"
+        ) ?? 1_000
+        let maximumRSS = Int64(
+            environment["OPENFIND_NAME_BENCHMARK_MAX_RSS_MB"] ?? "768"
+        ) ?? 768
+
+        print(
+            "name-index-load nodes=\(nodeCount) load-ms=\(loadMilliseconds) "
+                + "query-ms=\(queryMilliseconds) peak-rss=\(peakRSS) "
+                + "expected=\(expectedCount) actual=\(results.count) mapped=true"
+        )
+        #expect(loadMilliseconds <= maximumLoadMilliseconds)
+        #expect(queryMilliseconds <= maximumQueryMilliseconds)
+        #expect(peakRSS <= maximumRSS * 1_024 * 1_024)
+    }
+
+    private static func milliseconds(_ duration: Duration) -> Int64 {
+        let components = duration.components
+        return components.seconds * 1_000
+            + components.attoseconds / 1_000_000_000_000_000
     }
 
     @Test func measureGeneratedContentIndex() async throws {
@@ -290,6 +535,7 @@ struct TemporarySearchPerformanceTests {
         #expect(actualPaths == expectedPaths)
         #expect(diagnostics.indexedDocuments == fileCount)
         #expect(diagnostics.uniqueContentBodies == (fileCount + copiesPerBody - 1) / copiesPerBody)
+        #expect(diagnostics.databaseBytes <= 4 * 1_024 * 1_024 * 1_024)
         let transactionsByCount = (fileCount + 4_095) / 4_096
         let transactionByteLimit: Int64 = 32 * 1_024 * 1_024
         let transactionsByBytes = Int((inputTextBytes + transactionByteLimit - 1) / transactionByteLimit)
