@@ -56,6 +56,14 @@ struct ContentSearchIndexTests {
         return value
     }
 
+    private func executeSQLite(databaseURL: URL, sql: String) -> Bool {
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK,
+              let database else { return false }
+        defer { sqlite3_close_v2(database) }
+        return sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK
+    }
+
     private func createLegacyIndex(
         at databaseURL: URL,
         node: ResolvedNode,
@@ -443,6 +451,60 @@ struct ContentSearchIndexTests {
         #expect(diagnostics.indexedDocuments == 520)
         #expect(diagnostics.recordTransactions == 1)
         #expect(diagnostics.checkpoints == 1)
+    }
+
+    @Test func backgroundReconciliationReadsMetadataWithoutQueryingFTS() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileURL = root.appendingPathComponent("metadata-only.txt")
+        try "first body".write(to: fileURL, atomically: true, encoding: .utf8)
+        let original = try resolvedNode(for: fileURL)
+        let databaseURL = root.appendingPathComponent("content.sqlite3")
+        let index = ContentSearchIndex(databaseURL: databaseURL)
+        #expect(await index.record([
+            ContentIndexRecord(node: original, text: "first body"),
+        ]))
+        #expect(await index.enrichmentCandidates([original]).isEmpty)
+
+        try "changed body".write(to: fileURL, atomically: true, encoding: .utf8)
+        let changed = try resolvedNode(for: fileURL)
+        #expect(executeSQLite(databaseURL: databaseURL, sql: "DROP TABLE content_fts"))
+
+        let stale = await index.enrichmentCandidates([changed])
+        #expect(stale.map(\.path) == [changed.path])
+    }
+
+    @Test func subtreeInvalidationUsesExactDirectoryBoundaries() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("folder", isDirectory: true)
+        let nested = target.appendingPathComponent("nested", isDirectory: true)
+        let sibling = root.appendingPathComponent("folder0", isDirectory: true)
+        let lexicalSibling = root.appendingPathComponent("folderish", isDirectory: true)
+        for directory in [nested, sibling, lexicalSibling] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let urls = [
+            target.appendingPathComponent("inside.txt"),
+            nested.appendingPathComponent("deep.txt"),
+            sibling.appendingPathComponent("sibling.txt"),
+            lexicalSibling.appendingPathComponent("outside.txt"),
+        ]
+        for (offset, url) in urls.enumerated() {
+            try "body \(offset)".write(to: url, atomically: true, encoding: .utf8)
+        }
+        let records = try urls.enumerated().map { offset, url in
+            ContentIndexRecord(node: try resolvedNode(for: url), text: "body \(offset)")
+        }
+        let index = ContentSearchIndex(databaseURL: root.appendingPathComponent("content.sqlite3"))
+        #expect(await index.record(records))
+
+        await index.invalidate(exactPaths: [], subtreePaths: [target.path])
+
+        let diagnostics = await index.diagnostics()
+        #expect(diagnostics.indexedDocuments == 2)
+        let survivors = try [urls[2], urls[3]].map { try resolvedNode(for: $0) }
+        #expect(await index.enrichmentCandidates(survivors).isEmpty)
     }
 
     @Test func duplicateBodiesSharePostingsButNeverSuppressDuplicatePaths() async throws {

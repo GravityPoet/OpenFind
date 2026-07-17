@@ -240,16 +240,12 @@ actor ContentSearchIndex {
         guard !candidates.isEmpty, openIfNeeded() else { return [] }
         var work: [ResolvedNode] = []
         work.reserveCapacity(min(candidates.count, 4_096))
-        guard let metadataProbe = Self.trigramMatchQuery("openfind-background-enrichment-probe") else {
-            return []
-        }
 
         for start in stride(from: 0, to: candidates.count, by: Self.queryChunkSize) {
             let end = min(start + Self.queryChunkSize, candidates.count)
             let chunk = candidates[start..<end]
-            guard let metadata = metadataByPath(
-                paths: chunk.map(\.path),
-                matchQuery: metadataProbe
+            guard let metadata = metadataFingerprintsByPath(
+                paths: chunk.map(\.path)
             ) else { return [] }
             for candidate in chunk {
                 if metadata[candidate.path]?.matches(candidate) != true {
@@ -481,11 +477,16 @@ actor ContentSearchIndex {
         }
         for root in Set(subtreePaths.map(SearchPath.canonicalAliasPath)) where succeeded {
             let prefix = root == "/" ? "/" : root + "/"
+            // `prefix` always ends in ASCII `/` (0x2f), so replacing that
+            // final byte with `0` (0x30) creates the exclusive upper bound
+            // for every descendant under SQLite's BINARY path collation.
+            // Unlike substr(path, ...), this lets both lookup and DELETE use
+            // the UNIQUE path index even for a very large content cache.
+            let prefixUpperBound = root == "/" ? "0" : root + "0"
             succeeded = deleteRows(
-                where: "path = ? OR substr(path, 1, ?) = ?",
-                values: [root, String(prefix.count), prefix],
-                database: database,
-                integerValueIndex: 1
+                where: "path = ? OR (path >= ? AND path < ?)",
+                values: [root, prefix, prefixUpperBound],
+                database: database
             )
         }
 
@@ -631,6 +632,52 @@ actor ContentSearchIndex {
             }
         }
         return terms.joined(separator: " AND ")
+    }
+
+    /// Background reconciliation only needs the durable metadata fingerprint.
+    /// Running an FTS MATCH subquery here repeated the same posting lookup for
+    /// every 256 paths while walking a whole-Mac index, consuming a full core
+    /// for minutes without changing which files required extraction.
+    private func metadataFingerprintsByPath(paths: [String]) -> [String: Metadata]? {
+        guard let database, !paths.isEmpty else { return [:] }
+        let placeholders = Array(repeating: "?", count: paths.count).joined(separator: ",")
+        let sql = """
+        SELECT path, size, modified, created, extractor, state
+        FROM documents
+        WHERE path IN (\(placeholders))
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            sqlite3_finalize(statement)
+            recoverIfCorrupt(database)
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+        for (offset, path) in paths.enumerated() {
+            guard bind(path, to: statement, at: Int32(offset + 1)) else { return nil }
+        }
+
+        var result: [String: Metadata] = [:]
+        result.reserveCapacity(paths.count)
+        while true {
+            let status = sqlite3_step(statement)
+            if status == SQLITE_DONE { return result }
+            guard status == SQLITE_ROW,
+                  let pathText = sqlite3_column_text(statement, 0) else {
+                recoverIfCorrupt(database)
+                return nil
+            }
+            let path = String(cString: pathText)
+            result[path] = Metadata(
+                size: sqlite3_column_int64(statement, 1),
+                modifiedTime: sqlite3_column_double(statement, 2),
+                creationTime: sqlite3_column_double(statement, 3),
+                extractionVersion: Int(sqlite3_column_int(statement, 4)),
+                hasSearchableText: sqlite3_column_int(statement, 5) != 0,
+                requiresAuthoritativeScan: sqlite3_column_int(statement, 5) == 2,
+                containsRequiredLiteral: false
+            )
+        }
     }
 
     private func metadataByPath(paths: [String], matchQuery: String) -> [String: Metadata]? {
