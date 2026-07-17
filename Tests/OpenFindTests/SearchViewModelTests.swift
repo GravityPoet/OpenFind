@@ -273,7 +273,7 @@ struct SearchViewModelTests {
         #expect(viewModel.nextResultPageCount == 2)
 
         viewModel.showMoreResults()
-        for _ in 0..<100 where viewModel.isExpandingResults {
+        for _ in 0..<300 where viewModel.resultCount < 4 {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(viewModel.resultCount == 4)
@@ -281,7 +281,7 @@ struct SearchViewModelTests {
         #expect(viewModel.nextResultPageCount == 1)
 
         viewModel.showMoreResults()
-        for _ in 0..<100 where viewModel.isExpandingResults {
+        for _ in 0..<300 where viewModel.resultCount < 5 {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(viewModel.resultCount == 5)
@@ -362,6 +362,47 @@ struct SearchViewModelTests {
             }
         }
         #expect(viewModel.resultCount == 6)
+    }
+
+    @MainActor
+    @Test func automaticReplacementPreservesInFlightPageExpansion() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFind-QueuedPaginationTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for index in 0..<5 {
+            try Data("match".utf8).write(
+                to: root.appendingPathComponent("queued-page-result-\(index).txt")
+            )
+        }
+
+        let viewModel = makeViewModel(resultPageSize: 2)
+        viewModel.scopes = [root]
+        viewModel.options = SearchOptions(query: "queued-page-result-")
+        viewModel.startSearch()
+        for _ in 0..<300 where viewModel.isSearching {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(viewModel.resultCount == 2)
+        #expect(viewModel.totalResultCount == 5)
+
+        viewModel.showMoreResults()
+        #expect(viewModel.isExpandingResults)
+        viewModel.startSearch(
+            recordRecent: false,
+            clearResults: false,
+            replaceResultsOnCompletion: true
+        )
+
+        for _ in 0..<300 where viewModel.isSearching
+            || viewModel.isExpandingResults
+            || viewModel.resultCount < 4 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(viewModel.resultCount == 4)
+        #expect(viewModel.totalResultCount == 5)
+        #expect(viewModel.nextResultPageCount == 1)
     }
 
     @MainActor
