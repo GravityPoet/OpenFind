@@ -497,6 +497,18 @@ struct TemporarySearchPerformanceTests {
         let writtenAfter = processDiskBytesWritten()
         let diagnostics = await contentIndex.diagnostics()
 
+        let warmReconcileStarted = ContinuousClock.now
+        await BackgroundContentIndexEnricher.enrich(
+            index: fileIndex,
+            contentIndex: contentIndex,
+            maxFileSize: 32 * 1_024 * 1_024,
+            maximumDatabaseBytes: 4 * 1_024 * 1_024 * 1_024
+        )
+        let warmReconcileMilliseconds = Self.milliseconds(
+            warmReconcileStarted.duration(to: .now)
+        )
+        let warmDiagnostics = await contentIndex.diagnostics()
+
         var candidates: [ContentIndexCandidate] = []
         candidates.reserveCapacity(fileCount)
         for (index, node) in fileIndex.nodes.enumerated() where !node.isDirectory {
@@ -529,6 +541,7 @@ struct TemporarySearchPerformanceTests {
                 + "transactions=\(diagnostics.recordTransactions) "
                 + "unique=\(diagnostics.uniqueContentBodies) deduplicated=\(diagnostics.deduplicatedDocuments) "
                 + "peak-rss=\(peakRSS) elapsed=\(elapsed) "
+                + "warm-reconcile-ms=\(warmReconcileMilliseconds) "
                 + "expected=\(expectedPaths.count) actual=\(actualPaths.count)"
         )
 
@@ -536,6 +549,11 @@ struct TemporarySearchPerformanceTests {
         #expect(diagnostics.indexedDocuments == fileCount)
         #expect(diagnostics.uniqueContentBodies == (fileCount + copiesPerBody - 1) / copiesPerBody)
         #expect(diagnostics.databaseBytes <= 4 * 1_024 * 1_024 * 1_024)
+        #expect(warmDiagnostics.recordTransactions == diagnostics.recordTransactions)
+        let maximumWarmReconcileMilliseconds = Int64(
+            environment["OPENFIND_CONTENT_BENCHMARK_MAX_WARM_RECONCILE_MS"] ?? "5000"
+        ) ?? 5_000
+        #expect(warmReconcileMilliseconds <= maximumWarmReconcileMilliseconds)
         let transactionsByCount = (fileCount + 4_095) / 4_096
         let transactionByteLimit: Int64 = 32 * 1_024 * 1_024
         let transactionsByBytes = Int((inputTextBytes + transactionByteLimit - 1) / transactionByteLimit)
