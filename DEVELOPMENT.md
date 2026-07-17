@@ -1,8 +1,7 @@
 # OpenFind — Development Document
 
-A modern, App Store–quality reimplementation of the classic EasyFind concept:
-instant, index-free file search for macOS. Clean-room, original Swift 6 / SwiftUI
-code. No EasyFind source or assets are used.
+A local, real-time, developer-friendly advanced file search tool for macOS 26+,
+backed by a persistent path/name index and on-demand content matching.
 
 **Product principle:** fast, focused, and quiet. Do one thing — find files — and
 make it feel effortless. Apple-minimalist design: progressive disclosure,
@@ -12,11 +11,11 @@ generous whitespace, restrained color, native controls.
 
 ## Product Goals
 
-1. **Instant** — results stream in as you type; no index, no waiting.
-2. **Accurate** — find what Spotlight can't (system files, exact names, regex).
+1. **Instant** — results stream in as you type from a local path/name index.
+2. **Accurate** — include hidden files, normal user-file locations, and mounted volumes by default; name search means file names; path search is explicit with `/` or `path:`.
 3. **Native** — feels like an Apple app: keyboard-first, Quick Look, dark mode.
-4. **Trustworthy** — no network, sandboxed, transparent about permissions.
-5. **Shippable** — sandbox entitlements, tests, accessibility, ready to submit.
+4. **Trustworthy** — no network, security-scoped folders, transparent about permissions.
+5. **Shippable** — universal app bundle, signing/notarization path, CI, tests, accessibility.
 
 ---
 
@@ -34,10 +33,10 @@ Single SwiftUI executable (SPM), split by concern:
 | Layer | Files | Responsibility |
 |-------|-------|----------------|
 | Models | `SearchModels`, `Matcher` | Value types, query → predicate |
-| Engine | `SearchEngine` | Index-free traversal + bounded-concurrency content match |
-| State | `SearchViewModel`, `Preferences`, `Bookmarks` | UI state, persistence, security-scoped access |
+| Engine | `SearchEngine`, `SearchIndex` | Persistent path/name index + bounded-concurrency content match |
+| State | `SearchViewModel`, `Preferences`, `ScopeStore` | UI state, persistence, security-scoped access |
 | Views | `ContentView`, `SearchHeader`, `FilterBar`, `ResultsView`, `SettingsView` | Presentation |
-| Support | `FileActions`, `QuickLook` | System integration |
+| Support | `FileActions`, `FileIcon`, `Localized` | System integration |
 | Entry | `main`, `OpenFindApp`, `AppCommands`, `CLIRunner` | Lifecycle, menus, CLI |
 
 Build note: local `swift build` mis-infers the SDK; always use
@@ -56,7 +55,7 @@ Status: ✅ done · 🚧 in progress · ⬜ planned
 ### Phase 1 — English + Persistence
 - ✅ Convert all comments/strings to English (code language = English)
 - ✅ `Preferences`: persist search options via `@AppStorage`
-- ✅ `Bookmarks`: security-scoped bookmarks so folder access survives relaunch
+- ✅ `ScopeStore`: security-scoped bookmarks so folder access survives relaunch
 
 ### Phase 2 — Apple-Minimalist Redesign
 - ⬜ Prominent search header (Spotlight-like), calm and centered
@@ -77,12 +76,15 @@ Status: ✅ done · 🚧 in progress · ⬜ planned
 - ⬜ Unit tests: `Matcher` (all modes), `SearchEngine` (fixtures)
 - ⬜ Performance sanity on large trees
 
-### Phase 5 — App Store Readiness
-- ⬜ App Sandbox entitlements + user-selected file access via bookmarks
+### Phase 5 — Distribution Readiness
+- ✅ Direct and sandbox entitlement profiles
+- ✅ Universal app bundle build script
+- ✅ ZIP-only build output, atomic local install, verified ZIP rollback, and product-App uniqueness checks
+- ✅ Developer ID signing and notarization automation path
+- ✅ CI for tests, app bundle, and benchmark smoke test
 - ⬜ About + Help, polished Info.plist, category, copyright
-- ⬜ Privacy posture documented (no network, no telemetry)
 - ⬜ Accessibility labels (VoiceOver)
-- ⬜ Final packaged, signed build
+- ⬜ Final notarized release artifact with real Developer ID credentials
 
 ### Backlog / Post-1.0
 - ⬜ Localization (add zh-Hans and others)
@@ -96,6 +98,13 @@ Status: ✅ done · 🚧 in progress · ⬜ planned
 ## Development Log
 
 Newest first. Each entry: what changed, why, how verified.
+
+### 2026-07-06 — Product positioning, search semantics, quiet indexing defaults
+- Updated product positioning: OpenFind is now documented as a local, real-time, developer-friendly advanced file searcher.
+- Whole-Mac indexing includes hidden files, user-file locations, and mounted volumes by default while filtering caches, logs, `/private/var`, and other noisy locations unless Deep Index is enabled.
+- Plain name search now matches file names only. Path search is explicit through `/` path syntax or `path:` / folder-scope filters.
+- Added indexing/permission readiness states so the UI does not show a definitive no-results screen while the local index is still building.
+- Added direct and sandbox entitlement profiles, universal build/sign/notarization automation, GitHub Actions CI, benchmark smoke script, and index scale regression coverage.
 
 ### 2026-07-01 — Independent review, deadlock fix & hardening
 - Audited the modularization refactor against reality (not the report): clean build, single-definition types, sub-200-line files, CLI accuracy (grep cross-check), and localization were each verified independently.

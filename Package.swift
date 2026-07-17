@@ -4,12 +4,17 @@ import PackageDescription
 let package = Package(
     name: "OpenFind",
     defaultLocalization: "en",
-    platforms: [.macOS("26.0")],
+    platforms: [.macOS(.v14)],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4"),
+    ],
     targets: [
         .executableTarget(
             name: "OpenFind",
-            path: "Sources/OpenFind",
-            resources: [.process("Resources")]
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
+            path: "Sources/OpenFind"
         ),
         .testTarget(
             name: "OpenFindTests",

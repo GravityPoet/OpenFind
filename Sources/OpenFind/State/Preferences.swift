@@ -13,8 +13,12 @@ enum Preferences {
         static let caseSensitive = "search.caseSensitive"
         static let includeHidden = "search.includeHidden"
         static let includePackages = "search.includePackages"
+        static let comprehensiveResultsDefault = "search.comprehensiveResultsDefaultV1"
         static let deepIndex = "search.deepIndex"
+        static let comprehensiveIndexDefault = "search.comprehensiveIndexDefaultV1"
         static let maxContentFileSize = "search.maxContentFileSize"
+        static let comprehensiveContentSizeDefault = "search.comprehensiveContentSizeDefaultV2"
+        static let maxContentIndexBytes = "search.maxContentIndexBytes"
         static let recentSearches = "search.recent"
     }
 
@@ -28,12 +32,37 @@ enum Preferences {
             options.matchMode = value
         }
         options.caseSensitive = defaults.bool(forKey: Key.caseSensitive)
-        options.includeHidden = defaults.bool(forKey: Key.includeHidden)
-        options.includePackages = defaults.bool(forKey: Key.includePackages)
-        options.deepIndex = defaults.bool(forKey: Key.deepIndex)
-        if let rawSize = defaults.object(forKey: Key.maxContentFileSize) as? NSNumber {
-            options.maxContentFileSize = rawSize.int64Value
+        options.includeHidden = defaults.object(forKey: Key.includeHidden) as? Bool ?? true
+        if defaults.object(forKey: Key.comprehensiveResultsDefault) == nil {
+            options.includePackages = true
+            defaults.set(true, forKey: Key.includePackages)
+            defaults.set(true, forKey: Key.comprehensiveResultsDefault)
+        } else {
+            options.includePackages = defaults.object(forKey: Key.includePackages) as? Bool ?? true
         }
+        if defaults.object(forKey: Key.comprehensiveIndexDefault) == nil {
+            options.deepIndex = true
+            defaults.set(true, forKey: Key.deepIndex)
+            defaults.set(true, forKey: Key.comprehensiveIndexDefault)
+        } else {
+            options.deepIndex = defaults.object(forKey: Key.deepIndex) as? Bool ?? true
+        }
+        let storedContentSize = defaults.object(forKey: Key.maxContentFileSize) as? NSNumber
+        if defaults.object(forKey: Key.comprehensiveContentSizeDefault) == nil {
+            let oldDefault: Int64 = 16 * 1_024 * 1_024
+            if storedContentSize == nil || storedContentSize?.int64Value == oldDefault {
+                defaults.set(options.maxContentFileSize, forKey: Key.maxContentFileSize)
+            } else if let storedContentSize {
+                options.maxContentFileSize = storedContentSize.int64Value
+            }
+            defaults.set(true, forKey: Key.comprehensiveContentSizeDefault)
+        } else if let storedContentSize {
+            options.maxContentFileSize = storedContentSize.int64Value
+        }
+        if let storedIndexSize = defaults.object(forKey: Key.maxContentIndexBytes) as? NSNumber {
+            options.maxContentIndexBytes = max(0, storedIndexSize.int64Value)
+        }
+        options.useFrequencyRanking = SearchUsageStore.shared.isEnabled
         return options
     }
 
@@ -46,6 +75,8 @@ enum Preferences {
         defaults.set(options.includePackages, forKey: Key.includePackages)
         defaults.set(options.deepIndex, forKey: Key.deepIndex)
         defaults.set(options.maxContentFileSize, forKey: Key.maxContentFileSize)
+        defaults.set(options.maxContentIndexBytes, forKey: Key.maxContentIndexBytes)
+        SearchUsageStore.shared.isEnabled = options.useFrequencyRanking
     }
 
     static var recentSearches: [String] {

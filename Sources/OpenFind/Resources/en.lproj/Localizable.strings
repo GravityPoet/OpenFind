@@ -3,9 +3,15 @@
 "Location" = "Location";
 "Size" = "Size";
 "Date Modified" = "Date Modified";
+"Date Created" = "Date Created";
 "Open" = "Open";
 "Reveal in Finder" = "Reveal in Finder";
+"Copy File Name" = "Copy File Name";
 "Copy Path" = "Copy Path";
+"Copy File" = "Copy File";
+"Quick Look" = "Quick Look";
+"Move to Trash" = "Move to Trash";
+"Move to Trash Failed" = "Move to Trash Failed";
 
 /* File Dialogs */
 "Add to Scope" = "Add to Scope";
@@ -13,8 +19,22 @@
 
 /* Search Bar & Header */
 "Search..." = "Search...";
+"Search names, /paths, or path:" = "Search names, /paths, or path:";
+"Search files and folders..." = "Search files and folders...";
+"Filter events by path or name..." = "Filter events by path or name...";
+"Recent Searches" = "Recent Searches";
+"Case Sensitive On" = "Case sensitive is on";
+"Case Sensitive Off" = "Case insensitive search";
 "Cancel Search" = "Cancel Search";
 "Start Search" = "Start Search";
+"Show OpenFind" = "Show OpenFind";
+"Search Examples" = "Search Examples";
+"Example PDF briefing" = "*.pdf briefing — PDF names";
+"Example path scoped demo" = "in:/Users demo !.psd — scoped name search";
+"Example large zip" = "*.zip size:>100MB — large archives";
+"Example modified today" = "dm:today — modified today";
+"Example tag project" = "tag:ProjectA — Finder tag";
+"Example content budget" = "content:\"Q4 budget\" — file contents";
 
 /* Filter Bar */
 "Target" = "Target";
@@ -38,6 +58,79 @@
 "Contents" = "Contents";
 
 /* Status Bar */
+"Files" = "Files";
+"Events" = "Events";
+"Time" = "Time";
+"Event" = "Event";
+"Filename" = "Filename";
+"Path" = "Path";
+"Created" = "Created";
+"Removed" = "Removed";
+"Renamed" = "Renamed";
+"Modified" = "Modified";
+"InodeMetaMod" = "InodeMetaMod";
+"FinderInfoMod" = "FinderInfoMod";
+"ChangeOwner" = "ChangeOwner";
+"XattrMod" = "XattrMod";
+"Cloned" = "Cloned";
+"MustScanSubDirs" = "MustScanSubDirs";
+"EventsDropped" = "EventsDropped";
+"RootChanged" = "RootChanged";
+"HistoryDone" = "HistoryDone";
+"Changed" = "Changed";
+"Updating" = "Updating";
+"Ready" = "Ready";
+"Updating Compact" = "Sync";
+"Ready Compact" = "Ready";
+"Enriching Compact" = "Enrich";
+"Searchable, enriching details" = "Searchable, enriching details";
+"Names and paths are ready to search while OpenFind enriches file details in the background." = "Names and paths are ready to search while OpenFind enriches file details in the background.";
+"Indexed %lld items; names and paths are ready" = "Indexed %lld items; names and paths are ready";
+"Coverage retrying" = "Coverage retrying";
+"Refreshing" = "Refreshing";
+"Refreshing Compact" = "Reindex";
+"Retrying" = "Retrying";
+"Unavailable Paths" = "Unavailable Paths";
+"Retrying %lld unavailable paths" = "Retrying %lld paths";
+"OpenFind is retrying %lld paths that were temporarily unavailable; indexed results remain searchable meanwhile." = "OpenFind is retrying %lld paths that were temporarily unavailable; indexed results remain searchable meanwhile.";
+"Background Sync" = "Background Sync";
+"Background Sync Help Format" = "The index is ready. %lld temporarily unavailable paths are retrying quietly in the background.";
+"Background Sync Paths Pending" = "Detailed paths will appear on the next status update.";
+"Index is ready" = "The index is ready.";
+"Refresh Index" = "Refresh Index";
+"Refreshing Index" = "Refreshing index";
+"Refresh Index Help" = "Trigger a complete file-system rescan and rebuild the local index.";
+"Index Details" = "Index Details";
+"Folders" = "Folders";
+"Total Indexed" = "Total Indexed";
+"Index Mode" = "Index Mode";
+"Normal Index" = "Normal Index";
+"Hidden Files" = "Hidden Files";
+"Included" = "Included";
+"Excluded" = "Excluded";
+"Index Source" = "Index Source";
+"Cache" = "Cache";
+"Live Scan" = "Live Scan";
+"File System Events" = "File System Events";
+"Processed Events" = "Processed Events";
+"Current Index Status" = "Current Index Status";
+"Search Summary Format" = "Search: %lld results · %lld ms";
+"Search Summary Paged Format" = "Search: %lld shown of %lld · %@";
+"Searching Summary Paged Format" = "Searching: %lld shown of %lld · %@";
+"Search Summary Refreshing Format" = "Refreshing results: %lld shown of %lld";
+"Search Duration Milliseconds Format" = "%lld ms";
+"Search Duration Seconds Format" = "%.1f s";
+"Show %lld More Results" = "Show %lld more";
+"Loading Results" = "Loading results";
+"Event Summary Format" = "Events: %lld shown · %lld stored";
+"Search Summary Styled Paged Format" = "Search: **%@** shown of **%@** · **%@**";
+"Searching Summary Styled Paged Format" = "Searching: **%@** shown of **%@** · **%@**";
+"Search Summary Refreshing Styled Format" = "Refreshing results: **%@** shown of **%@**";
+"Event Summary Styled Format" = "Events: **%@** shown · **%@** stored";
+"No file-system changes have been processed for this index yet." = "No file-system changes have been processed for this index yet.";
+"If results look stale or the event count is high, run a full refresh to rebuild the local index." = "If results look stale or the event count is high, run a full refresh to rebuild the local index.";
+"Scope Detail Whole Mac" = "Scope: Whole Mac, including hidden files and mounted volumes. Cache/log/temp noise is filtered unless Deep Index is enabled.";
+"Scope Detail Format" = "Scope:\n%@";
 "%lld results" = "%lld results";
 "showing first %lld" = "showing first %lld";
 "elapsed: %.2fs" = "elapsed: %.2fs";
@@ -50,6 +143,19 @@
 
 /* Placeholders & Empty States */
 "Start searching by typing a query" = "Start searching by typing a query";
+"Names match file names by default. Use / or path: to search paths." = "Names match file names by default. Use / or path: to search paths.";
+"Preparing OpenFind" = "Preparing OpenFind";
+"OpenFind is ready to search" = "OpenFind is ready to search";
+"Indexing %lld items so far" = "Indexing %lld items so far";
+"Loaded %lld indexed items; search is ready" = "Loaded %lld indexed items; search is ready";
+"Indexing is still in progress" = "Indexing is still in progress";
+"Results are still incomplete while OpenFind builds the local index. If nothing appears yet, keep typing or wait for indexing to finish." = "Results are still incomplete while OpenFind builds the local index. If nothing appears yet, keep typing or wait for indexing to finish.";
+"OpenFind is building its local index. Protected folders are skipped until Full Disk Access is enabled, which avoids blocking macOS permission popups." = "OpenFind is building its local index. Protected folders are skipped until Full Disk Access is enabled, which avoids blocking macOS permission popups.";
+"Enable Full Disk Access to include Desktop, Documents, Downloads, Music, Movies, Pictures, Mail, and external volumes. Until then, OpenFind skips those folders instead of showing blocking macOS permission popups." = "Enable Full Disk Access to include Desktop, Documents, Downloads, Music, Movies, Pictures, Mail, and external volumes. Until then, OpenFind skips those folders instead of showing blocking macOS permission popups.";
+"OpenFind is indexing every location macOS currently allows. Enable Full Disk Access to include protected folders that remain unavailable." = "OpenFind is indexing every location macOS currently allows. Enable Full Disk Access to include protected folders that remain unavailable.";
+"OpenFind includes every folder macOS currently allows. Enable Full Disk Access to search protected locations that remain unavailable." = "OpenFind includes every folder macOS currently allows. Enable Full Disk Access to search protected locations that remain unavailable.";
+"OpenFind is building its local index. Search results will stream in as files are scanned." = "OpenFind is building its local index. Search results will stream in as files are scanned.";
+"The saved index is ready to search while OpenFind synchronizes file changes since the last exit." = "The saved index is ready to search while OpenFind synchronizes file changes since the last exit.";
 "Content Search Needs a Smaller Scope" = "Content Search Needs a Smaller Scope";
 "Content search over your home folder scans file contents without an index and can take a very long time. Narrow the scope, or use name search for quick file lookup." = "Content search over your home folder scans file contents without an index and can take a very long time. Narrow the scope, or use name search for quick file lookup.";
 "Content search over your home folder still reads candidate file contents on demand and can take a very long time. Narrow the scope, or use name search for quick file lookup." = "Content search over your home folder still reads candidate file contents on demand and can take a very long time. Narrow the scope, or use name search for quick file lookup.";
@@ -60,25 +166,52 @@
 "Only file names were searched. Check spelling, or search names and contents." = "Only file names were searched. Check spelling, or search names and contents.";
 "Only file contents were searched. Check spelling, or search names and contents." = "Only file contents were searched. Check spelling, or search names and contents.";
 "Check spelling, try a broader term, or adjust search options." = "Check spelling, try a broader term, or adjust search options.";
+"Invalid search expression" = "Invalid search expression";
+"Adjust the query or switch to a simpler match mode." = "Adjust the query or switch to a simpler match mode.";
+"Use Contains" = "Use Contains";
 "Search Names and Contents" = "Search Names and Contents";
 "No Search Scopes" = "No Search Scopes";
 "Add a folder to search in" = "Add a folder to search in";
 "Clear Search" = "Clear Search";
+"This page shows file-system changes observed by macOS. It does not mean OpenFind modified these files." = "This page shows file-system changes observed by macOS. It does not mean OpenFind modified these files.";
+"No File Events Yet" = "No File Events Yet";
+"OpenFind will show file-system changes here after the index starts watching your selected scopes." = "OpenFind will show file-system changes here after the index starts watching your selected scopes.";
+"No Events for %@" = "No Events for %@";
+"Try a filename, folder path, or event type such as Renamed or Modified." = "Try a filename, folder path, or event type such as Renamed or Modified.";
 
 /* Settings Window */
 "Settings" = "Settings";
 "Default Target" = "Default Target";
 "Default Match Mode" = "Default Match Mode";
-"Max Content File Size (MB)" = "Max Content File Size (MB)";
+"Max Content File Size (MB)" = "Max Content File Size";
+"1 GB" = "1 GB";
+"No Limit" = "No Limit";
+"Content Size Limit Help" = "100 MB is the default, not the maximum. Choose up to 1 GB or No Limit. This only bounds content extraction; name and path results are never filtered.";
+"Content Acceleration Cache" = "Content Acceleration Cache";
+"Content Acceleration Cache Help" = "4 GB is the default disk budget for the rebuildable content accelerator. Files outside the cache are still searched from their originals, so this never limits search coverage.";
+"Local Ranking" = "Local Ranking";
+"Use Local Open History" = "Use successful opens to rank ties";
+"Local Ranking Help" = "Successful opens stay on this Mac and only reorder equally relevant results. They never hide results or outrank a stronger name match.";
+"Clear Local Usage" = "Clear Local Ranking History";
+"Local Usage Count Format" = "%lld items";
 "Clear Recent Searches" = "Clear Recent Searches";
 "Durable Defaults" = "Durable Defaults";
+"Keyboard" = "Keyboard";
+"Global Shortcut" = "Global Shortcut";
+"Toggle OpenFind" = "Toggle OpenFind";
+"Registered" = "Registered";
+"Shortcut Unavailable" = "Shortcut Unavailable";
+"Check for Updates..." = "Check for Updates…";
 
 /* Whole Mac & TCC */
+"Search" = "Search";
 "Search Whole Mac" = "Search Whole Mac";
 "Whole Mac" = "Whole Mac";
 "Whole Mac Enabled" = "Whole Mac Enabled";
 "Full Disk Access disabled" = "Full Disk Access disabled";
 "Enable..." = "Enable...";
+"Enable Full Disk Access" = "Enable Full Disk Access";
 
 /* Deep Index */
 "Deep Index" = "Deep Index";
+"Deep Index Help" = "Scan caches, logs, temporary directories, /private/var, and other noisy locations. Leave off for faster normal search.";

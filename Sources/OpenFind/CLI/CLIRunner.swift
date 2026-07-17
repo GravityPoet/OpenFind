@@ -1,8 +1,8 @@
 import Foundation
 
 /// Command-line search mode, reusing the same `SearchEngine` as the GUI.
-/// It is both a real feature (EasyFind has none) and a convenient way to verify
-/// search correctness headlessly.
+/// It is both a real feature and a convenient way to verify search correctness
+/// headlessly.
 ///
 /// Usage: OpenFind --search <query> [paths...] [options]
 ///   --content    search file contents (default: file names)
@@ -11,8 +11,10 @@ import Foundation
 ///   --wildcard   wildcard match (* ?)
 ///   --word       whole-word match
 ///   --case       case-sensitive
-///   --hidden     include hidden files
-///   --packages   search inside .app / .bundle packages
+///   --no-hidden  exclude hidden files
+///   --packages   search inside .app / .bundle packages (default)
+///   --no-packages
+///                exclude package contents
 enum CLIRunner {
 
     static func run(arguments: [String]) async {
@@ -26,26 +28,35 @@ enum CLIRunner {
         let query = args[flagIndex + 1]
         args.removeSubrange(flagIndex...(flagIndex + 1))
 
-        var options = SearchOptions(query: query)
         var flags = Set<String>()
         var paths: [String] = []
         for arg in args {
             if arg.hasPrefix("--") { flags.insert(arg) } else { paths.append(arg) }
         }
 
-        if flags.contains("--content") { options.target = .content }
-        if flags.contains("--both") { options.target = .both }
-        if flags.contains("--regex") { options.matchMode = .regex }
-        if flags.contains("--wildcard") { options.matchMode = .wildcard }
-        if flags.contains("--word") { options.matchMode = .wholeWord }
-        options.caseSensitive = flags.contains("--case")
-        options.includeHidden = flags.contains("--hidden")
-        options.includePackages = flags.contains("--packages")
-        if flags.contains("--deep") { options.deepIndex = true }
+        let options = searchOptions(query: query, flags: flags)
+
         let refresh = flags.contains("--refresh")
+
+        do {
+            _ = try SearchQueryPlan.parse(options.query).compile(options: options)
+        } catch {
+            FileHandle.standardError.write(Data("Invalid search expression\n".utf8))
+            exit(2)
+        }
 
         let scopes = (paths.isEmpty ? [FileManager.default.currentDirectoryPath] : paths)
             .map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+        let store: SearchIndexStore
+        if let cachePath = ProcessInfo.processInfo.environment["OPENFIND_CACHE_PATH"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !cachePath.isEmpty {
+            store = SearchIndexStore(persistenceURL: URL(
+                fileURLWithPath: (cachePath as NSString).expandingTildeInPath
+            ))
+        } else {
+            store = .shared
+        }
 
         let timing = flags.contains("--timing")
         let started = ContinuousClock.now
@@ -56,27 +67,60 @@ enum CLIRunner {
             FileHandle.standardError.write(Data("timing \(label)=\(ms)ms\n".utf8))
         }
 
+        let hasFullDiskAccess = SearchPermissions.hasFullDiskAccess()
         if refresh {
-            _ = await SearchIndexStore.shared.refresh(scopes: scopes, deepIndex: options.deepIndex)
+            _ = await store.refresh(
+                scopes: scopes,
+                deepIndex: options.deepIndex,
+                hasFullDiskAccess: hasFullDiskAccess
+            )
             mark("refresh")
         } else {
-            _ = await SearchIndexStore.shared.snapshot(for: scopes, deepIndex: options.deepIndex)
+            _ = await store.snapshot(
+                for: scopes,
+                deepIndex: options.deepIndex,
+                hasFullDiskAccess: hasFullDiskAccess
+            )
             mark("snapshot")
         }
 
         var count = 0
-        for await result in SearchEngine.search(scopes: scopes, options: options) {
-            print(result.path)
-            if let preview = result.contentPreview {
-                print("    \u{21B3} \(preview)")
+        for await batch in SearchEngine.searchBatches(scopes: scopes, options: options, store: store) {
+            var output = ""
+            output.reserveCapacity(batch.reduce(0) { $0 + $1.path.utf8.count + 1 })
+            for result in batch {
+                output.append(result.path)
+                output.append("\n")
+                if let preview = result.contentPreview {
+                    output.append("    \u{21B3} ")
+                    output.append(preview)
+                    output.append("\n")
+                }
             }
-            count += 1
+            FileHandle.standardOutput.write(Data(output.utf8))
+            count += batch.count
         }
         mark("search")
         FileHandle.standardError.write(Data("\u{2014} \(count) result(s) \u{2014}\n".utf8))
-        await SearchIndexStore.shared.flushPersistence()
+        await store.flushPersistence()
         mark("flush")
         exit(0)
+    }
+
+    static func searchOptions(query: String, flags: Set<String>) -> SearchOptions {
+        var options = SearchOptions(query: query)
+        if flags.contains("--content") { options.target = .content }
+        if flags.contains("--both") { options.target = .both }
+        if flags.contains("--regex") { options.matchMode = .regex }
+        if flags.contains("--wildcard") { options.matchMode = .wildcard }
+        if flags.contains("--word") { options.matchMode = .wholeWord }
+        options.caseSensitive = flags.contains("--case")
+        if flags.contains("--hidden") { options.includeHidden = true }
+        if flags.contains("--no-hidden") { options.includeHidden = false }
+        if flags.contains("--packages") { options.includePackages = true }
+        if flags.contains("--no-packages") { options.includePackages = false }
+        if flags.contains("--deep") { options.deepIndex = true }
+        return options
     }
 
     private static func printUsage() {
@@ -88,9 +132,12 @@ enum CLIRunner {
           --wildcard   wildcard match (* ?)
           --word       whole-word match
           --case       case-sensitive
-          --hidden     include hidden files
-          --packages   search inside .app / .bundle packages
-          --deep       index everything (no ignore list)
+          --hidden     include hidden files (default)
+          --no-hidden  exclude hidden files
+          --packages   search inside .app / .bundle packages (default)
+          --no-packages
+                       exclude package contents
+          --deep       include noisy cache/log/system locations in the index
           --refresh    rebuild the index before searching
 
         """

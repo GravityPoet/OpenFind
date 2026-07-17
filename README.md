@@ -1,14 +1,20 @@
 # OpenFind
 
-OpenFind is a modern, high-performance macOS search tool designed as a clean-room reimplementation of the classic EasyFind concept. It provides instant, index-free file and content search on macOS.
+OpenFind is a local, real-time, developer-friendly advanced file search tool for macOS 26+. It provides fast file-name and path search with a persistent local path/name index, plus on-demand content matching when requested.
 
 ## Key Features
 
-1. **Instant Search:** Stream results in real-time as you type, without database indexing overhead.
-2. **Accurate Results:** Search system folders, hidden items, package contents, and exact text matches.
-3. **Advanced Modes:** Regular expression matching, wildcard expansion, whole word filters, and case-sensitive options.
+1. **Instant Search:** Stream results in real time as you type, backed by a local path/name index.
+2. **Relevant Whole-Mac Defaults:** Search the whole Mac with hidden files, user file locations, and mounted volumes included; cache/log/temp noise stays filtered unless Deep Index is enabled.
+3. **Advanced Querying:** Boolean expressions, path globs, regular expressions, Finder tags, content predicates, folder scopes, and Cardinal-style metadata filters.
 4. **CLI Mode:** Command-line executable support for headless, scriptable searches.
-5. **Privacy First:** Entirely local search operations with sandboxed access.
+5. **Privacy First:** Entirely local search operations, with security-scoped bookmark support for user-selected folders.
+6. **Native Workflow:** Press Space to Quick Look selected results and `⌘⇧Space` to show or hide OpenFind globally.
+
+## Requirements
+
+- macOS 26 or later
+- Apple Silicon or Intel Mac supported by the macOS 26 SDK/toolchain
 
 ## Compilation and Build
 
@@ -22,15 +28,95 @@ xcrun --sdk macosx swift build
 xcrun --sdk macosx swift run OpenFind --search "query"
 ```
 
+## Query Examples
+
+```text
+*.pdf briefing          # PDF files whose names contain briefing
+ext:png;jpg travel      # PNG or JPG files whose names contain travel
+type:code openfind      # source/code files whose names contain openfind
+doc:invoice             # document files whose names contain invoice
+size:empty              # empty files
+size:!=0b               # non-empty files
+report summary|draft    # report AND (summary OR draft)
+src/**/SearchQuery.swift
+parent:/Users/me/Documents ext:md
+in:/Users/me/Projects dm:pastweek
+nosubfolders:/tmp ext:log
+dc:>=2026-01-01        # created on or after this date
+tag:Project;Important  # either Finder tag
+regex:^Report-[0-9]+$
+content:"Q4 budget"    # full-file substring search
+```
+
+Plain terms match file names, including hidden files by default. Path matching is
+explicit: include `/` in the query (`src/**/SearchQuery.swift`) or use `path:` /
+`in:` / `parent:` filters.
+
 ## Packaging
 
-To package the project into a native macOS app bundle (`OpenFind.app`), execute the packaging automation script:
+To package the project into a verified macOS app archive, execute the packaging automation script:
 
 ```bash
 bash Scripts/build_app.sh
 ```
 
-This compiles a production build, generates the application icon from the bundled source asset, moves localization assets into the bundle structures, and performs ad-hoc signing. The resulting package is output to `dist/OpenFind.app`.
+This compiles a universal production build by default (`arm64 x86_64`), generates
+the application icon, copies localization assets, signs the bundle, and verifies
+the executable architectures. The resulting package is `dist/OpenFind.zip`.
+The temporary `OpenFind.app` is physically removed after archive verification.
+
+To replace the local installation atomically and validate that the product app is
+unique across the filesystem, Spotlight, LaunchServices, the running process, and
+any Dock entry, run:
+
+```bash
+bash Scripts/install_local_app.sh
+```
+
+The installer keeps the previous version as a verified ZIP rollback under
+`~/Library/Application Support/Codex/Backups/OpenFind/`; it never leaves a raw
+rollback `.app` outside `/Applications`.
+
+Distribution options:
+
+```bash
+# Local universal ZIP, ad-hoc signed.
+bash Scripts/build_app.sh
+
+# Developer ID signed + notarized direct distribution.
+SIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)" \
+NOTARIZE=1 \
+NOTARY_PROFILE="openfind-notary" \
+bash Scripts/build_app.sh
+
+# Sandbox entitlement profile for App Store / sandbox validation builds.
+DISTRIBUTION=sandbox bash Scripts/build_app.sh
+```
+
+Before the first notarized build, store the Apple notary credentials in your
+keychain profile so the app-specific password is not passed on the build command
+line:
+
+```bash
+xcrun notarytool store-credentials openfind-notary \
+  --apple-id "developer@example.com" \
+  --team-id "TEAMID"
+```
+
+For non-interactive CI setup, set `STORE_NOTARY_CREDENTIALS=1` and provide
+`APPLE_ID`, `TEAM_ID`, and `APP_SPECIFIC_PASSWORD`; subsequent submission still
+uses `--keychain-profile`.
+
+The direct distribution profile intentionally does not enable App Sandbox because
+whole-Mac filesystem enumeration requires broad local file access. The sandbox
+profile is provided for App Store-style builds that rely on user-selected,
+security-scoped folders.
+
+Performance smoke benchmark:
+
+```bash
+bash Scripts/benchmark_index.sh
+```
 
 ## Architecture & Layers
 
@@ -41,7 +127,7 @@ Views -> State (ViewModel) -> Engine -> Models
 ```
 
 - **Models:** Value types, query match options.
-- **Engine:** Directory walking and content matching utilizing structured concurrency.
+- **Engine:** Persistent path/name indexing plus on-demand content matching using structured concurrency.
 - **State:** Persistent settings and state management.
 - **Views:** SwiftUI-based minimal and responsive visual components.
 - **App:** Entry dispatcher handling both command-line arguments and GUI scenes.

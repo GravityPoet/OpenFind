@@ -27,10 +27,13 @@ struct SearchScopeGuardTests {
 
     @Test func wholeMacScopeNormalizesLegacyDataVolume() {
         let legacy = URL(fileURLWithPath: SearchScopes.legacyWholeMacPath)
+        let noFollowRoot = URL(fileURLWithPath: "/.nofollow/")
 
         #expect(SearchScopes.isWholeMac(SearchScopes.wholeMacURL))
         #expect(SearchScopes.isWholeMac(legacy))
+        #expect(SearchScopes.isWholeMac(noFollowRoot))
         #expect(SearchScopes.normalized(legacy) == SearchScopes.wholeMacURL)
+        #expect(SearchScopes.normalized(noFollowRoot) == SearchScopes.wholeMacURL)
     }
 
     @Test func addingCustomScopeReplacesWholeMacScope() {
