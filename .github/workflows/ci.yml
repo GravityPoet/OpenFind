@@ -10,6 +10,7 @@ jobs:
   test:
     name: Swift tests and app bundle
     runs-on: macos-26
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -23,6 +24,8 @@ jobs:
         run: xcrun --sdk macosx swift test
 
       - name: Build universal app bundle
+        env:
+          SIGN_IDENTITY: "-"
         run: bash Scripts/build_app.sh
 
       - name: Run index benchmark smoke test
