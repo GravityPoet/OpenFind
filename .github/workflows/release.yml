@@ -87,6 +87,12 @@ jobs:
       - name: Verify lossless content-index budgets
         run: FILES=8000 BODY_KB=16 COPIES=4 bash Scripts/benchmark_content_index.sh
 
+      - name: Verify cold name-index build and search budgets
+        run: FILES=600 MATCH_EVERY=60 bash Scripts/benchmark_index.sh
+
+      - name: Verify persisted name-index budgets
+        run: NODES=250000 bash Scripts/benchmark_name_index.sh
+
       - name: Generate EdDSA-signed phased appcast
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
