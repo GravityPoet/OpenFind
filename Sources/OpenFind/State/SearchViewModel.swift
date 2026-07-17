@@ -67,6 +67,7 @@ final class SearchViewModel {
     @ObservationIgnored private var indexStatsTask: Task<Void, Never>?
     @ObservationIgnored private var manualRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var resultPageTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingResultPageExpansions = 0
     private var startedAt: ContinuousClock.Instant?
     private var elapsedBeforeCurrentPass: TimeInterval = 0
     private var publishesLiveElapsed = true
@@ -201,7 +202,7 @@ final class SearchViewModel {
         guard canSearch else { return }
         pendingFinalAutoSearch = false
         debounceTask?.cancel()
-        cancel()
+        cancel(preservingResultPageExpansion: replaceResultsOnCompletion)
         refreshIndex()
         guard validateQuery(clearResults: clearResults) else { return }
 
@@ -269,6 +270,17 @@ final class SearchViewModel {
 
     /// Cancels the current search, keeping any results already found.
     func cancel() {
+        cancel(preservingResultPageExpansion: false)
+    }
+
+    private func cancel(preservingResultPageExpansion: Bool) {
+        if preservingResultPageExpansion, isExpandingResults {
+            if pendingResultPageExpansions < Int.max {
+                pendingResultPageExpansions += 1
+            }
+        } else if !preservingResultPageExpansion {
+            pendingResultPageExpansions = 0
+        }
         searchGeneration &+= 1
         pendingFinalAutoSearch = false
         pendingAutomaticSearchRequiresQuietPeriod = false
@@ -294,7 +306,17 @@ final class SearchViewModel {
     }
 
     func showMoreResults() {
-        guard hasMoreResults, !isRefreshingSearchResults, !isExpandingResults else { return }
+        guard hasMoreResults else {
+            pendingResultPageExpansions = 0
+            return
+        }
+        if isRefreshingSearchResults {
+            if pendingResultPageExpansions < Int.max {
+                pendingResultPageExpansions += 1
+            }
+            return
+        }
+        guard !isExpandingResults else { return }
         if let snapshot = completeNameSnapshot {
             let generation = searchGeneration
             let startingOffset = nameSnapshotOffset
@@ -330,12 +352,25 @@ final class SearchViewModel {
                 visibleResultLimit = overflow ? Int.max : expandedLimit
                 resultPageTask = nil
                 isExpandingResults = false
+                runPendingResultPageExpansionIfNeeded()
             }
             return
         }
         let (expandedLimit, overflow) = visibleResultLimit.addingReportingOverflow(resultPageSize)
         visibleResultLimit = overflow ? Int.max : expandedLimit
         publishVisibleResults()
+        runPendingResultPageExpansionIfNeeded()
+    }
+
+    private func runPendingResultPageExpansionIfNeeded() {
+        guard pendingResultPageExpansions > 0 else { return }
+        guard hasMoreResults else {
+            pendingResultPageExpansions = 0
+            return
+        }
+        guard !isSearching, !isRefreshingSearchResults, !isExpandingResults else { return }
+        pendingResultPageExpansions -= 1
+        showMoreResults()
     }
 
     func setScopes(_ newScopes: [URL]) {
@@ -533,6 +568,7 @@ final class SearchViewModel {
             if replaceResultsOnCompletion {
                 lastAutomaticSearchCompletedAt = .now
             }
+            runPendingResultPageExpansionIfNeeded()
             runPendingAutoSearchIfNeeded()
             return
         }
@@ -592,6 +628,7 @@ final class SearchViewModel {
             if replaceResultsOnCompletion {
                 lastAutomaticSearchCompletedAt = .now
             }
+            runPendingResultPageExpansionIfNeeded()
             runPendingAutoSearchIfNeeded()
         }
     }
@@ -601,6 +638,10 @@ final class SearchViewModel {
     private func runPendingAutoSearchIfNeeded() {
         guard pendingFinalAutoSearch else { return }
         guard canSearch, !isBroadContentSearchBlocked else { return }
+        // Let a user-requested page expansion finish before replacing the
+        // snapshot. Starting the replacement here would cancel the page task,
+        // force it back into the queue, and do needless duplicate work.
+        guard !isExpandingResults else { return }
         if pendingAutomaticSearchRequiresQuietPeriod {
             if automaticSearchTask == nil {
                 scheduleBroadAutomaticSearchAfterQuietPeriod()
@@ -704,6 +745,7 @@ final class SearchViewModel {
         resultPageTask?.cancel()
         resultPageTask = nil
         isExpandingResults = false
+        pendingResultPageExpansions = 0
         clearNameSnapshot()
         completeResults.removeAll(keepingCapacity: false)
         results.removeAll(keepingCapacity: false)

@@ -46,6 +46,20 @@ cleanup_openfind_appcast_cache() {
     done < <(find "$cache_root" -type d -name "$APP_NAME" -prune -print0 2>/dev/null)
 }
 
+cleanup_openfind_temp_bundles() {
+    local temp_root="${TMPDIR:-/tmp}"
+    [ -d "$temp_root" ] || return 0
+    while IFS= read -r -d '' cached_app; do
+        local cached_id
+        cached_id="$(plutil -extract CFBundleIdentifier raw "$cached_app/Contents/Info.plist" 2>/dev/null || true)"
+        [ "$cached_id" = "$BUNDLE_ID" ] || continue
+        unregister_app_bundle "$cached_app"
+        # Preserve the diagnostic bundle, but remove the .app suffix so
+        # Spotlight and LaunchServices cannot present it as an installation.
+        [ -e "$cached_app.disabled.$$" ] || mv "$cached_app" "$cached_app.disabled.$$"
+    done < <(find "$temp_root" -type d -path '*/openfind-*/OpenFind.app' -prune -print0 2>/dev/null)
+}
+
 restore_backup_archive() {
     local restore_root
     local restore_app
@@ -106,6 +120,7 @@ trap 'exit 143' TERM
 : > "$TEMP_ROOT/.metadata_never_index"
 rm -rf "$INSTALL_STAGING" "$DISPLACED_APP"
 cleanup_openfind_appcast_cache
+cleanup_openfind_temp_bundles
 
 ARCHS="$ARCHS" "$BUILD_SCRIPT"
 if [ ! -f "$ARCHIVE_PATH" ]; then
