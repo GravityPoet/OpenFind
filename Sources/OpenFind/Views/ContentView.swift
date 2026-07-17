@@ -1,13 +1,28 @@
 import SwiftUI
 
+enum SearchFocusTarget: Hashable {
+    case query
+    case results
+}
+
 struct ContentView: View {
     @Bindable var viewModel: SearchViewModel
+    let quickLook: QuickLookController
+    @FocusState private var focusedTarget: SearchFocusTarget?
     @State private var selection = Set<SearchResult.ID>()
-    @State private var sortOrder = [KeyPathComparator<SearchResult>(\.name)]
+    /// Empty means preserve engine relevance order. Once the user selects a
+    /// table column, keep that explicit order during and after every refresh.
+    @State private var sortOrder: [KeyPathComparator<SearchResult>] = []
+    @State private var eventSelection = Set<FileSystemEventLogEntry.ID>()
+    @State private var eventSortOrder = [KeyPathComparator<FileSystemEventLogEntry>(\.receivedAt, order: .reverse)]
 
     var body: some View {
         VStack(spacing: 0) {
-            SearchHeader(viewModel: viewModel)
+            SearchHeader(
+                viewModel: viewModel,
+                focusedTarget: $focusedTarget,
+                onMoveToResults: selectFirstResult
+            )
 
             Divider()
 
@@ -25,31 +40,196 @@ struct ContentView: View {
         }
         .frame(minWidth: 800, minHeight: 500)
         .ignoresSafeArea()
+        .onChange(of: selection) {
+            quickLook.update(items: selectedURLs)
+        }
+        .onChange(of: viewModel.results) {
+            selection.formIntersection(Set(viewModel.results.map(\.id)))
+            quickLook.update(items: selectedURLs)
+        }
+        .onChange(of: viewModel.displayMode) {
+            if viewModel.displayMode == .events {
+                quickLook.close()
+            }
+        }
+        .onDisappear {
+            quickLook.close()
+        }
     }
 
     @ViewBuilder
     private var resultsView: some View {
-        if viewModel.scopes.isEmpty {
+        if viewModel.displayMode == .events {
+            eventsView
+        } else if viewModel.scopes.isEmpty {
             ContentUnavailableView(
                 L("No Search Scopes"),
                 systemImage: "folder.badge.plus",
                 description: Text(L("Add a folder to search in"))
             )
         } else if viewModel.options.query.trimmingCharacters(in: .whitespaces).isEmpty {
-            ContentUnavailableView(
-                L("Start searching by typing a query"),
-                systemImage: "magnifyingglass"
-            )
+            readinessView
         } else if viewModel.isBroadContentSearchBlocked {
             broadContentSearchWarning
+        } else if let errorMessage = viewModel.searchErrorMessage {
+            searchErrorView(errorMessage)
+        } else if viewModel.shouldShowSearchIncompleteState {
+            indexingInProgressView
         } else if viewModel.results.isEmpty && !viewModel.isSearching {
             noResultsView
         } else {
             ResultsTable(
                 results: sortedResults,
+                metadataAvailable: !viewModel.indexStats.isMetadataEnriching,
                 selection: $selection,
-                sortOrder: $sortOrder
+                sortOrder: $sortOrder,
+                focusedTarget: $focusedTarget,
+                onQuickLook: { quickLook.toggle(items: $0) },
+                onMoveToTrash: { viewModel.moveResultsToTrash($0) }
             )
+        }
+    }
+
+    @ViewBuilder
+    private var eventsView: some View {
+        VStack(spacing: 0) {
+            eventExplanationBanner
+
+            Divider()
+
+            eventContentView
+        }
+    }
+
+    @ViewBuilder
+    private var eventContentView: some View {
+        if viewModel.eventEntries.isEmpty {
+            ContentUnavailableView(
+                L("No File Events Yet"),
+                systemImage: "waveform.path.ecg",
+                description: Text(L("OpenFind will show file-system changes here after the index starts watching your selected scopes."))
+            )
+        } else if viewModel.filteredEventEntries.isEmpty {
+            ContentUnavailableView(
+                String(format: L("No Events for %@"), trimmedQuery),
+                systemImage: "line.3.horizontal.decrease.circle",
+                description: Text(L("Try a filename, folder path, or event type such as Renamed or Modified."))
+            )
+        } else {
+            EventsTable(
+                events: sortedEvents,
+                selection: $eventSelection,
+                sortOrder: $eventSortOrder
+            )
+        }
+    }
+
+    private var eventExplanationBanner: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+
+            Text(L("This page shows file-system changes observed by macOS. It does not mean OpenFind modified these files."))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+
+    @ViewBuilder
+    private var readinessView: some View {
+        if viewModel.shouldShowReadinessGuidance {
+            ContentUnavailableView {
+                Label(readinessTitle, systemImage: "magnifyingglass")
+            } description: {
+                Text(readinessDescription)
+            } actions: {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 14) {
+                        readinessActionContent
+                    }
+
+                    VStack(spacing: 10) {
+                        readinessActionContent
+                    }
+                }
+            }
+        } else {
+            ContentUnavailableView(
+                L("Start searching by typing a query"),
+                systemImage: "magnifyingglass",
+                description: Text(L("Names match file names by default. Use / or path: to search paths."))
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var readinessActionContent: some View {
+        if viewModel.indexStats.isIndexing {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 14, height: 14)
+                Text(String(
+                    format: viewModel.indexStats.isMetadataEnriching
+                        ? L("Indexed %lld items; names and paths are ready")
+                        : viewModel.indexStats.loadedFromDisk
+                            ? L("Loaded %lld indexed items; search is ready")
+                            : L("Indexing %lld items so far"),
+                    Int64(viewModel.indexStats.indexedItems)
+                ))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+
+        if !viewModel.hasFullDiskAccess {
+            Button {
+                FileActions.openSystemPrivacySettings()
+            } label: {
+                Label(L("Enable Full Disk Access"), systemImage: "lock.shield")
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private var indexingInProgressView: some View {
+        ContentUnavailableView {
+            Label(L("Indexing is still in progress"), systemImage: "doc.text.magnifyingglass")
+        } description: {
+            Text(L("Results are still incomplete while OpenFind builds the local index. If nothing appears yet, keep typing or wait for indexing to finish."))
+        } actions: {
+            HStack {
+                ProgressView()
+                    .controlSize(.small)
+                Text(String(format: L("Indexing %lld items so far"), Int64(viewModel.indexStats.indexedItems)))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func searchErrorView(_ message: String) -> some View {
+        ContentUnavailableView {
+            Label(message, systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(L("Adjust the query or switch to a simpler match mode."))
+        } actions: {
+            Button {
+                viewModel.options.matchMode = .substring
+                viewModel.scheduleSearch(delay: .zero)
+            } label: {
+                Label(L("Use Contains"), systemImage: "text.magnifyingglass")
+            }
+            .buttonStyle(.borderedProminent)
         }
     }
 
@@ -125,11 +305,52 @@ struct ContentView: View {
         }
     }
 
-    private var sortedResults: [SearchResult] {
-        if viewModel.isSearching {
-            return viewModel.results
-        } else {
-            return viewModel.results.sorted(using: sortOrder)
+    private var readinessDescription: String {
+        if viewModel.indexStats.isMetadataEnriching {
+            return L("Names and paths are ready to search while OpenFind enriches file details in the background.")
         }
+        if !viewModel.hasFullDiskAccess && viewModel.indexStats.isIndexing {
+            if viewModel.options.deepIndex {
+                return L("OpenFind is indexing every location macOS currently allows. Enable Full Disk Access to include protected folders that remain unavailable.")
+            }
+            return L("OpenFind is building its local index. Protected folders are skipped until Full Disk Access is enabled, which avoids blocking macOS permission popups.")
+        }
+        if !viewModel.hasFullDiskAccess {
+            if viewModel.options.deepIndex {
+                return L("OpenFind includes every folder macOS currently allows. Enable Full Disk Access to search protected locations that remain unavailable.")
+            }
+            return L("Enable Full Disk Access to include Desktop, Documents, Downloads, Music, Movies, Pictures, Mail, and external volumes. Until then, OpenFind skips those folders instead of showing blocking macOS permission popups.")
+        }
+        if viewModel.indexStats.loadedFromDisk && viewModel.indexStats.isIndexing {
+            return L("The saved index is ready to search while OpenFind synchronizes file changes since the last exit.")
+        }
+        return L("OpenFind is building its local index. Search results will stream in as files are scanned.")
+    }
+
+    private var readinessTitle: String {
+        if viewModel.indexStats.isMetadataEnriching
+            || (viewModel.indexStats.loadedFromDisk && viewModel.indexStats.indexedItems > 0) {
+            return L("OpenFind is ready to search")
+        }
+        return L("Preparing OpenFind")
+    }
+
+    private var sortedResults: [SearchResult] {
+        guard !sortOrder.isEmpty else { return viewModel.results }
+        return viewModel.results.sorted(using: sortOrder)
+    }
+
+    private var sortedEvents: [FileSystemEventLogEntry] {
+        viewModel.filteredEventEntries.sorted(using: eventSortOrder)
+    }
+
+    private var selectedURLs: [URL] {
+        sortedResults.compactMap { selection.contains($0.id) ? $0.url : nil }
+    }
+
+    private func selectFirstResult() -> Bool {
+        guard viewModel.displayMode == .files, let first = sortedResults.first else { return false }
+        selection = [first.id]
+        return true
     }
 }

@@ -1,20 +1,17 @@
 import SwiftUI
 
 struct OpenFindApp: App {
-    @State private var viewModel = SearchViewModel()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("OpenFind") {
-            ContentView(viewModel: viewModel)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 900, height: 600)
-        .commands {
-            AppCommands(viewModel: viewModel)
-        }
-
         Settings {
-            SettingsView(viewModel: viewModel)
+            SettingsView(
+                viewModel: appDelegate.viewModel,
+                globalHotKey: appDelegate.globalHotKey
+            )
+        }
+        .commands {
+            AppCommands(viewModel: appDelegate.viewModel)
         }
     }
 }

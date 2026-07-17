@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Swift tests and app bundle
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Run tests
+        run: xcrun --sdk macosx swift test
+
+      - name: Build universal app bundle
+        run: bash Scripts/build_app.sh
+
+      - name: Run index benchmark smoke test
+        run: FILES=600 MATCH_EVERY=60 bash Scripts/benchmark_index.sh
+
+      - name: Run lossless content-index benchmark
+        run: FILES=8000 BODY_KB=16 COPIES=4 bash Scripts/benchmark_content_index.sh

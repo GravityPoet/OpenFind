@@ -24,6 +24,15 @@ struct MatcherTests {
             _ = try Matcher(options: options)
         }
     }
+
+    @Test func testInvalidSearchExpressionThrows() throws {
+        var options = SearchOptions()
+        options.query = "<foo"
+
+        #expect(throws: SearchQueryError.self) {
+            _ = try SearchQueryPlan.parse(options.query).compile(options: options)
+        }
+    }
     
     @Test func testSubstringMode() throws {
         var options = SearchOptions()
@@ -100,5 +109,75 @@ struct MatcherTests {
         let matcher2 = try Matcher(options: options)
         #expect(matcher2.matches("room 101"))
         #expect(!matcher2.matches("room one"))
+    }
+
+    @Test func contentIndexPrefilterRequiresALiteralInEveryBooleanBranch() throws {
+        var options = SearchOptions()
+        options.target = .content
+        options.matchMode = .substring
+
+        options.query = "content:shared AND (content:left OR content:right)"
+        var query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.requiredContentIndexTerm(options: options) == "shared")
+
+        options.query = "content:left OR content:right"
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.requiredContentIndexTerm(options: options) == nil)
+
+        options.query = "content:needle OR content:needle"
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.requiredContentIndexTerm(options: options) == "needle")
+
+        options.query = "NOT content:needle"
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.requiredContentIndexTerm(options: options) == nil)
+
+        options.query = "wholeword"
+        options.matchMode = .wholeWord
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.requiredContentIndexTerm(options: options) == "wholeword")
+
+        options.query = "wild*card"
+        options.matchMode = .wildcard
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.requiredContentIndexTerm(options: options) == nil)
+
+        options.query = "你好世界"
+        options.matchMode = .substring
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.requiredContentIndexTerm(options: options) == nil)
+
+        options.query = "ab"
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.requiredContentIndexTerm(options: options) == nil)
+    }
+
+    @Test func unlimitedStreamingFastPathOnlyAcceptsEquivalentLiteralQueries() throws {
+        var options = SearchOptions()
+        options.maxContentFileSize = 0
+
+        options.query = "content:Needle"
+        options.target = .name
+        options.matchMode = .regex
+        var query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.streamingContentLiteral(options: options) == "Needle")
+
+        options.query = "Needle"
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.streamingContentLiteral(options: options) == nil)
+
+        options.target = .content
+        options.matchMode = .substring
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.streamingContentLiteral(options: options) == "Needle")
+
+        options.query = "ext:log content:Needle"
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.streamingContentLiteral(options: options) == nil)
+
+        options.query = "wild*card"
+        options.matchMode = .wildcard
+        query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        #expect(query.streamingContentLiteral(options: options) == nil)
     }
 }

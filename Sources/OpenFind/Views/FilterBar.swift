@@ -4,7 +4,7 @@ struct FilterBar: View {
     @Bindable var viewModel: SearchViewModel
 
     var body: some View {
-        GlassEffectContainer {
+        OpenFindGlassContainer {
             HStack(spacing: 16) {
                 // Target Picker (Name / Contents / Both)
                 Picker(L("Target"), selection: $viewModel.options.target) {
@@ -14,7 +14,7 @@ struct FilterBar: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 320)
-                .glassEffect(in: .rect(cornerRadius: 6))
+                .openFindGlassRoundedRectangle(cornerRadius: 6)
 
                 // Options Dropdown Menu
                 Menu {
@@ -34,13 +34,14 @@ struct FilterBar: View {
                     Divider()
 
                     Toggle(L("Deep Index"), isOn: $viewModel.options.deepIndex)
+                        .help(L("Deep Index Help"))
                 } label: {
                     Label(L("Options"), systemImage: "slider.horizontal.3")
                 }
                 .menuStyle(.borderlessButton)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .glassEffect(in: .rect(cornerRadius: 6))
+                .openFindGlassRoundedRectangle(cornerRadius: 6)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
@@ -102,7 +103,7 @@ struct FilterBar: View {
                 .menuStyle(.borderlessButton)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .glassEffect(in: .rect(cornerRadius: 6))
+                .openFindGlassRoundedRectangle(cornerRadius: 6)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(Color.secondary.opacity(0.15), lineWidth: 1)

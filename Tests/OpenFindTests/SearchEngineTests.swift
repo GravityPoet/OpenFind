@@ -179,6 +179,165 @@ struct SearchEngineTests {
         #expect(finalCount <= 5)
     }
 
+    @Test func broadNameSearchKeepsEveryResultPastTheVisiblePage() async throws {
+        let root = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let cacheURL = createCacheURL()
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let store = SearchIndexStore(persistenceURL: cacheURL)
+        let expectedCount = 2_025
+        for index in 0..<expectedCount {
+            let path = root.appendingPathComponent("broad-match-\(index).txt").path
+            #expect(FileManager.default.createFile(atPath: path, contents: Data()))
+        }
+
+        var options = SearchOptions()
+        options.query = "broad-match"
+        options.target = .name
+
+        var paths = Set<String>()
+        for await batch in SearchEngine.searchBatches(scopes: [root], options: options, store: store) {
+            #expect(!batch.isEmpty)
+            paths.formUnion(batch.map(\.path))
+        }
+
+        #expect(paths.count == expectedCount)
+
+        let snapshot = try #require(await SearchEngine.nameResultSnapshot(
+            scopes: [root],
+            options: options,
+            store: store
+        ))
+        #expect(snapshot.count == expectedCount)
+        #expect(snapshot.usesCompactReferences)
+        #expect(snapshot.bytesPerStoredMatch == MemoryLayout<Int32>.stride)
+        var compactPaths = Set<String>()
+        var offset = 0
+        while offset < snapshot.count {
+            let page = await SearchEngine.materializeNamePage(
+                from: snapshot,
+                startingAt: offset,
+                count: 2_000
+            )
+            compactPaths.formUnion(page.results.map(\.path))
+            #expect(page.nextOffset > offset)
+            offset = page.nextOffset
+        }
+        #expect(compactPaths == paths)
+    }
+
+    @Test func broadValidationPolicyKeepsTheVerifiedHeadWithoutCrawlingTheTail() {
+        #expect(SearchEngine.shouldValidateCompleteNameTail(25_000))
+        #expect(!SearchEngine.shouldValidateCompleteNameTail(25_001))
+    }
+
+    @Test func compactNamePageValidatesOnlyInspectedRowsAndKeepsTheTail() async throws {
+        let root = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let firstLive = root.appendingPathComponent("visible-live.txt")
+        let tailLive = root.appendingPathComponent("tail-live.txt")
+        try writeFile(at: firstLive, content: "")
+        try writeFile(at: tailLive, content: "")
+
+        func node(path: String) -> ResolvedNode {
+            ResolvedNode(
+                node: IndexedFileNode(
+                    name: (path as NSString).lastPathComponent,
+                    parentIndex: -1,
+                    isDirectory: false,
+                    size: 0,
+                    modifiedTime: 0,
+                    creationTime: 0,
+                    isHiddenScope: false,
+                    isPackageDescendant: false
+                ),
+                path: path
+            )
+        }
+
+        let validationIndex = SearchIndex(
+            signature: SearchIndexSignature(scopes: [root]),
+            nodes: [],
+            pathsAreFresh: false
+        )
+        let snapshot = SearchNameResultSnapshot(
+            nodes: [
+                node(path: root.appendingPathComponent("already-removed.txt").path),
+                node(path: firstLive.path),
+                node(path: tailLive.path),
+            ],
+            validationIndex: validationIndex
+        )
+
+        let firstPage = await SearchEngine.materializeNamePage(
+            from: snapshot,
+            startingAt: 0,
+            count: 1
+        )
+        #expect(firstPage.results.map(\.name) == ["visible-live.txt"])
+        #expect(firstPage.nextOffset == 2)
+        #expect(firstPage.staleResultCount == 1)
+        #expect(firstPage.nextOffset < snapshot.count)
+
+        let secondPage = await SearchEngine.materializeNamePage(
+            from: snapshot,
+            startingAt: firstPage.nextOffset,
+            count: 1
+        )
+        #expect(secondPage.results.map(\.name) == ["tail-live.txt"])
+        #expect(secondPage.nextOffset == snapshot.count)
+    }
+
+    @Test func unlimitedContentSizeRemovesTheCeilingWithoutUnboundedParallelMemory() async throws {
+        let root = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let cacheURL = createCacheURL()
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let store = SearchIndexStore(persistenceURL: cacheURL)
+        try writeFile(
+            at: root.appendingPathComponent("over-the-limit.txt"),
+            content: String(repeating: "x", count: 2_048) + "unlimited-hit"
+        )
+
+        var options = SearchOptions()
+        options.query = "unlimited-hit"
+        options.target = .content
+        options.maxContentFileSize = 0
+
+        var names: [String] = []
+        for await result in SearchEngine.search(scopes: [root], options: options, store: store) {
+            names.append(result.name)
+        }
+
+        #expect(names == ["over-the-limit.txt"])
+        #expect(options.allowsContentFileSize(Int64.max))
+        #expect(SearchEngine.estimatedContentMemoryBytes(fileSize: 10, budget: 100 * 1_024 * 1_024) == 1 * 1_024 * 1_024)
+        #expect(SearchEngine.estimatedContentMemoryBytes(fileSize: 1_024 * 1_024 * 1_024, budget: 100 * 1_024 * 1_024) == 100 * 1_024 * 1_024)
+    }
+
+    @Test func foregroundSearchTemporarilyPausesBackgroundReconciliation() async throws {
+        let coordinator = SearchWorkCoordinator()
+        coordinator.beginSearch()
+        let (waiterStarted, waiterStartedContinuation) = AsyncStream.makeStream(of: Void.self)
+        let waiter = Task.detached {
+            let started = ContinuousClock.now
+            waiterStartedContinuation.yield(())
+            waiterStartedContinuation.finish()
+            coordinator.waitForSearchesToFinish()
+            return started.duration(to: .now)
+        }
+
+        for await _ in waiterStarted { break }
+        try await Task.sleep(for: .milliseconds(50))
+        coordinator.endSearch()
+
+        let waited = await waiter.value
+        #expect(waited >= .milliseconds(40))
+    }
+
     @Test func testPinyinMatching() async throws {
         let root = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

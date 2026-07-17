@@ -2,8 +2,12 @@ import AppKit
 
 let fm = FileManager.default
 let sourcePath = "Scripts/Assets/OpenFindIcon.png"
-let iconsetDir = "OpenFind.iconset"
-let outputPath = "OpenFind.icns"
+let outputPath = CommandLine.arguments.count > 1
+    ? CommandLine.arguments[1]
+    : "OpenFind.icns"
+let iconsetDir = CommandLine.arguments.count > 2
+    ? CommandLine.arguments[2]
+    : (outputPath as NSString).deletingPathExtension + ".iconset"
 
 guard fm.fileExists(atPath: sourcePath) else {
     fputs("Missing icon source: \(sourcePath)\n", stderr)

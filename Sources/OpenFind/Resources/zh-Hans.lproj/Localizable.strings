@@ -3,9 +3,15 @@
 "Location" = "位置";
 "Size" = "大小";
 "Date Modified" = "修改日期";
+"Date Created" = "创建日期";
 "Open" = "打开";
-"Reveal in Finder" = "在访达中显示";
-"Copy Path" = "拷贝路径";
+"Reveal in Finder" = "在 Finder 中显示";
+"Copy File Name" = "复制文件名";
+"Copy Path" = "复制路径";
+"Copy File" = "复制文件";
+"Quick Look" = "快速查看";
+"Move to Trash" = "移到废纸篓";
+"Move to Trash Failed" = "移到废纸篓失败";
 
 /* File Dialogs */
 "Add to Scope" = "加入搜索范围";
@@ -13,8 +19,22 @@
 
 /* Search Bar & Header */
 "Search..." = "搜索...";
+"Search names, /paths, or path:" = "搜索文件名，/ 或 path: 搜路径";
+"Search files and folders..." = "搜索文件和文件夹...";
+"Filter events by path or name..." = "按路径或名称筛选事件...";
+"Recent Searches" = "最近搜索";
+"Case Sensitive On" = "已开启区分大小写";
+"Case Sensitive Off" = "不区分大小写搜索";
 "Cancel Search" = "取消搜索";
 "Start Search" = "开始搜索";
+"Show OpenFind" = "显示 OpenFind";
+"Search Examples" = "搜索示例";
+"Example PDF briefing" = "*.pdf briefing — PDF 文件名";
+"Example path scoped demo" = "in:/Users demo !.psd — 限定范围搜索名称";
+"Example large zip" = "*.zip size:>100MB — 大压缩包";
+"Example modified today" = "dm:today — 今天修改";
+"Example tag project" = "tag:ProjectA — Finder 标签";
+"Example content budget" = "content:\"Q4 budget\" — 文件内容";
 
 /* Filter Bar */
 "Target" = "搜索目标";
@@ -38,6 +58,79 @@
 "Contents" = "文件内容";
 
 /* Status Bar */
+"Files" = "文件";
+"Events" = "事件";
+"Time" = "时间";
+"Event" = "事件";
+"Filename" = "文件名";
+"Path" = "路径";
+"Created" = "Created";
+"Removed" = "Removed";
+"Renamed" = "Renamed";
+"Modified" = "Modified";
+"InodeMetaMod" = "InodeMetaMod";
+"FinderInfoMod" = "FinderInfoMod";
+"ChangeOwner" = "ChangeOwner";
+"XattrMod" = "XattrMod";
+"Cloned" = "Cloned";
+"MustScanSubDirs" = "MustScanSubDirs";
+"EventsDropped" = "EventsDropped";
+"RootChanged" = "RootChanged";
+"HistoryDone" = "HistoryDone";
+"Changed" = "Changed";
+"Updating" = "正在更新";
+"Ready" = "就绪";
+"Updating Compact" = "更新";
+"Ready Compact" = "就绪";
+"Enriching Compact" = "补全";
+"Searchable, enriching details" = "已可搜索，正在补全详情";
+"Names and paths are ready to search while OpenFind enriches file details in the background." = "名称和路径已可搜索；OpenFind 正在后台补全文件详情。";
+"Indexed %lld items; names and paths are ready" = "已索引 %lld 项；名称和路径已可搜索";
+"Coverage retrying" = "覆盖范围重试中";
+"Refreshing" = "重新索引";
+"Refreshing Compact" = "重建";
+"Retrying" = "重试中";
+"Unavailable Paths" = "暂不可用路径";
+"Retrying %lld unavailable paths" = "重试 %lld 个路径";
+"OpenFind is retrying %lld paths that were temporarily unavailable; indexed results remain searchable meanwhile." = "OpenFind 正在重试 %lld 个暂时无法读取的路径；已建立索引的结果仍可正常搜索。";
+"Background Sync" = "后台同步";
+"Background Sync Help Format" = "索引已就绪；%lld 个暂不可用路径正在后台安静重试。";
+"Background Sync Paths Pending" = "详细路径会在下一次状态更新时显示。";
+"Index is ready" = "索引已就绪。";
+"Refresh Index" = "重新索引";
+"Refreshing Index" = "正在重新索引";
+"Refresh Index Help" = "触发一次完整的文件系统重新扫描，并重建本地索引。";
+"Index Details" = "索引详情";
+"Folders" = "文件夹";
+"Total Indexed" = "索引总数";
+"Index Mode" = "索引模式";
+"Normal Index" = "普通索引";
+"Hidden Files" = "隐藏文件";
+"Included" = "已包含";
+"Excluded" = "已排除";
+"Index Source" = "索引来源";
+"Cache" = "缓存";
+"Live Scan" = "实时扫描";
+"File System Events" = "文件系统事件";
+"Processed Events" = "已处理事件";
+"Current Index Status" = "当前索引状态";
+"Search Summary Format" = "搜索：%lld 个结果 · %lld 毫秒";
+"Search Summary Paged Format" = "搜索：已显示 %lld / 共 %lld 个 · 用时 %@";
+"Searching Summary Paged Format" = "搜索中：已显示 %lld / 共 %lld 个 · %@";
+"Search Summary Refreshing Format" = "正在同步结果：已显示 %lld / 共 %lld 个";
+"Search Duration Milliseconds Format" = "%lld 毫秒";
+"Search Duration Seconds Format" = "%.1f 秒";
+"Show %lld More Results" = "再显示 %lld 个";
+"Loading Results" = "正在加载结果";
+"Event Summary Format" = "事件：显示 %lld 条 · 已记录 %lld 条";
+"Search Summary Styled Paged Format" = "搜索：已显示 **%@** / 共 **%@** 个 · 用时 **%@**";
+"Searching Summary Styled Paged Format" = "搜索中：已显示 **%@** / 共 **%@** 个 · **%@**";
+"Search Summary Refreshing Styled Format" = "正在同步结果：已显示 **%@** / 共 **%@** 个";
+"Event Summary Styled Format" = "事件：显示 **%@** 条 · 已记录 **%@** 条";
+"No file-system changes have been processed for this index yet." = "当前索引还没有处理过文件系统变更。";
+"If results look stale or the event count is high, run a full refresh to rebuild the local index." = "如果结果看起来过期，或者事件数量很高，建议完整刷新并重建本地索引。";
+"Scope Detail Whole Mac" = "范围：整台 Mac，包含隐藏文件和挂载卷；缓存、日志、临时目录噪声默认过滤，开启深度索引后纳入。";
+"Scope Detail Format" = "范围：\n%@";
 "%lld results" = "%lld 个结果";
 "showing first %lld" = "仅显示前 %lld 个";
 "elapsed: %.2fs" = "用时：%.2f秒";
@@ -50,6 +143,19 @@
 
 /* Placeholders & Empty States */
 "Start searching by typing a query" = "输入关键词开始搜索";
+"Names match file names by default. Use / or path: to search paths." = "默认只匹配文件名；输入 / 或 path: 才搜索路径。";
+"Preparing OpenFind" = "正在准备 OpenFind";
+"OpenFind is ready to search" = "OpenFind 已可搜索";
+"Indexing %lld items so far" = "已索引 %lld 项";
+"Loaded %lld indexed items; search is ready" = "已加载 %lld 项，可立即搜索";
+"Indexing is still in progress" = "索引仍在进行";
+"Results are still incomplete while OpenFind builds the local index. If nothing appears yet, keep typing or wait for indexing to finish." = "OpenFind 构建本地索引期间，结果仍不完整。如果暂时没有结果，请继续输入或等待索引完成。";
+"OpenFind is building its local index. Protected folders are skipped until Full Disk Access is enabled, which avoids blocking macOS permission popups." = "OpenFind 正在构建本地索引。为避免卡住的 macOS 权限弹窗，受保护文件夹会在启用完全磁盘访问前暂时跳过。";
+"Enable Full Disk Access to include Desktop, Documents, Downloads, Music, Movies, Pictures, Mail, and external volumes. Until then, OpenFind skips those folders instead of showing blocking macOS permission popups." = "启用完全磁盘访问后，才能包含桌面、文稿、下载、音乐、影片、图片、邮件和外接卷。在此之前，OpenFind 会跳过这些位置，不再弹出卡住的 macOS 权限窗口。";
+"OpenFind is indexing every location macOS currently allows. Enable Full Disk Access to include protected folders that remain unavailable." = "OpenFind 正在索引 macOS 当前允许读取的全部位置。启用完全磁盘访问后，还可纳入目前无法读取的受保护文件夹。";
+"OpenFind includes every folder macOS currently allows. Enable Full Disk Access to search protected locations that remain unavailable." = "OpenFind 已包含 macOS 当前允许读取的全部文件夹。启用完全磁盘访问后，还可搜索目前无法读取的受保护位置。";
+"OpenFind is building its local index. Search results will stream in as files are scanned." = "OpenFind 正在构建本地索引；扫描到文件后结果会陆续出现。";
+"The saved index is ready to search while OpenFind synchronizes file changes since the last exit." = "本地索引已可搜索；OpenFind 正在同步上次退出后的文件变化。";
 "Content Search Needs a Smaller Scope" = "内容搜索需要更小的范围";
 "Content search over your home folder scans file contents without an index and can take a very long time. Narrow the scope, or use name search for quick file lookup." = "在个人主目录里搜索文件内容会无索引扫描大量文件，可能非常慢。请缩小搜索范围，或改用名称搜索快速找文件。";
 "Content search over your home folder still reads candidate file contents on demand and can take a very long time. Narrow the scope, or use name search for quick file lookup." = "在个人主目录里搜索文件内容仍会按需读取候选文件，可能非常慢。请缩小搜索范围，或改用名称搜索快速找文件。";
@@ -60,25 +166,52 @@
 "Only file names were searched. Check spelling, or search names and contents." = "当前只搜索了文件名。请检查拼写，或改搜名称和内容。";
 "Only file contents were searched. Check spelling, or search names and contents." = "当前只搜索了文件内容。请检查拼写，或改搜名称和内容。";
 "Check spelling, try a broader term, or adjust search options." = "请检查拼写、换一个更宽泛的关键词，或调整搜索选项。";
+"Invalid search expression" = "搜索表达式无效";
+"Adjust the query or switch to a simpler match mode." = "请调整查询，或切换到更简单的匹配模式。";
+"Use Contains" = "使用包含匹配";
 "Search Names and Contents" = "搜索名称和内容";
 "No Search Scopes" = "没有搜索范围";
 "Add a folder to search in" = "请先添加搜索范围文件夹";
 "Clear Search" = "清空搜索";
+"This page shows file-system changes observed by macOS. It does not mean OpenFind modified these files." = "这里显示 macOS 观察到的文件系统变化，不代表 OpenFind 修改了这些文件。";
+"No File Events Yet" = "暂无文件事件";
+"OpenFind will show file-system changes here after the index starts watching your selected scopes." = "索引开始监听搜索范围后，OpenFind 会在这里显示文件系统变化。";
+"No Events for %@" = "没有匹配“%@”的事件";
+"Try a filename, folder path, or event type such as Renamed or Modified." = "可以输入文件名、文件夹路径，或 Renamed、Modified 这类事件类型。";
 
 /* Settings Window */
 "Settings" = "设置";
 "Default Target" = "默认搜索目标";
 "Default Match Mode" = "默认匹配模式";
-"Max Content File Size (MB)" = "内容搜索最大文件体积 (MB)";
+"Max Content File Size (MB)" = "内容搜索最大文件体积";
+"1 GB" = "1 GB";
+"No Limit" = "不限制";
+"Content Size Limit Help" = "100 MB 是默认值，不是最大值；可选最高 1 GB 或不限制。此设置只限制正文提取，文件名和路径结果不会被过滤。";
+"Content Acceleration Cache" = "正文加速库磁盘预算";
+"Content Acceleration Cache Help" = "默认使用 4 GB 保存可重建的正文加速数据。未进入加速库的文件仍会直接扫描原文件，因此不会缩小搜索范围。";
+"Local Ranking" = "本地排序";
+"Use Local Open History" = "用成功打开记录调整同分结果";
+"Local Ranking Help" = "成功打开记录只保存在本机，也只调整相关性相同的结果；不会隐藏结果，也不会压过更准确的名称匹配。";
+"Clear Local Usage" = "清除本地排序记录";
+"Local Usage Count Format" = "%lld 项";
 "Clear Recent Searches" = "清除最近搜索记录";
 "Durable Defaults" = "持久化默认值";
+"Keyboard" = "键盘";
+"Global Shortcut" = "全局快捷键";
+"Toggle OpenFind" = "显示或隐藏 OpenFind";
+"Registered" = "已启用";
+"Shortcut Unavailable" = "快捷键不可用";
+"Check for Updates..." = "检查更新…";
 
 /* Whole Mac & TCC */
+"Search" = "搜索";
 "Search Whole Mac" = "搜索整台 Mac";
 "Whole Mac" = "整台 Mac";
 "Whole Mac Enabled" = "整台 Mac 已启用";
 "Full Disk Access disabled" = "完全磁盘访问权限未启用";
 "Enable..." = "启用...";
+"Enable Full Disk Access" = "启用完全磁盘访问";
 
 /* Deep Index */
 "Deep Index" = "深度索引";
+"Deep Index Help" = "扫描缓存、日志、临时目录、/private/var 等噪声位置。普通搜索建议关闭以保持更快、更准。";
