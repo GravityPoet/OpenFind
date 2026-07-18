@@ -22,6 +22,17 @@ struct TemporarySearchPerformanceTests {
         return Int64(usage.ru_maxrss)
     }
 
+    private func processPhysicalMemoryBytes() -> (current: UInt64, lifetimePeak: UInt64) {
+        var usage = rusage_info_v4()
+        let status = withUnsafeMutablePointer(to: &usage) { pointer in
+            pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0)
+            }
+        }
+        guard status == 0 else { return (0, 0) }
+        return (usage.ri_phys_footprint, usage.ri_lifetime_max_phys_footprint)
+    }
+
     private func generatedBenchmarkBody(group: Int, kilobytes: Int, marker: String) -> String {
         let targetBytes = max(1_024, kilobytes * 1_024)
         var bytes = Array("group \(group)\(marker)".utf8)
@@ -305,6 +316,8 @@ struct TemporarySearchPerformanceTests {
             pathsAreFresh: true
         )
         SearchIndexPersistence.save(index: index, to: cacheURL)
+        let physicalMemory = processPhysicalMemoryBytes()
+        #expect(index.usesPersistedMappedNameIndex)
         let nameIndexURL = SearchIndexPersistence.nameIndexURL(for: cacheURL)
         #expect(FileManager.default.fileExists(atPath: cacheURL.path))
         #expect(FileManager.default.fileExists(atPath: nameIndexURL.path))
@@ -312,8 +325,109 @@ struct TemporarySearchPerformanceTests {
         let nameBytes = (try? nameIndexURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         print(
             "name-index-generate nodes=\(nodeCount) base=\(baseBytes) "
-                + "sidecar=\(nameBytes)"
+                + "sidecar=\(nameBytes) physical=\(physicalMemory.current) "
+                + "peak-physical=\(physicalMemory.lifetimePeak)"
         )
+        if let rawMaximum = environment["OPENFIND_NAME_BENCHMARK_MAX_GENERATE_PHYSICAL_MB"],
+           let maximumMegabytes = UInt64(rawMaximum), maximumMegabytes > 0 {
+            #expect(physicalMemory.lifetimePeak <= maximumMegabytes * 1_024 * 1_024)
+        }
+    }
+
+    @Test func measureConfiguredCompactTopologyReplacement() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let cachePath = environment["OPENFIND_NAME_BENCHMARK_CACHE"],
+              let rawNodeCount = environment["OPENFIND_NAME_BENCHMARK_NODES"],
+              let nodeCount = Int(rawNodeCount), nodeCount >= 1_024 else { return }
+
+        let cacheURL = URL(fileURLWithPath: cachePath)
+        let scope = URL(fileURLWithPath: "/openfind-generated-name-benchmark", isDirectory: true)
+        let signature = SearchIndexSignature(
+            scopes: [scope],
+            deepIndex: true,
+            hasFullDiskAccess: true
+        )
+        let oldIndex = try #require(SearchIndexPersistence.load(
+            signature: signature,
+            from: cacheURL
+        ))
+        #expect(oldIndex.usesPersistedMappedNameIndex)
+
+        let replacementURL = cacheURL.deletingLastPathComponent()
+            .appendingPathComponent("replacement-v18.bin")
+        defer {
+            for url in [
+                replacementURL,
+                SearchIndexPersistence.nameIndexURL(for: replacementURL),
+                SearchIndexPersistence.deltaURL(for: replacementURL),
+            ] {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+
+        var options = SearchOptions(query: "mappedneedle")
+        options.target = .name
+        options.deepIndex = true
+        options.includeHidden = true
+        options.includePackages = true
+        options.useFrequencyRanking = false
+        let query = try SearchQueryPlan.parse(options.query).compile(options: options)
+        var actualCount = 0
+        withExtendedLifetime(oldIndex) {
+            var nodes = [IndexedFileNode(
+                name: scope.path,
+                parentIndex: -1,
+                isDirectory: true,
+                size: 0,
+                modifiedTime: 1,
+                creationTime: 1,
+                isHiddenScope: false,
+                isPackageDescendant: false
+            )]
+            nodes.reserveCapacity(nodeCount + 1)
+            for index in 0..<nodeCount {
+                let name: String
+                if index.isMultiple(of: 997) {
+                    name = "mappedneedle-\(index).swift"
+                } else if index.isMultiple(of: 4) {
+                    name = "shared-name-\(index % 1_000).txt"
+                } else {
+                    name = "generated-name-\(index).swift"
+                }
+                nodes.append(IndexedFileNode(
+                    name: name,
+                    parentIndex: 0,
+                    isDirectory: false,
+                    size: Int64(index),
+                    modifiedTime: 1,
+                    creationTime: 1,
+                    isHiddenScope: false,
+                    isPackageDescendant: false
+                ))
+            }
+
+            let replacement = SearchIndex(
+                signature: signature,
+                nodes: nodes,
+                pathsAreFresh: true,
+                deferNameIndexBuild: true
+            )
+            SearchIndexPersistence.save(index: replacement, to: replacementURL)
+            actualCount = replacement.nameMatches(query: query, options: options).count
+        }
+
+        let expectedCount = (nodeCount + 996) / 997
+        let physicalMemory = processPhysicalMemoryBytes()
+        print(
+            "topology-replacement nodes=\(nodeCount) expected=\(expectedCount) "
+                + "actual=\(actualCount) physical=\(physicalMemory.current) "
+                + "peak-physical=\(physicalMemory.lifetimePeak)"
+        )
+        #expect(actualCount == expectedCount)
+        let maximumMegabytes = UInt64(
+            environment["OPENFIND_TOPOLOGY_BENCHMARK_MAX_PHYSICAL_MB"] ?? "1536"
+        ) ?? 1_536
+        #expect(physicalMemory.lifetimePeak <= maximumMegabytes * 1_024 * 1_024)
     }
 
     @Test func compareConfiguredPersistedNameIndexWithLinearOracle() throws {

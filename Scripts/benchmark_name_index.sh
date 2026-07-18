@@ -8,6 +8,8 @@ NODES="${NODES:-250000}"
 MAX_LOAD_MS="${MAX_LOAD_MS:-5000}"
 MAX_QUERY_MS="${MAX_QUERY_MS:-1000}"
 MAX_RSS_MB="${MAX_RSS_MB:-768}"
+MAX_GENERATE_PHYSICAL_MB="${MAX_GENERATE_PHYSICAL_MB:-1536}"
+MAX_REBUILD_PHYSICAL_MB="${MAX_REBUILD_PHYSICAL_MB:-1536}"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/openfind-name-index.XXXXXX")"
 
 cleanup() {
@@ -20,8 +22,16 @@ CACHE_PATH="$TMP_ROOT/search-index-v18.bin"
 echo "Generating persisted name index: $NODES nodes..."
 OPENFIND_NAME_BENCHMARK_CACHE="$CACHE_PATH" \
 OPENFIND_NAME_BENCHMARK_NODES="$NODES" \
+OPENFIND_NAME_BENCHMARK_MAX_GENERATE_PHYSICAL_MB="$MAX_GENERATE_PHYSICAL_MB" \
     xcrun --sdk macosx swift test -c release \
     --filter TemporarySearchPerformanceTests.generateConfiguredPersistedNameIndex
+
+echo "Measuring searchable compact-topology replacement..."
+OPENFIND_NAME_BENCHMARK_CACHE="$CACHE_PATH" \
+OPENFIND_NAME_BENCHMARK_NODES="$NODES" \
+OPENFIND_TOPOLOGY_BENCHMARK_MAX_PHYSICAL_MB="$MAX_REBUILD_PHYSICAL_MB" \
+    xcrun --sdk macosx swift test -c release --skip-build \
+    --filter TemporarySearchPerformanceTests.measureConfiguredCompactTopologyReplacement
 
 echo "Measuring mmap load and lossless query..."
 OPENFIND_NAME_BENCHMARK_CACHE="$CACHE_PATH" \
@@ -32,4 +42,4 @@ OPENFIND_NAME_BENCHMARK_MAX_RSS_MB="$MAX_RSS_MB" \
     xcrun --sdk macosx swift test -c release --skip-build \
     --filter TemporarySearchPerformanceTests.measureConfiguredPersistedNameIndex
 
-echo "OK: persisted name index stayed within load/query/RSS budgets"
+echo "OK: topology replacement and persisted name index stayed within memory/load/query budgets"

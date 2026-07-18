@@ -2,7 +2,19 @@ import SwiftUI
 
 enum ResultMetadataDisplay {
     static func sizeText(for result: SearchResult, metadataAvailable: Bool) -> String {
-        guard metadataAvailable, !result.isDirectory else { return "—" }
+        guard metadataAvailable else { return "—" }
+        if result.isDirectory {
+            guard result.isPackage else { return "—" }
+            let packageSize = SearchIndexBuilder.packageLogicalSize(
+                path: result.path,
+                name: result.name,
+                isDirectory: true,
+                fallback: result.size,
+                modifiedTime: result.modified.timeIntervalSinceReferenceDate
+            )
+            guard packageSize >= 4 * 1_024 else { return "—" }
+            return ByteCountFormatter.string(fromByteCount: packageSize, countStyle: .file)
+        }
         return ByteCountFormatter.string(fromByteCount: result.size, countStyle: .file)
     }
 

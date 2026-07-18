@@ -579,6 +579,35 @@ struct ContentSearchIndexTests {
         #expect(plan.workItems.first?.shouldRecord == true)
     }
 
+    @Test func oversizedBodiesRemainAuthoritativeWithoutCreatingTrigramPostings() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileURL = root.appendingPathComponent("oversized.txt")
+        let marker = "oversizedneedle"
+        let body = marker + String(
+            repeating: "x",
+            count: ContentSearchIndex.maximumPersistedBodyBytes + 1
+        )
+        try body.write(to: fileURL, atomically: true, encoding: .utf8)
+        let node = try resolvedNode(for: fileURL)
+        let index = ContentSearchIndex(databaseURL: root.appendingPathComponent("content.sqlite3"))
+
+        #expect(await index.record([ContentIndexRecord(node: node, text: body)]))
+        let diagnostics = await index.diagnostics()
+        #expect(diagnostics.indexedDocuments == 1)
+        #expect(diagnostics.uniqueContentBodies == 0)
+        #expect(diagnostics.deduplicatedDocuments == 0)
+
+        let plan = await index.plan(
+            candidates: [ContentIndexCandidate(node: node, forceRefresh: false)],
+            requiredLiteral: marker
+        )
+        #expect(plan.workItems.map { $0.node.path } == [node.path])
+        #expect(plan.workItems.first?.shouldRecord == false)
+        #expect(plan.skippedFreshNonMatches == 0)
+        #expect(await index.enrichmentCandidates([node]).isEmpty)
+    }
+
     @Test func backgroundEnrichmentReusesHardLinkExtractionBeforeHashDeduplication() async throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

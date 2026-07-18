@@ -104,6 +104,11 @@ actor ContentSearchIndex {
 
     private static let schemaVersion: Int32 = 4
     private static let queryChunkSize = 256
+    /// FTS5 trigram postings can expand a single very large body by orders of
+    /// magnitude while the row is inserted. Files above this cache threshold
+    /// stay authoritative raw-scan candidates, so search coverage and the
+    /// user-selected maximum searchable file size remain unchanged.
+    static let maximumPersistedBodyBytes = 8 * 1_024 * 1_024
     private static let checkpointWALBytes: Int64 = 64 * 1_024 * 1_024
     private static let checkpointInterval: Duration = .seconds(30)
     private static let maximumUnmergedTransactions = 32
@@ -265,10 +270,13 @@ actor ContentSearchIndex {
         _ records: [ContentIndexRecord],
         maximumDatabaseBytes: Int64 = 0
     ) -> Bool {
-        let preparedRecords = records.compactMap { record -> (ContentIndexRecord, Data?, Int)? in
+        let preparedRecords = records.compactMap {
+            record -> (record: ContentIndexRecord, digest: Data?, byteCount: Int, persistsBody: Bool)? in
             let byteCount = record.text?.utf8.count ?? 0
             guard byteCount <= Int(Int32.max) else { return nil }
-            return (record, record.digest ?? record.text.map(Self.contentDigest), byteCount)
+            let persistsBody = record.text == nil || byteCount <= Self.maximumPersistedBodyBytes
+            let digest = persistsBody ? (record.digest ?? record.text.map(Self.contentDigest)) : nil
+            return (record, digest, byteCount, persistsBody)
         }
         guard !preparedRecords.isEmpty else { return true }
         guard openIfNeeded(), let database else { return false }
@@ -328,12 +336,15 @@ actor ContentSearchIndex {
 
         var succeeded = true
         let sourceIdentityReuses = preparedRecords.reduce(into: 0) { count, prepared in
-            if prepared.0.reusedSourceIdentity { count += 1 }
+            if prepared.record.reusedSourceIdentity, prepared.persistsBody { count += 1 }
         }
         var potentiallyOrphanedContentIDs = Set<Int64>()
         var contentIDsByIdentity: [ContentBodyIdentity: Int64] = [:]
         contentIDsByIdentity.reserveCapacity(preparedRecords.count)
-        for (record, digest, textByteCount) in preparedRecords where !Task.isCancelled {
+        for prepared in preparedRecords where !Task.isCancelled {
+            let record = prepared.record
+            let digest = prepared.digest
+            let textByteCount = prepared.byteCount
             sqlite3_reset(selectPrevious)
             sqlite3_clear_bindings(selectPrevious)
             guard bind(record.node.path, to: selectPrevious, at: 1) else {
@@ -355,7 +366,13 @@ actor ContentSearchIndex {
 
             var contentID: Int64?
             var documentState: Int32 = 0
-            if let text = record.text {
+            if record.text != nil, !prepared.persistsBody {
+                // State 3 means searchable text exists but intentionally has
+                // no persistent posting list. Every content query must scan
+                // the original file, which preserves exact results while
+                // preventing unbounded trigram insertion memory.
+                documentState = 3
+            } else if let text = record.text {
                 guard let digest else {
                     succeeded = false
                     break
@@ -674,7 +691,7 @@ actor ContentSearchIndex {
                 creationTime: sqlite3_column_double(statement, 3),
                 extractionVersion: Int(sqlite3_column_int(statement, 4)),
                 hasSearchableText: sqlite3_column_int(statement, 5) != 0,
-                requiresAuthoritativeScan: sqlite3_column_int(statement, 5) == 2,
+                requiresAuthoritativeScan: sqlite3_column_int(statement, 5) >= 2,
                 containsRequiredLiteral: false
             )
         }
@@ -721,7 +738,7 @@ actor ContentSearchIndex {
                 creationTime: sqlite3_column_double(statement, 3),
                 extractionVersion: Int(sqlite3_column_int(statement, 4)),
                 hasSearchableText: sqlite3_column_int(statement, 5) != 0,
-                requiresAuthoritativeScan: sqlite3_column_int(statement, 5) == 2,
+                requiresAuthoritativeScan: sqlite3_column_int(statement, 5) >= 2,
                 containsRequiredLiteral: sqlite3_column_int(statement, 6) != 0
             )
         }

@@ -45,4 +45,13 @@ struct SearchScopeGuardTests {
         #expect(SearchScopes.adding(custom, to: [custom]) == [custom])
         #expect(SearchScopes.adding(SearchScopes.wholeMacURL, to: [custom]) == [SearchScopes.wholeMacURL])
     }
+
+    @Test func removingLastCustomScopeRestoresWholeMacInsteadOfLeavingSearchDisabled() {
+        let first = URL(fileURLWithPath: "/Users/test/First")
+        let second = URL(fileURLWithPath: "/Users/test/Second")
+
+        #expect(SearchScopes.removing(IndexSet(integer: 0), from: [first]) == [SearchScopes.wholeMacURL])
+        #expect(SearchScopes.removing(IndexSet(integer: 0), from: [first, second]) == [second])
+        #expect(SearchScopes.removing(IndexSet(integer: 0), from: [SearchScopes.wholeMacURL]) == [SearchScopes.wholeMacURL])
+    }
 }

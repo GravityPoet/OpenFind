@@ -378,7 +378,7 @@ final class SearchViewModel {
         for scope in scopes {
             ScopeStore.releaseAccess(scope)
         }
-        scopes = newScopes
+        scopes = newScopes.isEmpty ? [SearchScopes.wholeMacURL] : newScopes
         ScopeStore.save(scopes)
         refreshIndex()
     }
@@ -400,7 +400,7 @@ final class SearchViewModel {
         for index in offsets where scopes.indices.contains(index) {
             ScopeStore.releaseAccess(scopes[index])
         }
-        scopes.remove(atOffsets: offsets)
+        scopes = SearchScopes.removing(offsets, from: scopes)
         ScopeStore.save(scopes)
         refreshIndex()
     }
