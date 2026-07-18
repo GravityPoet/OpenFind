@@ -79,7 +79,7 @@ Status: ✅ done · 🚧 in progress · ⬜ planned
 ### Phase 5 — Distribution Readiness
 - ✅ Direct and sandbox entitlement profiles
 - ✅ Universal app bundle build script
-- ✅ ZIP-only build output, atomic local install, verified ZIP rollback, and product-App uniqueness checks
+- ✅ ZIP-only build output, single customer signing identity, atomic local install without persistent duplicate backups, and product-App uniqueness checks
 - ✅ Developer ID signing and notarization automation path
 - ✅ CI for tests, app bundle, and benchmark smoke test
 - ⬜ About + Help, polished Info.plist, category, copyright

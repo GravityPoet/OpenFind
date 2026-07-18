@@ -78,8 +78,27 @@ struct SettingsView: View {
                 Toggle(L("Global Shortcut"), isOn: globalHotKeyBinding)
 
                 LabeledContent(L("Toggle OpenFind")) {
-                    Text("⌘⇧Space")
-                        .font(.system(.body, design: .monospaced))
+                    HStack(spacing: 6) {
+                        ShortcutRecorder(
+                            shortcut: globalHotKey.shortcut,
+                            prompt: L("Press Shortcut"),
+                            accessibilityLabel: L("Toggle OpenFind")
+                        ) { shortcut in
+                            globalHotKey.setShortcut(shortcut)
+                        }
+                        .frame(width: 132)
+
+                        if globalHotKey.shortcut != .defaultValue {
+                            Button {
+                                globalHotKey.resetShortcut()
+                            } label: {
+                                Image(systemName: "arrow.counterclockwise")
+                            }
+                            .buttonStyle(.borderless)
+                            .help(L("Restore Default Shortcut"))
+                            .accessibilityLabel(L("Restore Default Shortcut"))
+                        }
+                    }
                 }
 
                 switch globalHotKey.registrationState {
@@ -92,6 +111,10 @@ struct SettingsView: View {
                     Label(L("Shortcut Unavailable"), systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 }
+
+                Text(L("Shortcut Recording Help"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section {

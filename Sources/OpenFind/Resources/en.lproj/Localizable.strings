@@ -201,6 +201,9 @@
 "Toggle OpenFind" = "Toggle OpenFind";
 "Registered" = "Registered";
 "Shortcut Unavailable" = "Shortcut Unavailable";
+"Press Shortcut" = "Press shortcut…";
+"Restore Default Shortcut" = "Restore Default Shortcut";
+"Shortcut Recording Help" = "Click the shortcut, then press a new combination using Command, Option, or Control. Press Esc to cancel.";
 "Check for Updates..." = "Check for Updates…";
 
 /* Whole Mac & TCC */

@@ -7,7 +7,7 @@ if [ "$(uname -s)" != "Darwin" ]; then
 fi
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_SCRIPT="$ROOT_DIR/Scripts/build_app.sh"
+BUILD_SCRIPT="$ROOT_DIR/Scripts/build_customer_app.sh"
 APP_NAME="OpenFind.app"
 ARCHIVE_PATH="$ROOT_DIR/dist/OpenFind.zip"
 INSTALL_APP="/Applications/$APP_NAME"
@@ -20,7 +20,6 @@ TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/openfind-install.XXXXXX")"
 SOURCE_APP="$TEMP_ROOT/$APP_NAME"
 INSTALL_STAGING="/Applications/.openfind-staging-$$"
 DISPLACED_APP="/Applications/.openfind-displaced-$$"
-BACKUP_ZIP=""
 REPLACEMENT_STARTED=0
 HAD_PREVIOUS=0
 
@@ -60,35 +59,6 @@ cleanup_openfind_temp_bundles() {
     done < <(find "$temp_root" -type d -path '*/openfind-*/OpenFind.app' -prune -print0 2>/dev/null)
 }
 
-restore_backup_archive() {
-    local restore_root
-    local restore_app
-    restore_root="$(mktemp -d "${TMPDIR:-/tmp}/openfind-rollback-restore.XXXXXX")" || return 1
-    : > "$restore_root/.metadata_never_index"
-    if ! unzip -tq "$BACKUP_ZIP" >/dev/null || ! ditto -x -k "$BACKUP_ZIP" "$restore_root"; then
-        rm -rf "$restore_root"
-        return 1
-    fi
-    restore_app="$restore_root/$APP_NAME"
-    if [ "$(plutil -extract CFBundleIdentifier raw "$restore_app/Contents/Info.plist" 2>/dev/null || true)" != "$BUNDLE_ID" ] || \
-        ! codesign --verify --deep --strict "$restore_app"; then
-        rm -rf "$restore_root"
-        return 1
-    fi
-    for arch in $ARCHS; do
-        if ! lipo "$restore_app/Contents/MacOS/$EXECUTABLE_NAME" -verify_arch "$arch"; then
-            rm -rf "$restore_root"
-            return 1
-        fi
-    done
-    rm -rf "$INSTALL_STAGING"
-    ditto --noextattr --noqtn "$restore_app" "$INSTALL_STAGING"
-    xattr -cr "$INSTALL_STAGING"
-    codesign --verify --deep --strict "$INSTALL_STAGING"
-    mv "$INSTALL_STAGING" "$INSTALL_APP"
-    rm -rf "$restore_root"
-}
-
 cleanup_or_rollback() {
     status=$?
     trap - EXIT INT TERM
@@ -100,8 +70,6 @@ cleanup_or_rollback() {
         restored=0
         if [ "$HAD_PREVIOUS" -eq 1 ] && [ -d "$DISPLACED_APP" ]; then
             mv "$DISPLACED_APP" "$INSTALL_APP"
-            restored=1
-        elif [ "$HAD_PREVIOUS" -eq 1 ] && [ -f "$BACKUP_ZIP" ] && restore_backup_archive; then
             restored=1
         fi
         if [ "$restored" -eq 1 ]; then
@@ -142,23 +110,8 @@ for arch in $ARCHS; do
     lipo "$SOURCE_APP/Contents/MacOS/$EXECUTABLE_NAME" -verify_arch "$arch"
 done
 
-STAMP="$(date '+%Y%m%d-%H%M%S')"
-BACKUP_DIR="$HOME/Library/Application Support/Codex/Backups/OpenFind/$STAMP"
 if [ -d "$INSTALL_APP" ]; then
     HAD_PREVIOUS=1
-    BACKUP_ZIP="$BACKUP_DIR/$APP_NAME.zip"
-    mkdir -p "$BACKUP_DIR"
-    ditto -c -k --sequesterRsrc --keepParent "$INSTALL_APP" "$BACKUP_ZIP"
-    unzip -tq "$BACKUP_ZIP" >/dev/null
-    BACKUP_VERIFY="$TEMP_ROOT/backup-verification"
-    mkdir -p "$BACKUP_VERIFY"
-    : > "$BACKUP_VERIFY/.metadata_never_index"
-    ditto -x -k "$BACKUP_ZIP" "$BACKUP_VERIFY"
-    if [ "$(plutil -extract CFBundleIdentifier raw "$BACKUP_VERIFY/$APP_NAME/Contents/Info.plist" 2>/dev/null || true)" != "$BUNDLE_ID" ]; then
-        echo "Error: rollback archive contains the wrong application." >&2
-        exit 1
-    fi
-    codesign --verify --deep --strict "$BACKUP_VERIFY/$APP_NAME"
 fi
 
 ditto --noextattr --noqtn "$SOURCE_APP" "$INSTALL_STAGING"
@@ -321,6 +274,3 @@ REPLACEMENT_STARTED=0
 trap - EXIT INT TERM
 printf 'INSTALLED_APP=%s\n' "$INSTALL_APP"
 printf 'ARCHIVE=%s\n' "$ARCHIVE_PATH"
-if [ -n "$BACKUP_ZIP" ]; then
-    printf 'BACKUP_ZIP=%s\n' "$BACKUP_ZIP"
-fi

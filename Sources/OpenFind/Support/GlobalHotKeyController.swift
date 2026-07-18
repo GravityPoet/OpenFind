@@ -12,6 +12,10 @@ final class GlobalHotKeyController {
     }
 
     private static let enabledKey = "OpenFind.globalHotKeyEnabled"
+    private static let keyCodeKey = "OpenFind.globalHotKeyKeyCode"
+    private static let modifiersKey = "OpenFind.globalHotKeyModifiers"
+    private static let keyLabelKey = "OpenFind.globalHotKeyLabel"
+    private static let defaultMigrationKey = "OpenFind.globalHotKeyDefaultV2"
     private static let signature: OSType = 0x4F464E44 // OFND
     private static let identifier: UInt32 = 1
 
@@ -22,10 +26,12 @@ final class GlobalHotKeyController {
     @ObservationIgnored private let defaults: UserDefaults
 
     private(set) var isEnabled: Bool
+    private(set) var shortcut: GlobalShortcut
     private(set) var registrationState: RegistrationState = .disabled
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        shortcut = Self.loadShortcut(from: defaults)
         if defaults.object(forKey: Self.enabledKey) == nil {
             isEnabled = true
         } else {
@@ -44,6 +50,19 @@ final class GlobalHotKeyController {
         isEnabled = enabled
         defaults.set(enabled, forKey: Self.enabledKey)
         updateRegistration()
+    }
+
+    @discardableResult
+    func setShortcut(_ shortcut: GlobalShortcut) -> Bool {
+        guard shortcut.isValid else { return false }
+        self.shortcut = shortcut
+        Self.saveShortcut(shortcut, to: defaults)
+        updateRegistration()
+        return true
+    }
+
+    func resetShortcut() {
+        setShortcut(.defaultValue)
     }
 
     func stop() {
@@ -91,8 +110,8 @@ final class GlobalHotKeyController {
         var registeredHotKey: EventHotKeyRef?
         let identifier = EventHotKeyID(signature: Self.signature, id: Self.identifier)
         let status = RegisterEventHotKey(
-            UInt32(kVK_Space),
-            UInt32(cmdKey | shiftKey),
+            shortcut.keyCode,
+            shortcut.modifiers,
             identifier,
             GetApplicationEventTarget(),
             0,
@@ -112,6 +131,38 @@ final class GlobalHotKeyController {
             UnregisterEventHotKey(hotKey)
             self.hotKey = nil
         }
+    }
+
+    private static func loadShortcut(from defaults: UserDefaults) -> GlobalShortcut {
+        let storedShortcut: GlobalShortcut
+        if defaults.object(forKey: keyCodeKey) != nil,
+           defaults.object(forKey: modifiersKey) != nil,
+           let label = defaults.string(forKey: keyLabelKey),
+           let keyCode = UInt32(exactly: defaults.integer(forKey: keyCodeKey)),
+           let modifiers = UInt32(exactly: defaults.integer(forKey: modifiersKey)) {
+            let candidate = GlobalShortcut(
+                keyCode: keyCode,
+                modifiers: modifiers,
+                keyLabel: label
+            )
+            storedShortcut = candidate.isValid ? candidate : .defaultValue
+        } else {
+            storedShortcut = .defaultValue
+        }
+
+        guard !defaults.bool(forKey: defaultMigrationKey) else { return storedShortcut }
+        defaults.set(true, forKey: defaultMigrationKey)
+        if storedShortcut == .legacyDefaultValue {
+            saveShortcut(.defaultValue, to: defaults)
+            return .defaultValue
+        }
+        return storedShortcut
+    }
+
+    private static func saveShortcut(_ shortcut: GlobalShortcut, to defaults: UserDefaults) {
+        defaults.set(Int(shortcut.keyCode), forKey: keyCodeKey)
+        defaults.set(Int(shortcut.modifiers), forKey: modifiersKey)
+        defaults.set(shortcut.keyLabel, forKey: keyLabelKey)
     }
 }
 

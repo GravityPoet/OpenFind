@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import Carbon
 @testable import OpenFind
 
 @Suite("Preferences Tests", .serialized)
@@ -208,9 +209,45 @@ struct PreferencesTests {
 
         let enabledByDefault = GlobalHotKeyController(defaults: defaults)
         #expect(enabledByDefault.isEnabled)
+        #expect(enabledByDefault.shortcut == .defaultValue)
+        #expect(enabledByDefault.shortcut.displayText == "⌃⌥F")
 
         enabledByDefault.setEnabled(false)
+        let customShortcut = GlobalShortcut(
+            keyCode: UInt32(kVK_ANSI_K),
+            modifiers: UInt32(cmdKey | optionKey),
+            keyLabel: "K"
+        )
+        #expect(enabledByDefault.setShortcut(customShortcut))
+
         let reloaded = GlobalHotKeyController(defaults: defaults)
         #expect(!reloaded.isEnabled)
+        #expect(reloaded.shortcut == customShortcut)
+
+        let invalidShortcut = GlobalShortcut(
+            keyCode: UInt32(kVK_ANSI_K),
+            modifiers: UInt32(shiftKey),
+            keyLabel: "K"
+        )
+        #expect(!reloaded.setShortcut(invalidShortcut))
+        #expect(reloaded.shortcut == customShortcut)
+
+        reloaded.resetShortcut()
+        #expect(reloaded.shortcut == .defaultValue)
+
+        defaults.set(-1, forKey: "OpenFind.globalHotKeyKeyCode")
+        defaults.set(-1, forKey: "OpenFind.globalHotKeyModifiers")
+        defaults.set(String(repeating: "K", count: 100), forKey: "OpenFind.globalHotKeyLabel")
+        #expect(GlobalHotKeyController(defaults: defaults).shortcut == .defaultValue)
+
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(Int(GlobalShortcut.legacyDefaultValue.keyCode), forKey: "OpenFind.globalHotKeyKeyCode")
+        defaults.set(Int(GlobalShortcut.legacyDefaultValue.modifiers), forKey: "OpenFind.globalHotKeyModifiers")
+        defaults.set(GlobalShortcut.legacyDefaultValue.keyLabel, forKey: "OpenFind.globalHotKeyLabel")
+        let migrated = GlobalHotKeyController(defaults: defaults)
+        #expect(migrated.shortcut == .defaultValue)
+
+        #expect(migrated.setShortcut(.legacyDefaultValue))
+        #expect(GlobalHotKeyController(defaults: defaults).shortcut == .legacyDefaultValue)
     }
 }
