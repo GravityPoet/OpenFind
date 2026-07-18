@@ -29,6 +29,11 @@ SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-}"
 SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-}"
 EXPECTED_SIGNING_CERT_SHA1="${EXPECTED_SIGNING_CERT_SHA1:-}"
 
+if [ -z "$SIGN_IDENTITY" ]; then
+    echo "Error: SIGN_IDENTITY is required. Use Scripts/build_customer_app.sh for product builds or set SIGN_IDENTITY=- explicitly for an ad-hoc validation build." >&2
+    exit 2
+fi
+
 APP_NAME="OpenFind.app"
 BUNDLE_ID="com.openfind.app"
 DIST_DIR="$ROOT_DIR/dist"
@@ -174,9 +179,6 @@ if [ -n "$SPARKLE_FEED_URL" ]; then
 fi
 
 echo "Signing the application bundle..."
-if [ -z "$SIGN_IDENTITY" ]; then
-    SIGN_IDENTITY="$("$ROOT_DIR/Scripts/ensure_local_codesign_cert.sh")"
-fi
 if [ "$DISTRIBUTION" = "customer" ] && [ "$SIGN_IDENTITY" = "-" ]; then
     echo "Error: customer builds must not use ad-hoc signing." >&2
     exit 2
@@ -184,7 +186,7 @@ fi
 if [ "$ENTITLEMENTS_EXPLICIT" -eq 0 ] \
     && { [ "$DISTRIBUTION" = "direct" ] || [ "$DISTRIBUTION" = "customer" ]; } \
     && [[ "$SIGN_IDENTITY" != "Developer ID Application:"* ]]; then
-    # Self-signed local identities have no Apple Team ID. Hardened runtime
+    # Self-signed identities have no Apple Team ID. Hardened runtime
     # would otherwise reject the embedded Sparkle framework even after both
     # are signed by the same local certificate. Developer ID builds retain
     # strict library validation through the empty direct entitlements file.

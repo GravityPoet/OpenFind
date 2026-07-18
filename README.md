@@ -54,10 +54,11 @@ explicit: include `/` in the query (`src/**/SearchQuery.swift`) or use `path:` /
 
 ## Packaging
 
-To package the project into a verified macOS app archive, execute the packaging automation script:
+To package the product into a verified macOS app archive with the single pinned
+OpenFind signing identity, execute:
 
 ```bash
-bash Scripts/build_app.sh
+bash Scripts/build_customer_app.sh
 ```
 
 This compiles a universal production build by default (`arm64 x86_64`), generates
@@ -73,15 +74,19 @@ any Dock entry, run:
 bash Scripts/install_local_app.sh
 ```
 
-The installer keeps the previous version as a verified ZIP rollback under
-`~/Library/Application Support/Codex/Backups/OpenFind/`; it never leaves a raw
-rollback `.app` outside `/Applications`.
+The installer keeps the previous version only as an atomic replacement staging
+bundle while validation runs. It restores that bundle on failure and removes it
+after success, so it does not accumulate persistent rollback copies.
 
 Distribution options:
 
 ```bash
-# Local universal ZIP, ad-hoc signed.
-bash Scripts/build_app.sh
+# Product ZIP for local installation and customer distribution. Both use the
+# pinned OpenFind Customer Code Signing identity.
+bash Scripts/build_customer_app.sh
+
+# Explicit ad-hoc validation build. This is never the installed product.
+SIGN_IDENTITY=- bash Scripts/build_app.sh
 
 # Developer ID signed + notarized direct distribution.
 SIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)" \

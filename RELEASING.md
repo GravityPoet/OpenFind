@@ -27,9 +27,10 @@ certificate SHA-1 must remain
 `3E146B469F41DEB31E45C28D0E9C512B3E5A41C1`. Build a customer archive locally
 with `bash Scripts/build_customer_app.sh`. That entry point also pins the public
 Sparkle EdDSA key and the production appcast URL, so local and CI customer builds
-share one update trust root. Do not install that archive over a development-signed
-local copy because macOS correctly treats the two identities as different code
-requirements.
+share one update trust root. `Scripts/install_local_app.sh` installs this same
+customer-signed archive, so local product validation, customer distribution, and
+subsequent updates share one designated code requirement. Migrating an older
+development-signed installation requires granting Full Disk Access once again.
 
 This no-fee distribution is intentionally not Apple-notarized. A newly
 downloaded copy is therefore shown as coming from an unidentified developer;

@@ -201,6 +201,9 @@
 "Toggle OpenFind" = "显示或隐藏 OpenFind";
 "Registered" = "已启用";
 "Shortcut Unavailable" = "快捷键不可用";
+"Press Shortcut" = "请按新快捷键…";
+"Restore Default Shortcut" = "恢复默认快捷键";
+"Shortcut Recording Help" = "点击快捷键后直接按新组合；须包含 Command、Option 或 Control。按 Esc 取消。";
 "Check for Updates..." = "检查更新…";
 
 /* Whole Mac & TCC */
