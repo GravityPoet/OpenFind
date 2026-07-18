@@ -4,20 +4,17 @@ import Testing
 
 @Suite("Search Permission Tests")
 struct SearchPermissionsTests {
-    @Test func anyAccessibleProtectedLocationConfirmsFullDiskAccess() {
+    @Test func accessibleTCCDatabaseConfirmsFullDiskAccess() {
         var visited: [String] = []
         let granted = SearchPermissions.hasFullDiskAccess { url in
-            visited.append(url.lastPathComponent)
-            switch url.lastPathComponent {
-            case "Mail": return .missing
-            case "Messages": return .denied
-            case "Safari": return .accessible
-            default: return .missing
-            }
+            visited.append(url.path(percentEncoded: false))
+            return visited.count == 1 ? .missing : .accessible
         }
 
         #expect(granted)
-        #expect(visited == ["Mail", "Messages", "Safari"])
+        #expect(visited.count == 2)
+        #expect(visited.allSatisfy { $0.hasSuffix("/com.apple.TCC/TCC.db") })
+        #expect(visited.allSatisfy { !$0.contains("/Mail") && !$0.contains("/Messages") && !$0.contains("/Safari") })
     }
 
     @Test func missingAndDeniedProtectedLocationsRemainConservative() {
@@ -28,6 +25,6 @@ struct SearchPermissionsTests {
         }
 
         #expect(!granted)
-        #expect(probeCount >= 3)
+        #expect(probeCount == 2)
     }
 }

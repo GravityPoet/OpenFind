@@ -27,6 +27,7 @@ APP_VERSION="${APP_VERSION:-1.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-2}"
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-}"
 SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-}"
+EXPECTED_SIGNING_CERT_SHA1="${EXPECTED_SIGNING_CERT_SHA1:-}"
 
 APP_NAME="OpenFind.app"
 BUNDLE_ID="com.openfind.app"
@@ -37,17 +38,28 @@ STALE_APP="$DIST_DIR/$APP_NAME"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 case "$DISTRIBUTION" in
-    direct|developer-id)
+    direct|customer|developer-id)
         DEFAULT_ENTITLEMENTS="Entitlements/OpenFind.direct.entitlements"
         ;;
     sandbox|appstore)
         DEFAULT_ENTITLEMENTS="Entitlements/OpenFind.sandbox.entitlements"
         ;;
     *)
-        echo "Error: DISTRIBUTION must be direct, developer-id, sandbox, or appstore" >&2
+        echo "Error: DISTRIBUTION must be direct, customer, developer-id, sandbox, or appstore" >&2
         exit 2
         ;;
 esac
+
+if [ "$DISTRIBUTION" = "customer" ]; then
+    if [ -z "$EXPECTED_SIGNING_CERT_SHA1" ]; then
+        echo "Error: customer builds must pin EXPECTED_SIGNING_CERT_SHA1." >&2
+        exit 2
+    fi
+    if [ "$NOTARIZE" = "1" ]; then
+        echo "Error: self-signed customer builds cannot use Apple notarization." >&2
+        exit 2
+    fi
+fi
 
 if [ -z "$ENTITLEMENTS" ]; then
     ENTITLEMENTS="$DEFAULT_ENTITLEMENTS"
@@ -165,8 +177,12 @@ echo "Signing the application bundle..."
 if [ -z "$SIGN_IDENTITY" ]; then
     SIGN_IDENTITY="$("$ROOT_DIR/Scripts/ensure_local_codesign_cert.sh")"
 fi
+if [ "$DISTRIBUTION" = "customer" ] && [ "$SIGN_IDENTITY" = "-" ]; then
+    echo "Error: customer builds must not use ad-hoc signing." >&2
+    exit 2
+fi
 if [ "$ENTITLEMENTS_EXPLICIT" -eq 0 ] \
-    && [ "$DISTRIBUTION" = "direct" ] \
+    && { [ "$DISTRIBUTION" = "direct" ] || [ "$DISTRIBUTION" = "customer" ]; } \
     && [[ "$SIGN_IDENTITY" != "Developer ID Application:"* ]]; then
     # Self-signed local identities have no Apple Team ID. Hardened runtime
     # would otherwise reject the embedded Sparkle framework even after both
@@ -192,6 +208,17 @@ if [ "$SIGN_TIMESTAMP" = "1" ]; then
 fi
 codesign "${NESTED_CODESIGN_ARGS[@]}" "$FRAMEWORKS_DIR/Sparkle.framework"
 codesign "${CODESIGN_ARGS[@]}" "$APP_DIR"
+
+if [ -n "$EXPECTED_SIGNING_CERT_SHA1" ]; then
+    EXPECTED_SIGNING_CERT_SHA1="$(printf '%s' "$EXPECTED_SIGNING_CERT_SHA1" | tr '[:upper:]' '[:lower:]')"
+    SIGNING_REQUIREMENT="$(codesign -d -r- "$APP_DIR" 2>&1)"
+    if ! printf '%s\n' "$SIGNING_REQUIREMENT" \
+        | tr '[:upper:]' '[:lower:]' \
+        | grep -Fq "certificate leaf = h\"$EXPECTED_SIGNING_CERT_SHA1\""; then
+        echo "Error: app was not signed by the pinned customer certificate." >&2
+        exit 1
+    fi
+fi
 
 if [ "$NOTARIZE" = "1" ]; then
     case "$SIGN_IDENTITY" in
@@ -268,6 +295,8 @@ OPENFIND_CACHE_PATH="$BUILD_TMP/smoke-index.bin" \
 
 if [ "$NOTARIZE" = "1" ]; then
     spctl --assess --type execute --verbose=4 "$APP_DIR"
+elif [ "$DISTRIBUTION" = "customer" ]; then
+    echo "Skipping Apple Gatekeeper assessment: the pinned self-signed customer build requires a first-launch override."
 else
     echo "Skipping Gatekeeper assessment: set NOTARIZE=1 with Developer ID credentials for distributable validation."
 fi

@@ -75,22 +75,14 @@ struct FilterBar: View {
                         Label(L("Add Folder..."), systemImage: "plus")
                     }
 
-                    if !viewModel.scopes.isEmpty {
-                        Button(role: .destructive, action: {
-                            viewModel.removeScopes(IndexSet(0..<viewModel.scopes.count))
-                        }) {
-                            Label(L("Clear Scopes"), systemImage: "trash")
-                        }
+                    if !isWholeMacOnly {
+                        Divider()
 
-                        if !isWholeMacOnly {
-                            Divider()
-
-                            ForEach(Array(viewModel.scopes.enumerated()), id: \.element) { index, scope in
-                                Button(action: {
-                                    viewModel.removeScopes(IndexSet(integer: index))
-                                }) {
-                                    Label(scopeLabel(scope), systemImage: "folder.badge.minus")
-                                }
+                        ForEach(Array(viewModel.scopes.enumerated()), id: \.element) { index, scope in
+                            Button(action: {
+                                viewModel.removeScopes(IndexSet(integer: index))
+                            }) {
+                                Label(scopeLabel(scope), systemImage: "folder.badge.minus")
                             }
                         }
                     }

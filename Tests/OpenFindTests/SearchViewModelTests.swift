@@ -218,6 +218,60 @@ struct SearchViewModelTests {
         #expect(!ResultMetadataDisplay.showsDates(metadataAvailable: false))
     }
 
+    @Test func completedMetadataShowsFilesAndKnownPackageSizesButNotOrdinaryDirectories() {
+        let modified = Date(timeIntervalSinceReferenceDate: 1)
+        let file = SearchResult(
+            name: "archive.bin",
+            path: "/tmp/archive.bin",
+            isDirectory: false,
+            size: 2 * 1_000 * 1_000 * 1_000,
+            modified: modified,
+            created: modified,
+            matchedContent: false,
+            contentPreview: nil
+        )
+        let package = SearchResult(
+            name: "Example.app",
+            path: "/tmp/Example.app",
+            isDirectory: true,
+            size: 750 * 1_000 * 1_000,
+            modified: modified,
+            created: modified,
+            matchedContent: false,
+            contentPreview: nil
+        )
+        let directory = SearchResult(
+            name: "Documents",
+            path: "/tmp/Documents",
+            isDirectory: true,
+            size: 750 * 1_000 * 1_000,
+            modified: modified,
+            created: modified,
+            matchedContent: false,
+            contentPreview: nil
+        )
+        let packageWithInvalidMetadata = SearchResult(
+            name: "Unindexed.app",
+            path: "/tmp/Unindexed.app",
+            isDirectory: true,
+            size: 1,
+            modified: modified,
+            created: modified,
+            matchedContent: false,
+            contentPreview: nil
+        )
+
+        #expect(ResultMetadataDisplay.sizeText(for: file, metadataAvailable: true).contains("GB"))
+        #expect(ResultMetadataDisplay.sizeText(for: package, metadataAvailable: true).contains("MB"))
+        #expect(ResultMetadataDisplay.sizeText(for: directory, metadataAvailable: true) == "—")
+        #expect(
+            ResultMetadataDisplay.sizeText(
+                for: packageWithInvalidMetadata,
+                metadataAvailable: true
+            ) == "—"
+        )
+    }
+
     @MainActor
     @Test func manualRefreshStartsWhileIndexStatusIsAlreadyUpdating() async throws {
         let probe = BuildInvocationProbe()

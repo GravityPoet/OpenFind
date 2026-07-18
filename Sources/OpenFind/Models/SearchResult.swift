@@ -13,6 +13,7 @@ struct SearchResult: Identifiable, Hashable, Sendable {
     var resolvedIdentity: ResolvedNodeIdentity { resolvedNode.identity }
     var isPathDeferred: Bool { resolvedNode.isPathDeferred }
     var isDirectory: Bool { resolvedNode.isDirectory }
+    var isPackage: Bool { isDirectory && SearchIndexBuilder.isPackageComponent(name) }
     var size: Int64 { resolvedNode.size }
     var modified: Date { resolvedNode.modifiedDate }
     var created: Date { resolvedNode.createdDate }

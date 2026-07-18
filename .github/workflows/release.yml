@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    name: Sign, notarize, appcast, and publish
+    name: Sign, appcast, and publish
     runs-on: macos-26
     steps:
       - name: Check out repository
@@ -26,63 +26,64 @@ jobs:
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
           echo "DOWNLOAD_PREFIX=https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" >> "$GITHUB_ENV"
-          echo "SPARKLE_FEED_URL=https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/appcast.xml" >> "$GITHUB_ENV"
 
       - name: Run tests at the macOS 14 deployment target
         run: MACOSX_DEPLOYMENT_TARGET=14.0 xcrun --sdk macosx swift test
 
-      - name: Import Developer ID certificate
+      - name: Import pinned OpenFind customer certificate
         env:
-          CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_BASE64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_PASSWORD }}
+          CERTIFICATE_BASE64: ${{ secrets.OPENFIND_CUSTOMER_CERT_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.OPENFIND_CUSTOMER_CERT_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.RELEASE_KEYCHAIN_PASSWORD }}
+          EXPECTED_SIGNING_CERT_SHA1: 3E146B469F41DEB31E45C28D0E9C512B3E5A41C1
         shell: bash
         run: |
           set -euo pipefail
-          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          CERTIFICATE_PATH="$RUNNER_TEMP/openfind-customer.p12"
+          CERTIFICATE_PEM="$RUNNER_TEMP/openfind-customer.pem"
           KEYCHAIN_PATH="$RUNNER_TEMP/openfind-signing.keychain-db"
+          test -n "$CERTIFICATE_BASE64"
+          test -n "$CERTIFICATE_PASSWORD"
+          test -n "$KEYCHAIN_PASSWORD"
           printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -P "$CERTIFICATE_PASSWORD" \
+            -A \
+            -T /usr/bin/codesign \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          openssl pkcs12 \
+            -in "$CERTIFICATE_PATH" \
+            -legacy \
+            -clcerts \
+            -nokeys \
+            -passin "pass:$CERTIFICATE_PASSWORD" \
+            -out "$CERTIFICATE_PEM"
+          security add-trusted-cert \
+            -r trustRoot \
+            -p codeSign \
+            -k "$KEYCHAIN_PATH" \
+            "$CERTIFICATE_PEM"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          SIGN_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
-          test -n "$SIGN_IDENTITY"
-          echo "SIGN_IDENTITY=$SIGN_IDENTITY" >> "$GITHUB_ENV"
-          echo "SIGNING_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          ACTUAL_SIGNING_CERT_SHA1="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | awk 'NR == 1 { print toupper($2) }')"
+          test "$ACTUAL_SIGNING_CERT_SHA1" = "$EXPECTED_SIGNING_CERT_SHA1"
+          echo "SIGN_IDENTITY=$EXPECTED_SIGNING_CERT_SHA1" >> "$GITHUB_ENV"
+          echo "EXPECTED_SIGNING_CERT_SHA1=$EXPECTED_SIGNING_CERT_SHA1" >> "$GITHUB_ENV"
 
-      - name: Configure App Store Connect notarization key
-        env:
-          NOTARY_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
-          NOTARY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-        shell: bash
+      - name: Build and verify pinned self-signed Universal app
         run: |
-          set -euo pipefail
-          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${NOTARY_KEY_ID}.p8"
-          printf '%s' "$NOTARY_KEY_BASE64" | base64 --decode > "$NOTARY_KEY_PATH"
-          xcrun notarytool store-credentials OpenFindRelease \
-            --key "$NOTARY_KEY_PATH" \
-            --key-id "$NOTARY_KEY_ID" \
-            --issuer "$NOTARY_ISSUER_ID" \
-            --keychain "$SIGNING_KEYCHAIN_PATH"
-
-      - name: Build, sign, notarize, staple, and verify Universal app
-        env:
-          SPARKLE_PUBLIC_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
-        run: |
-          DISTRIBUTION=developer-id \
-          SIGN_TIMESTAMP=1 \
-          NOTARIZE=1 \
-          NOTARY_PROFILE=OpenFindRelease \
-          NOTARY_KEYCHAIN="$SIGNING_KEYCHAIN_PATH" \
           APP_VERSION="$APP_VERSION" \
           BUILD_NUMBER="$BUILD_NUMBER" \
-          SPARKLE_FEED_URL="$SPARKLE_FEED_URL" \
-          SPARKLE_PUBLIC_KEY="$SPARKLE_PUBLIC_KEY" \
-          bash Scripts/build_app.sh
+          bash Scripts/build_customer_app.sh
 
       - name: Verify lossless content-index budgets
         run: FILES=8000 BODY_KB=16 COPIES=4 bash Scripts/benchmark_content_index.sh

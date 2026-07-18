@@ -1055,7 +1055,7 @@ final class SearchNameIndex: Sendable {
 /// linear node scan until the optional accelerator is ready.
 fileprivate final class SearchNameIndexCache: @unchecked Sendable {
     private let nodes: [IndexedFileNode]
-    private let persistBuiltIndex: (@Sendable (SearchNameIndex) -> Void)?
+    private var persistBuiltIndex: (@Sendable (SearchNameIndex) -> SearchNameIndex?)?
     private let condition = NSCondition()
     private var index: SearchNameIndex?
     private var isBuilding = false
@@ -1065,7 +1065,7 @@ fileprivate final class SearchNameIndexCache: @unchecked Sendable {
         nodes: [IndexedFileNode],
         buildImmediately: Bool,
         initialIndex: SearchNameIndex? = nil,
-        persistBuiltIndex: (@Sendable (SearchNameIndex) -> Void)? = nil
+        persistBuiltIndex: (@Sendable (SearchNameIndex) -> SearchNameIndex?)? = nil
     ) {
         self.nodes = nodes
         self.persistBuiltIndex = persistBuiltIndex
@@ -1093,7 +1093,7 @@ fileprivate final class SearchNameIndexCache: @unchecked Sendable {
 
         let built = SearchNameIndex(nodes: nodes)
         finish(built)
-        return built
+        return readyValue()
     }
 
     func prewarm() {
@@ -1116,16 +1116,68 @@ fileprivate final class SearchNameIndexCache: @unchecked Sendable {
 
     private func finish(_ built: SearchNameIndex?) {
         condition.lock()
-        index = built
+        let persistence = persistBuiltIndex
+        condition.unlock()
+        let finalIndex: SearchNameIndex?
+        if let built, let persistence {
+            finalIndex = persistence(built) ?? built
+        } else {
+            finalIndex = built
+        }
+
+        condition.lock()
+        index = finalIndex
+        isBuilt = true
+        isBuilding = false
+        condition.broadcast()
+        let latePersistence = persistence == nil ? persistBuiltIndex : nil
+        condition.unlock()
+
+        if let built, let latePersistence {
+            Task.detached(priority: .utility) {
+                let replacement = latePersistence(built)
+                if let replacement {
+                    self.replace(built, with: replacement)
+                }
+            }
+        }
+    }
+
+    func configurePersistence(
+        _ persistence: @escaping @Sendable (SearchNameIndex) -> SearchNameIndex?
+    ) {
+        condition.lock()
+        persistBuiltIndex = persistence
+        let readyIndex = isBuilt ? index : nil
+        let shouldPrewarm = !isBuilt && !isBuilding
+        condition.unlock()
+
+        if let readyIndex, !readyIndex.isMapped {
+            Task.detached(priority: .utility) {
+                let replacement = persistence(readyIndex)
+                if let replacement {
+                    self.replace(readyIndex, with: replacement)
+                }
+            }
+        } else if shouldPrewarm {
+            prewarm()
+        }
+    }
+
+    func replaceReadyIndex(with replacement: SearchNameIndex) {
+        condition.lock()
+        index = replacement
         isBuilt = true
         isBuilding = false
         condition.broadcast()
         condition.unlock()
-        if let built, let persistBuiltIndex {
-            Task.detached(priority: .utility) {
-                persistBuiltIndex(built)
-            }
-        }
+    }
+
+    private func replace(_ expected: SearchNameIndex, with replacement: SearchNameIndex) {
+        condition.lock()
+        if index === expected { index = replacement }
+        condition.unlock()
+        ProcessMemoryReclaimer.schedule()
     }
 
     func readyValue() -> SearchNameIndex? {
@@ -1488,7 +1540,7 @@ struct SearchIndex: Sendable {
         buildNameIndex: Bool = true,
         deferNameIndexBuild: Bool = false,
         initialNameIndex: SearchNameIndex? = nil,
-        persistBuiltNameIndex: (@Sendable (SearchNameIndex) -> Void)? = nil,
+        persistBuiltNameIndex: (@Sendable (SearchNameIndex) -> SearchNameIndex?)? = nil,
         basePathsAreCanonicalUnique: Bool? = nil
     ) {
         self.signature = signature
@@ -1712,8 +1764,24 @@ struct SearchIndex: Sendable {
         nameIndexCache?.readyValue()?.isMapped == true
     }
 
-    fileprivate func nameIndexForPersistence() -> SearchNameIndex? {
-        nameIndexCache?.value()
+    fileprivate func readyNameIndexForPersistence() -> SearchNameIndex? {
+        nameIndexCache?.readyValue()
+    }
+
+    fileprivate func preparePersistedNameIndex(baseDigest: Data, baseURL: URL) {
+        let nodes = nodes
+        nameIndexCache?.configurePersistence { nameIndex in
+            SearchIndexPersistence.persistBuiltNameIndex(
+                nameIndex,
+                nodes: nodes,
+                baseDigest: baseDigest,
+                baseURL: baseURL
+            )
+        }
+    }
+
+    fileprivate func replaceReadyNameIndex(with replacement: SearchNameIndex) {
+        nameIndexCache?.replaceReadyIndex(with: replacement)
     }
 
     func backgroundContentCandidates(
@@ -1731,6 +1799,15 @@ struct SearchIndex: Sendable {
             let name = node.name.hasPrefix("/")
                 ? (node.name as NSString).lastPathComponent
                 : node.name
+            // Most whole-Mac nodes cannot contain supported background text.
+            // Reject them from compact metadata before reconstructing an
+            // absolute path; the full path-aware classifier below remains the
+            // authority for build/cache-directory deferral.
+            guard node.isDirectory || maxFileSize == 0 || node.size <= maxFileSize else { continue }
+            guard DocumentTextExtractor.isKnownSearchableContent(
+                name: name,
+                isDirectory: node.isDirectory
+            ) else { continue }
             let path = pathProvider.path(for: Int32(index))
             guard DocumentTextExtractor.backgroundIndexTier(
                 name: name,
@@ -1738,7 +1815,6 @@ struct SearchIndex: Sendable {
                 isDirectory: node.isDirectory,
                 size: node.size
             ) == tier else { continue }
-            guard node.isDirectory || maxFileSize == 0 || node.size <= maxFileSize else { continue }
             candidates.append(ResolvedNode(node: node, path: path))
         }
         return candidates
@@ -4738,6 +4814,15 @@ struct QueryReadyScanDirectory: Sendable {
     let ancestorIdentities: DirectoryIdentityChain?
 }
 
+private struct DirectMetadataEntry: Sendable {
+    let name: String
+    let isDirectory: Bool
+    let size: Int64
+    let modifiedTime: Double
+    let creationTime: Double
+    let isHidden: Bool
+}
+
 /// Appends compact parent-linked nodes while directories are discovered. A
 /// child directory is queued only after its parent batch receives stable node
 /// indices, eliminating the full path-to-index assembly pass from stage one.
@@ -4898,6 +4983,60 @@ enum SearchIndexBuilder {
         "app", "bundle", "framework", "plugin", "appex", "xpc", "kext", "pkg",
         "pages", "numbers", "key", "rtfd",
     ]
+
+    private final class PackageSizeCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private let cache: NSCache<NSString, NSNumber> = {
+            let cache = NSCache<NSString, NSNumber>()
+            cache.countLimit = 4_096
+            return cache
+        }()
+
+        func value(for key: NSString) -> Int64? {
+            lock.lock()
+            defer { lock.unlock() }
+            return cache.object(forKey: key)?.int64Value
+        }
+
+        func insert(_ value: Int64, for key: NSString) {
+            lock.lock()
+            cache.setObject(NSNumber(value: value), forKey: key)
+            lock.unlock()
+        }
+    }
+
+    private static let packageSizeCache = PackageSizeCache()
+
+    static func isPackageComponent(_ component: String) -> Bool {
+        packageExtensions.contains((component as NSString).pathExtension.lowercased())
+    }
+
+    /// Package directories are presented as single files in Finder. APFS
+    /// directory records only report the directory inode size, while Spotlight
+    /// already maintains the logical bundle size without a recursive walk.
+    /// A missing/stale metadata item falls back safely instead of delaying the
+    /// searchable topology or inventing a value.
+    static func packageLogicalSize(
+        path: String,
+        name: String,
+        isDirectory: Bool,
+        fallback: Int64,
+        modifiedTime: Double
+    ) -> Int64 {
+        guard isDirectory, isPackageComponent(name) else { return fallback }
+        let key = "\(path)\u{0}\(modifiedTime.bitPattern)" as NSString
+        if let cached = packageSizeCache.value(for: key) {
+            return cached
+        }
+        guard let item = MDItemCreate(kCFAllocatorDefault, path as CFString),
+              let value = MDItemCopyAttribute(item, kMDItemFSSize) as? NSNumber,
+              value.int64Value >= 4 * 1_024 else {
+            return fallback
+        }
+        let size = value.int64Value
+        packageSizeCache.insert(size, for: key)
+        return size
+    }
 
     static func build(
         signature: SearchIndexSignature,
@@ -5140,24 +5279,268 @@ enum SearchIndexBuilder {
 
         var nodes = collector.snapshot()
         var unresolvedPaths = collapseEventPaths(workerUnresolved, signature: signature)
-        if !unresolvedPaths.isEmpty {
-            var tempNodes = SearchIndex(
-                signature: signature,
-                nodes: nodes,
-                buildNameIndex: false,
-                basePathsAreCanonicalUnique: true
-            ).toTempNodes()
-            for attempt in 0..<2 where !unresolvedPaths.isEmpty && !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(100 * (attempt + 1)))
-                let retries = await scanReplacements(paths: unresolvedPaths, signature: signature)
-                tempNodes.append(contentsOf: retries.flatMap(\.nodes).map { queryReadyTempNode($0) })
-                unresolvedPaths = collapseEventPaths(
-                    retries.flatMap(\.preservedBaseRoots),
-                    signature: signature
-                )
+        for attempt in 0..<2 where !unresolvedPaths.isEmpty && !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(100 * (attempt + 1)))
+            let retries = await scanReplacements(paths: unresolvedPaths, signature: signature)
+            mergeRetryNodes(
+                retries.flatMap(\.nodes).map { queryReadyTempNode($0) },
+                into: &nodes
+            )
+            unresolvedPaths = collapseEventPaths(
+                retries.flatMap(\.preservedBaseRoots),
+                signature: signature
+            )
+        }
+
+        let files = nodes.reduce(into: 0) { count, node in
+            if !node.isDirectory { count += 1 }
+        }
+        progress(files, nodes.count - files)
+        return SearchIndexBuildResult(nodes: nodes, unresolvedPaths: unresolvedPaths)
+    }
+
+    /// Builds the complete metadata snapshot directly in the durable
+    /// parent-linked representation. Only directory work items retain absolute
+    /// paths; ordinary files become compact nodes immediately. This keeps the
+    /// previous searchable snapshot alive without also retaining a second
+    /// multi-million-path graph and a full path-to-index dictionary.
+    private static func buildFullMetadataDirectWithDiagnostics(
+        signature: SearchIndexSignature,
+        progress: @escaping @Sendable (_ files: Int, _ directories: Int) -> Void
+    ) async -> SearchIndexBuildResult {
+        let ignoredPaths = effectiveIgnoredPaths(for: signature)
+        let tracker = ProgressTracker(progress: progress)
+        let collector = QueryReadyNodeCollector()
+        var roots: [QueryReadyScanDirectory] = []
+        var initialUnresolvedPaths: [String] = []
+        var rootFiles = 0
+        var rootDirectories = 0
+
+        for scope in signature.scopes {
+            guard let root = makeTempNode(url: URL(fileURLWithPath: scope)) else {
+                if pathState(scope) != .missing { initialUnresolvedPaths.append(scope) }
+                continue
             }
-            deduplicateTempNodesInPlace(&tempNodes)
-            nodes = assembleIndexedNodes(from: tempNodes)
+            let rootNode = IndexedFileNode(
+                name: root.path,
+                parentIndex: -1,
+                isDirectory: root.isDirectory,
+                size: root.size,
+                modifiedTime: root.modifiedTime,
+                creationTime: root.creationTime,
+                isHiddenScope: root.isHiddenScope,
+                isPackageDescendant: root.isPackageDescendant
+            )
+            guard let rootIndex = collector.append([rootNode]) else {
+                initialUnresolvedPaths.append(scope)
+                continue
+            }
+            if root.isDirectory {
+                rootDirectories += 1
+                roots.append(QueryReadyScanDirectory(
+                    path: root.path,
+                    nodeIndex: rootIndex,
+                    descendantsAreHidden: root.isHiddenScope,
+                    descendantsArePackage: root.isPackageDescendant
+                        || isPackageComponent(root.name),
+                    ancestorIdentities: nil
+                ))
+            } else {
+                rootFiles += 1
+            }
+        }
+        if rootFiles > 0 || rootDirectories > 0 {
+            tracker.record(files: rootFiles, directories: rootDirectories)
+        }
+
+        let workerCount = min(9, max(4, ProcessInfo.processInfo.activeProcessorCount))
+        let coordinator = QueryReadyScanCoordinator(roots: roots)
+        let workerUnresolved = await withTaskGroup(of: [String].self) { group in
+            for _ in 0..<workerCount {
+                group.addTask {
+                    var unresolvedPaths: [String] = []
+                    var localFiles = 0
+                    var localDirectories = 0
+                    var processedDirectories = 0
+
+                    while !Task.isCancelled {
+                        let slot = coordinator.next()
+                        if case .done = slot { break }
+                        guard case .directory(let directory) = slot else {
+                            try? await Task.sleep(for: .milliseconds(2))
+                            continue
+                        }
+
+                        processedDirectories += 1
+                        if processedDirectories.isMultiple(of: 16) { await Task.yield() }
+
+                        var currentDirectoryIdentity: BulkDirectoryIdentity?
+                        let bulkEntries: [BulkDirectoryEntry]?
+                        do {
+                            bulkEntries = try BulkDirectoryReader.read(
+                                path: directory.path,
+                                claimIdentity: { identity in
+                                    currentDirectoryIdentity = identity
+                                    return directory.ancestorIdentities?.contains(identity) != true
+                                }
+                            )
+                        } catch {
+                            if shouldRetryScanFailure(error, path: directory.path) {
+                                unresolvedPaths.append(directory.path)
+                            }
+                            coordinator.complete(subdirectories: [])
+                            continue
+                        }
+
+                        let childAncestorIdentities = currentDirectoryIdentity.map {
+                            DirectoryIdentityChain(
+                                identity: $0,
+                                parent: directory.ancestorIdentities
+                            )
+                        }
+                        var entries: [DirectMetadataEntry] = []
+                        if let bulkEntries {
+                            entries.reserveCapacity(bulkEntries.count)
+                            for entry in bulkEntries {
+                                entries.append(DirectMetadataEntry(
+                                    name: entry.name,
+                                    isDirectory: entry.isDirectory,
+                                    size: entry.size,
+                                    modifiedTime: entry.modifiedTime,
+                                    creationTime: entry.creationTime,
+                                    isHidden: entry.isHidden
+                                ))
+                            }
+                        } else {
+                            let children: [URL]
+                            do {
+                                children = try FileManager.default.contentsOfDirectory(
+                                    at: URL(fileURLWithPath: directory.path),
+                                    includingPropertiesForKeys: resourceKeys,
+                                    options: []
+                                )
+                            } catch {
+                                if shouldRetryScanFailure(error, path: directory.path) {
+                                    unresolvedPaths.append(directory.path)
+                                }
+                                coordinator.complete(subdirectories: [])
+                                continue
+                            }
+                            entries.reserveCapacity(children.count)
+                            for child in children {
+                                let path = SearchPath.normalize(child.path(percentEncoded: false))
+                                guard signature.contains(path: path),
+                                      !isIgnored(path, ignoredPaths: ignoredPaths) else { continue }
+                                guard let node = makeTempNode(url: child) else {
+                                    if pathState(path) != .missing { unresolvedPaths.append(path) }
+                                    continue
+                                }
+                                entries.append(DirectMetadataEntry(
+                                    name: child.lastPathComponent,
+                                    isDirectory: node.isDirectory,
+                                    size: node.size,
+                                    modifiedTime: node.modifiedTime,
+                                    creationTime: node.creationTime,
+                                    isHidden: node.isHiddenScope
+                                ))
+                            }
+                        }
+
+                        var batch: [IndexedFileNode] = []
+                        var pendingDirectories: [(
+                            offset: Int,
+                            path: String,
+                            descendantsAreHidden: Bool,
+                            descendantsArePackage: Bool
+                        )] = []
+                        batch.reserveCapacity(entries.count)
+                        pendingDirectories.reserveCapacity(entries.count / 8)
+                        for entry in entries {
+                            let childPath = SearchPath.appendingCanonicalComponent(
+                                entry.name,
+                                to: directory.path
+                            )
+                            guard signature.containsCanonicalPath(childPath),
+                                  !isIgnored(childPath, ignoredPaths: ignoredPaths) else { continue }
+                            let isHidden = directory.descendantsAreHidden || entry.isHidden
+                            let isPackageDescendant = directory.descendantsArePackage
+                            let offset = batch.count
+                            batch.append(IndexedFileNode(
+                                name: entry.name,
+                                parentIndex: directory.nodeIndex,
+                                isDirectory: entry.isDirectory,
+                                size: packageLogicalSize(
+                                    path: childPath,
+                                    name: entry.name,
+                                    isDirectory: entry.isDirectory,
+                                    fallback: entry.size,
+                                    modifiedTime: entry.modifiedTime
+                                ),
+                                modifiedTime: entry.modifiedTime,
+                                creationTime: entry.creationTime,
+                                isHiddenScope: isHidden,
+                                isPackageDescendant: isPackageDescendant
+                            ))
+                            if entry.isDirectory {
+                                localDirectories += 1
+                                pendingDirectories.append((
+                                    offset,
+                                    childPath,
+                                    isHidden,
+                                    isPackageDescendant || isPackageComponent(entry.name)
+                                ))
+                            } else {
+                                localFiles += 1
+                            }
+                        }
+
+                        guard let batchStart = collector.append(batch) else {
+                            unresolvedPaths.append(directory.path)
+                            coordinator.complete(subdirectories: [])
+                            continue
+                        }
+                        let subdirectories = pendingDirectories.map { pending in
+                            QueryReadyScanDirectory(
+                                path: pending.path,
+                                nodeIndex: batchStart + Int32(pending.offset),
+                                descendantsAreHidden: pending.descendantsAreHidden,
+                                descendantsArePackage: pending.descendantsArePackage,
+                                ancestorIdentities: childAncestorIdentities
+                            )
+                        }
+                        coordinator.complete(subdirectories: subdirectories)
+
+                        if localFiles + localDirectories >= 500 {
+                            tracker.record(files: localFiles, directories: localDirectories)
+                            localFiles = 0
+                            localDirectories = 0
+                        }
+                    }
+
+                    if localFiles > 0 || localDirectories > 0 {
+                        tracker.record(files: localFiles, directories: localDirectories)
+                    }
+                    return unresolvedPaths
+                }
+            }
+
+            var unresolved = initialUnresolvedPaths
+            for await paths in group {
+                unresolved.append(contentsOf: paths)
+            }
+            return unresolved
+        }
+
+        var nodes = collector.snapshot()
+        var unresolvedPaths = collapseEventPaths(workerUnresolved, signature: signature)
+        for attempt in 0..<2 where !unresolvedPaths.isEmpty && !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(100 * (attempt + 1)))
+            let retries = await scanReplacements(paths: unresolvedPaths, signature: signature)
+            mergeRetryNodes(retries.flatMap(\.nodes), into: &nodes)
+            unresolvedPaths = collapseEventPaths(
+                retries.flatMap(\.preservedBaseRoots),
+                signature: signature
+            )
         }
 
         let files = nodes.reduce(into: 0) { count, node in
@@ -5173,6 +5556,12 @@ enum SearchIndexBuilder {
         onBatch: (@Sendable ([TempNode]) -> Void)? = nil,
         maximumPartialNodes: Int? = 250_000
     ) async -> SearchIndexBuildResult {
+        if onBatch == nil {
+            return await buildFullMetadataDirectWithDiagnostics(
+                signature: signature,
+                progress: progress
+            )
+        }
         let ignoredPaths = effectiveIgnoredPaths(for: signature)
         let tracker = ProgressTracker(progress: progress)
         let partialPublisher = onBatch.map {
@@ -5269,7 +5658,13 @@ enum SearchIndexBuilder {
                                     path: childPath,
                                     name: entry.name,
                                     isDirectory: entry.isDirectory,
-                                    size: entry.size,
+                                    size: packageLogicalSize(
+                                        path: childPath,
+                                        name: entry.name,
+                                        isDirectory: entry.isDirectory,
+                                        fallback: entry.size,
+                                        modifiedTime: entry.modifiedTime
+                                    ),
                                     modifiedTime: entry.modifiedTime,
                                     creationTime: entry.creationTime,
                                     isHiddenScope: directory.descendantsAreHidden || entry.isHidden,
@@ -5562,11 +5957,19 @@ enum SearchIndexBuilder {
         }
         let modifiedTime = timeIntervalSinceReferenceDate(info.st_mtimespec)
         let rawCreationTime = timeIntervalSinceReferenceDate(info.st_birthtimespec)
+        let name = (path as NSString).lastPathComponent
+        let isDirectory = (info.st_mode & S_IFMT) == S_IFDIR
         let node = TempNode(
             path: path,
             name: "",
-            isDirectory: (info.st_mode & S_IFMT) == S_IFDIR,
-            size: Int64(info.st_size),
+            isDirectory: isDirectory,
+            size: packageLogicalSize(
+                path: path,
+                name: name,
+                isDirectory: isDirectory,
+                fallback: isDirectory ? 0 : Int64(info.st_size),
+                modifiedTime: modifiedTime
+            ),
             modifiedTime: modifiedTime,
             creationTime: info.st_birthtimespec.tv_sec > 0 ? rawCreationTime : modifiedTime,
             isHiddenScope: isHiddenByName || (info.st_flags & UInt32(UF_HIDDEN)) != 0,
@@ -5796,6 +6199,95 @@ enum SearchIndexBuilder {
             ))
         }
         return finalNodes
+    }
+
+    /// Merges the small subtrees produced by retry scans without expanding the
+    /// complete compact snapshot back into absolute-path nodes. Existing paths
+    /// are resolved only when their leaf name can satisfy a retry path, and the
+    /// only durable path table is bounded by the retry payload itself.
+    private static func mergeRetryNodes(
+        _ retryNodes: [TempNode],
+        into nodes: inout [IndexedFileNode]
+    ) {
+        guard !retryNodes.isEmpty else { return }
+
+        var ordered = retryNodes.map { node in
+            (
+                node: node,
+                path: SearchPath.canonicalAliasPath(node.path),
+                depth: node.path.utf8.reduce(into: 0) { count, byte in
+                    if byte == 47 { count += 1 }
+                }
+            )
+        }
+        ordered.sort { lhs, rhs in
+            if lhs.depth != rhs.depth { return lhs.depth < rhs.depth }
+            return lhs.path < rhs.path
+        }
+
+        var relevantPaths = Set<String>()
+        relevantPaths.reserveCapacity(ordered.count * 2)
+        for item in ordered {
+            relevantPaths.insert(item.path)
+            relevantPaths.insert(SearchPath.parent(ofCanonicalPath: item.path))
+        }
+        let relevantLeafNames = Set(relevantPaths.map { path in
+            path == "/" ? "/" : (path as NSString).lastPathComponent
+        })
+
+        let pathProvider = SearchIndexPathProvider(nodes: nodes)
+        var pathToIndex: [String: Int32] = [:]
+        pathToIndex.reserveCapacity(relevantPaths.count)
+        for (index, node) in nodes.enumerated() {
+            let shortName: String
+            if node.parentIndex < 0, node.name.hasPrefix("/") {
+                shortName = node.name == "/" ? "/" : (node.name as NSString).lastPathComponent
+            } else {
+                shortName = node.name
+            }
+            guard relevantLeafNames.contains(shortName) else { continue }
+            let path = SearchPath.canonicalAliasPath(pathProvider.path(for: Int32(index)))
+            if relevantPaths.contains(path) { pathToIndex[path] = Int32(index) }
+        }
+
+        for item in ordered {
+            let temp = item.node
+            if let existingIndex = pathToIndex[item.path] {
+                let index = Int(existingIndex)
+                guard index >= 0, index < nodes.count else { continue }
+                let existing = nodes[index]
+                nodes[index] = IndexedFileNode(
+                    name: existing.name,
+                    parentIndex: existing.parentIndex,
+                    isDirectory: temp.isDirectory,
+                    size: temp.size,
+                    modifiedTime: temp.modifiedTime,
+                    creationTime: temp.creationTime,
+                    isHiddenScope: temp.isHiddenScope,
+                    isPackageDescendant: temp.isPackageDescendant
+                )
+                continue
+            }
+
+            let parentPath = SearchPath.parent(ofCanonicalPath: item.path)
+            let parentIndex = parentPath == item.path ? -1 : (pathToIndex[parentPath] ?? -1)
+            guard nodes.count < Int(Int32.max) else { return }
+            let name = parentIndex == -1
+                ? item.path
+                : (item.path as NSString).lastPathComponent
+            let index = Int32(nodes.count)
+            nodes.append(IndexedFileNode(
+                name: name,
+                parentIndex: parentIndex,
+                isDirectory: temp.isDirectory,
+                size: temp.size,
+                modifiedTime: temp.modifiedTime,
+                creationTime: temp.creationTime,
+                isHiddenScope: temp.isHiddenScope,
+                isPackageDescendant: temp.isPackageDescendant
+            ))
+            pathToIndex[item.path] = index
+        }
     }
 
     /// A transient metadata failure must not make a name/path candidate vanish
@@ -6087,18 +6579,20 @@ enum SearchIndexBuilder {
         }
     }
 
-    @inline(__always)
-    private static func isPackageComponent(_ component: String) -> Bool {
-        packageExtensions.contains((component as NSString).pathExtension.lowercased())
-    }
-
     private static func makeTempNode(url: URL) -> TempNode? {
         guard let values = try? url.resourceValues(forKeys: resourceKeySet) else { return nil }
         let path = SearchPath.canonicalAliasPath(url.path(percentEncoded: false))
         let isDirectory = values.isDirectory ?? false
-        let size = Int64(values.fileSize ?? 0)
         let modified = values.contentModificationDate ?? .distantPast
         let created = values.creationDate ?? modified
+        let name = url.lastPathComponent
+        let size = packageLogicalSize(
+            path: path,
+            name: name,
+            isDirectory: isDirectory,
+            fallback: isDirectory ? 0 : Int64(values.fileSize ?? 0),
+            modifiedTime: modified.timeIntervalSinceReferenceDate
+        )
         let components = url.pathComponents
         let isHidden = values.isHidden == true || components.contains { component in
             component.hasPrefix(".") && component != "." && component != ".."
@@ -6109,7 +6603,7 @@ enum SearchIndexBuilder {
 
         return TempNode(
             path: path,
-            name: url.lastPathComponent,
+            name: name,
             isDirectory: isDirectory,
             size: size,
             modifiedTime: modified.timeIntervalSinceReferenceDate,
@@ -6544,62 +7038,97 @@ enum SearchIndexPersistence {
         to url: URL? = nil,
         removeDelta: Bool = true
     ) {
-        let rawData = encode(index)
-        let data = compress(rawData) ?? rawData
         let targetURL = url ?? cacheURL
-        let baseDigest = Data(SHA256.hash(data: data))
-        let nameIndexData = index.nameIndexForPersistence()?.sidecarData(
-            baseDigest: baseDigest
-        )
-        nameIndexPersistenceLock.lock()
-        defer { nameIndexPersistenceLock.unlock() }
-        do {
-            try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: targetURL, options: .atomic)
-            if let nameIndexData {
-                try nameIndexData.write(to: nameIndexURL(for: targetURL), options: .atomic)
-            } else {
-                try? FileManager.default.removeItem(at: nameIndexURL(for: targetURL))
-            }
-            if removeDelta {
-                try? FileManager.default.removeItem(at: deltaURL(for: targetURL))
-            }
-
-            for legacyVersion in 1...17 {
-                let legacyName = legacyVersion == 1
-                    ? "search-index-v1.plist"
-                    : "search-index-v\(legacyVersion).bin"
-                let oldURL = targetURL.deletingLastPathComponent()
-                    .appendingPathComponent(legacyName)
-                let oldStem = oldURL.deletingPathExtension()
-                let artifacts = [
-                    oldURL,
-                    oldStem.appendingPathExtension("delta.plist"),
-                    oldStem.appendingPathExtension("names-v1.bin"),
-                    oldStem.appendingPathExtension("content-v1.sqlite3"),
-                    URL(fileURLWithPath: oldStem.path + ".content-v1.sqlite3-wal"),
-                    URL(fileURLWithPath: oldStem.path + ".content-v1.sqlite3-shm"),
-                ]
-                for artifact in artifacts {
-                    try? FileManager.default.removeItem(at: artifact)
+        let persisted: (baseDigest: Data, wroteNameIndex: Bool)? = autoreleasepool {
+            let rawData = encode(index)
+            let data = compress(rawData) ?? rawData
+            let baseDigest = Data(SHA256.hash(data: data))
+            let nameIndexData = index.readyNameIndexForPersistence()?.sidecarData(
+                baseDigest: baseDigest
+            )
+            nameIndexPersistenceLock.lock()
+            defer { nameIndexPersistenceLock.unlock() }
+            do {
+                try FileManager.default.createDirectory(
+                    at: targetURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try data.write(to: targetURL, options: .atomic)
+                if let nameIndexData {
+                    try nameIndexData.write(to: nameIndexURL(for: targetURL), options: .atomic)
+                } else {
+                    try? FileManager.default.removeItem(at: nameIndexURL(for: targetURL))
                 }
+                if removeDelta {
+                    try? FileManager.default.removeItem(at: deltaURL(for: targetURL))
+                }
+
+                for legacyVersion in 1...17 {
+                    let legacyName = legacyVersion == 1
+                        ? "search-index-v1.plist"
+                        : "search-index-v\(legacyVersion).bin"
+                    let oldURL = targetURL.deletingLastPathComponent()
+                        .appendingPathComponent(legacyName)
+                    let oldStem = oldURL.deletingPathExtension()
+                    let artifacts = [
+                        oldURL,
+                        oldStem.appendingPathExtension("delta.plist"),
+                        oldStem.appendingPathExtension("names-v1.bin"),
+                        oldStem.appendingPathExtension("content-v1.sqlite3"),
+                        URL(fileURLWithPath: oldStem.path + ".content-v1.sqlite3-wal"),
+                        URL(fileURLWithPath: oldStem.path + ".content-v1.sqlite3-shm"),
+                    ]
+                    for artifact in artifacts {
+                        try? FileManager.default.removeItem(at: artifact)
+                    }
+                }
+                return (baseDigest, nameIndexData != nil)
+            } catch {
+                return nil
             }
-        } catch {
-            // Cache persistence failure should not break search
+        }
+        guard let persisted else { return }
+
+        if persisted.wroteNameIndex,
+           let mapped = SearchNameIndex.loadMapped(
+               nodes: index.nodes,
+               baseDigest: persisted.baseDigest,
+               from: nameIndexURL(for: targetURL)
+           ) {
+            index.replaceReadyNameIndex(with: mapped)
+        } else {
+            index.preparePersistedNameIndex(
+                baseDigest: persisted.baseDigest,
+                baseURL: targetURL
+            )
         }
     }
 
-    private static func persistBuiltNameIndex(
+    fileprivate static func persistBuiltNameIndex(
         _ nameIndex: SearchNameIndex,
+        nodes: [IndexedFileNode],
         baseDigest: Data,
         baseURL: URL
-    ) {
-        guard let sidecarData = nameIndex.sidecarData(baseDigest: baseDigest) else { return }
-        nameIndexPersistenceLock.lock()
-        defer { nameIndexPersistenceLock.unlock() }
-        guard let currentBase = try? Data(contentsOf: baseURL, options: .mappedIfSafe),
-              Data(SHA256.hash(data: currentBase)) == baseDigest else { return }
-        try? sidecarData.write(to: nameIndexURL(for: baseURL), options: .atomic)
+    ) -> SearchNameIndex? {
+        guard let sidecarData = nameIndex.sidecarData(baseDigest: baseDigest) else { return nil }
+        let wroteSidecar: Bool = {
+            nameIndexPersistenceLock.lock()
+            defer { nameIndexPersistenceLock.unlock() }
+            guard let currentBase = try? Data(contentsOf: baseURL, options: .mappedIfSafe),
+                  Data(SHA256.hash(data: currentBase)) == baseDigest else { return false }
+            do {
+                try sidecarData.write(to: nameIndexURL(for: baseURL), options: .atomic)
+                return true
+            } catch {
+                return false
+            }
+        }()
+        guard wroteSidecar else { return nil }
+        return SearchNameIndex.loadMapped(
+            nodes: nodes,
+            baseDigest: baseDigest,
+            from: nameIndexURL(for: baseURL)
+        )
     }
 
     static var cacheURL: URL {
@@ -6874,14 +7403,15 @@ enum SearchIndexPersistence {
             ))
         }
 
+        let decodedNodes = nodes
         let persistedNameIndex = SearchNameIndex.loadMapped(
-            nodes: nodes,
+            nodes: decodedNodes,
             baseDigest: baseDigest,
             from: nameIndexURL(for: baseURL)
         )
         return SearchIndex(
             signature: loadedSignature,
-            nodes: nodes,
+            nodes: decodedNodes,
             lastEventID: encodedLastEventID == 0 ? nil : encodedLastEventID,
             unresolvedPaths: canonicalUnresolvedPaths,
             deferNameIndexBuild: true,
@@ -6889,6 +7419,7 @@ enum SearchIndexPersistence {
             persistBuiltNameIndex: { nameIndex in
                 SearchIndexPersistence.persistBuiltNameIndex(
                     nameIndex,
+                    nodes: decodedNodes,
                     baseDigest: baseDigest,
                     baseURL: baseURL
                 )

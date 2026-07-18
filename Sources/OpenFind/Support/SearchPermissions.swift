@@ -11,9 +11,10 @@ enum SearchPermissions {
         hasFullDiskAccess(probe: probeProtectedLocation)
     }
 
-    /// Full Disk Access has no supported read API. Probe several locations
-    /// macOS protects with the same TCC grant instead of treating one missing
-    /// or temporarily unavailable app-data folder as a definitive denial.
+    /// Full Disk Access has no supported read API. Probe the TCC databases
+    /// themselves: directory enumeration under Mail, Messages, or Safari can
+    /// succeed even when their contents remain protected, which would produce
+    /// a false positive and let whole-Mac indexing trigger folder prompts.
     static func hasFullDiskAccess(
         probe: (URL) -> ProbeResult
     ) -> Bool {
@@ -31,11 +32,12 @@ enum SearchPermissions {
     private static var protectedProbeURLs: [URL] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return [
-            home.appendingPathComponent("Library/Mail", isDirectory: true),
-            home.appendingPathComponent("Library/Messages", isDirectory: true),
-            home.appendingPathComponent("Library/Safari", isDirectory: true),
             URL(
                 fileURLWithPath: "/Library/Application Support/com.apple.TCC/TCC.db",
+                isDirectory: false
+            ),
+            home.appendingPathComponent(
+                "Library/Application Support/com.apple.TCC/TCC.db",
                 isDirectory: false
             ),
         ]
@@ -43,16 +45,8 @@ enum SearchPermissions {
 
     private static func probeProtectedLocation(_ url: URL) -> ProbeResult {
         do {
-            if url.hasDirectoryPath {
-                _ = try FileManager.default.contentsOfDirectory(
-                    at: url,
-                    includingPropertiesForKeys: nil,
-                    options: [.skipsSubdirectoryDescendants]
-                )
-            } else {
-                let handle = try FileHandle(forReadingFrom: url)
-                try handle.close()
-            }
+            let handle = try FileHandle(forReadingFrom: url)
+            try handle.close()
             return .accessible
         } catch {
             return isMissing(error) ? .missing : .denied

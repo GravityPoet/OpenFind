@@ -32,6 +32,12 @@ enum SearchScopes {
         return customScopes
     }
 
+    static func removing(_ offsets: IndexSet, from scopes: [URL]) -> [URL] {
+        var remaining = scopes.map(normalized)
+        remaining.remove(atOffsets: offsets)
+        return remaining.isEmpty ? [wholeMacURL] : remaining
+    }
+
     private static func normalizedPath(_ url: URL) -> String {
         let path = url.standardizedFileURL.path(percentEncoded: false)
         guard path != wholeMacPath else { return wholeMacPath }
