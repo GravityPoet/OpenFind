@@ -28,6 +28,7 @@
 "Cancel Search" = "Cancel Search";
 "Start Search" = "Start Search";
 "Show OpenFind" = "Show OpenFind";
+"Quit OpenFind" = "Quit OpenFind";
 "Search Examples" = "Search Examples";
 "Example PDF briefing" = "*.pdf briefing — PDF names";
 "Example path scoped demo" = "in:/Users demo !.psd — scoped name search";
