@@ -28,6 +28,7 @@
 "Cancel Search" = "取消搜索";
 "Start Search" = "开始搜索";
 "Show OpenFind" = "显示 OpenFind";
+"Quit OpenFind" = "退出 OpenFind";
 "Search Examples" = "搜索示例";
 "Example PDF briefing" = "*.pdf briefing — PDF 文件名";
 "Example path scoped demo" = "in:/Users demo !.psd — 限定范围搜索名称";

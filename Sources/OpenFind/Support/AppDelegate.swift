@@ -43,12 +43,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     @objc func showOpenFindWindow(_ sender: Any?) {
         showMainWindow()
     }
 
     @objc func showSettingsWindow(_ sender: Any?) {
         let window = makeSettingsWindowIfNeeded()
+        NSApp.unhide(nil)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
@@ -119,6 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func showMainWindow(_ window: NSWindow? = nil) {
         let window = window ?? makeMainWindowIfNeeded()
 
+        NSApp.unhide(nil)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         NotificationCenter.default.post(name: .openFindFocusSearch, object: nil)
