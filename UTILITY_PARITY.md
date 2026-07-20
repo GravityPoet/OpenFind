@@ -187,6 +187,10 @@ transaction and preserve the user's original power policy.
 - Network-configuration and USB hot-plug wake callbacks now use the same retained,
   invalidated, weak-monitor context pattern; the full suite passed again after this
   lifecycle hardening.
+- Commit `10930ec` was rebuilt into a fresh customer archive and atomically installed;
+  the new installed process reached steady state after the expected cold index pass
+  (about 2m43s) and then remained responsive at about 0.9% CPU, with no OpenFind-owned
+  power assertion.
 
 ## Completion Gate
 
