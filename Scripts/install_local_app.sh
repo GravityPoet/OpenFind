@@ -22,6 +22,39 @@ INSTALL_STAGING="/Applications/.openfind-staging-$$"
 DISPLACED_APP="/Applications/.openfind-displaced-$$"
 REPLACEMENT_STARTED=0
 HAD_PREVIOUS=0
+APPCAST_CACHE_ROOT="$HOME/Library/Caches/Sparkle_generate_appcast"
+
+remove_known_tree() {
+    local target="$1"
+    case "$target" in
+        "$TEMP_ROOT"|"$INSTALL_STAGING"|"$DISPLACED_APP"|"$INSTALL_APP") ;;
+        *)
+            echo "Error: refusing to remove unexpected install path: $target" >&2
+            return 64
+            ;;
+    esac
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        /bin/rm -R "$target"
+    fi
+}
+
+remove_validated_appcast_bundle() {
+    local cached_app="$1"
+    case "$cached_app" in
+        "$APPCAST_CACHE_ROOT"/*) ;;
+        *)
+            echo "Error: refusing to remove app outside the appcast cache: $cached_app" >&2
+            return 64
+            ;;
+    esac
+    if [ "$(basename "$cached_app")" != "$APP_NAME" ]; then
+        echo "Error: refusing to remove an unexpected appcast cache entry: $cached_app" >&2
+        return 64
+    fi
+    if [ -e "$cached_app" ] || [ -L "$cached_app" ]; then
+        /bin/rm -R "$cached_app"
+    fi
+}
 
 unregister_app_bundle() {
     app_bundle="$1"
@@ -34,15 +67,14 @@ unregister_app_bundle() {
 }
 
 cleanup_openfind_appcast_cache() {
-    local cache_root="$HOME/Library/Caches/Sparkle_generate_appcast"
-    [ -d "$cache_root" ] || return 0
+    [ -d "$APPCAST_CACHE_ROOT" ] || return 0
     while IFS= read -r -d '' cached_app; do
         local cached_id
         cached_id="$(plutil -extract CFBundleIdentifier raw "$cached_app/Contents/Info.plist" 2>/dev/null || true)"
         [ "$cached_id" = "$BUNDLE_ID" ] || continue
         unregister_app_bundle "$cached_app"
-        rm -rf "$(dirname "$cached_app")"
-    done < <(find "$cache_root" -type d -name "$APP_NAME" -prune -print0 2>/dev/null)
+        remove_validated_appcast_bundle "$cached_app"
+    done < <(find "$APPCAST_CACHE_ROOT" -type d -name "$APP_NAME" -prune -print0 2>/dev/null)
 }
 
 cleanup_openfind_temp_bundles() {
@@ -63,10 +95,11 @@ cleanup_or_rollback() {
     status=$?
     trap - EXIT INT TERM
     unregister_app_bundle "$SOURCE_APP"
-    rm -rf "$TEMP_ROOT" "$INSTALL_STAGING"
+    remove_known_tree "$TEMP_ROOT"
+    remove_known_tree "$INSTALL_STAGING"
     if [ "$status" -ne 0 ] && [ "$REPLACEMENT_STARTED" -eq 1 ]; then
         unregister_app_bundle "$INSTALL_APP"
-        rm -rf "$INSTALL_APP"
+        remove_known_tree "$INSTALL_APP"
         restored=0
         if [ "$HAD_PREVIOUS" -eq 1 ] && [ -d "$DISPLACED_APP" ]; then
             mv "$DISPLACED_APP" "$INSTALL_APP"
@@ -86,7 +119,8 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 : > "$TEMP_ROOT/.metadata_never_index"
-rm -rf "$INSTALL_STAGING" "$DISPLACED_APP"
+remove_known_tree "$INSTALL_STAGING"
+remove_known_tree "$DISPLACED_APP"
 cleanup_openfind_appcast_cache
 cleanup_openfind_temp_bundles
 
@@ -170,9 +204,9 @@ if ! pgrep -f "$PROCESS_PATTERN" >/dev/null; then
 fi
 
 unregister_app_bundle "$DISPLACED_APP"
-rm -rf "$DISPLACED_APP"
+remove_known_tree "$DISPLACED_APP"
 unregister_app_bundle "$SOURCE_APP"
-rm -rf "$TEMP_ROOT"
+remove_known_tree "$TEMP_ROOT"
 
 physical_paths="$(
     for root in "/Applications" "$ROOT_DIR" "/private/tmp" "$HOME/Library/Application Support/Codex/Backups/OpenFind"; do
@@ -269,7 +303,7 @@ if [ -n "$dock_paths" ] && [ "$dock_paths" != "$INSTALL_APP" ]; then
 fi
 
 unregister_app_bundle "$DISPLACED_APP"
-rm -rf "$DISPLACED_APP"
+remove_known_tree "$DISPLACED_APP"
 REPLACEMENT_STARTED=0
 trap - EXIT INT TERM
 printf 'INSTALLED_APP=%s\n' "$INSTALL_APP"

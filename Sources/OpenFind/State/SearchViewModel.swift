@@ -433,8 +433,24 @@ final class SearchViewModel {
         refreshEventLog()
     }
 
-    func flushIndexPersistence() async {
-        await indexStore.flushPersistence()
+    @discardableResult
+    func flushIndexPersistence(timeout: Duration = .seconds(3)) async -> Bool {
+        guard timeout > .zero else { return false }
+        let completion = IndexPersistenceFlushCompletion()
+        let indexStore = self.indexStore
+        Task {
+            await indexStore.flushPersistence()
+            completion.resolve(true)
+        }
+        Task {
+            do {
+                try await Task.sleep(for: timeout)
+                completion.resolve(false)
+            } catch {
+                return
+            }
+        }
+        return await completion.value()
     }
 
     func refreshIndexNow() {
@@ -987,5 +1003,37 @@ final class SearchViewModel {
                 self.eventEntries = events
             }
         }
+    }
+}
+
+final class IndexPersistenceFlushCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Bool, Never>?
+    private var result: Bool?
+
+    func value() async -> Bool {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if let result {
+                lock.unlock()
+                continuation.resume(returning: result)
+                return
+            }
+            self.continuation = continuation
+            lock.unlock()
+        }
+    }
+
+    func resolve(_ result: Bool) {
+        lock.lock()
+        guard self.result == nil else {
+            lock.unlock()
+            return
+        }
+        self.result = result
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(returning: result)
     }
 }

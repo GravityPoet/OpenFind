@@ -86,6 +86,17 @@ enum FileActions {
         return panel.runModal() == .OK ? panel.urls : []
     }
 
+    @MainActor
+    static func chooseFile(message: String, prompt: String) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = prompt
+        panel.message = message
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
     static func openSystemPrivacySettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
             NSWorkspace.shared.open(url)
@@ -95,10 +106,6 @@ enum FileActions {
     @MainActor
     static func openSettings() {
         NSApp.activate(ignoringOtherApps: true)
-        if let appDelegate = NSApp.delegate as? AppDelegate {
-            appDelegate.showSettingsWindow(nil)
-        } else {
-            NSApp.sendAction(#selector(AppDelegate.showSettingsWindow(_:)), to: nil, from: nil)
-        }
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }

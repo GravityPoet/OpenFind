@@ -24,6 +24,10 @@
 	<string>14.0</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
+	<key>OSAScriptingDefinition</key>
+	<string>OpenFind.sdef</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>CFBundleLocalizations</key>
@@ -35,8 +39,12 @@
 	<string>OpenFind requires access to the Desktop folder to search for files within it.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>OpenFind requires access to the Documents folder to search for files within it.</string>
-	<key>NSDownloadsFolderUsageDescription</key>
-	<string>OpenFind requires access to the Downloads folder to search for files within it.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>OpenFind requires access to the Downloads folder to search for files within it.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>OpenFind uses Location Services only when you enable a Wi-Fi Trigger, to identify the current Wi-Fi network.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>OpenFind accesses paired Bluetooth devices only when you enable a Bluetooth Trigger, to detect whether the selected device is connected.</string>
 	<key>NSRemovableVolumesUsageDescription</key>
 	<string>OpenFind requires access to removable volumes to search for files on them.</string>
 	<key>NSNetworkVolumesUsageDescription</key>

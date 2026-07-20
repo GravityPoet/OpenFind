@@ -1,41 +1,184 @@
 import AppKit
+import OSLog
 import Sparkle
 import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    private let lifecycleLogger = Logger(subsystem: "com.openfind.app", category: "Lifecycle")
     let viewModel = SearchViewModel()
-    let globalHotKey = GlobalHotKeyController()
+    let hotKeyRegistry: GlobalHotKeyRegistry
+    let globalHotKey: GlobalHotKeyController
+    let clipboardStore: ClipboardHistoryStore
+    let clipboard: ClipboardController
+    let keyboardLock: KeyboardLockController
+    let awakeSession: AwakeSessionController
+    let awakeSessionPreferences: AwakeSessionPreferences
+    let awakeAutomation: AwakeAutomationController
+    let awakeNotifications: AwakeNotificationController
+    let awakeStatistics: AwakeStatisticsController
+    let sessionActivity: SessionActivityController
+    let powerProtect: PowerProtectController
+    let launchAtLogin: LaunchAtLoginController
+    let awakeHotKeys: AwakeHotKeyController
+    let triggerStore: TriggerStore
+    let driveAliveStore: DriveAliveStore
+    let driveAlive: DriveAliveController
+    let triggerCoordinator: TriggerCoordinator
+    let triggerScheduler: TriggerMonitorScheduler
     let quickLook = QuickLookController()
     private let mainWindowFrameAutosaveName = NSWindow.FrameAutosaveName("OpenFind.mainWindow")
-    private let settingsWindowFrameAutosaveName = NSWindow.FrameAutosaveName("OpenFind.settingsWindow")
     private var mainWindow: NSWindow?
-    private var settingsWindow: NSWindow?
     private var updaterController: SPUStandardUpdaterController?
     private var terminationReplyPending = false
+    private var closedDisplayRecoveryTask: Task<Void, Never>?
+
+    override init() {
+        let hotKeyRegistry = GlobalHotKeyRegistry()
+        self.hotKeyRegistry = hotKeyRegistry
+        self.globalHotKey = GlobalHotKeyController(registry: hotKeyRegistry)
+        let clipboardStore = ClipboardHistoryStore()
+        self.clipboardStore = clipboardStore
+        self.clipboard = ClipboardController(registry: hotKeyRegistry, store: clipboardStore)
+        self.keyboardLock = KeyboardLockController(registry: hotKeyRegistry)
+        let awakeSession = AwakeSessionController()
+        let awakeSessionPreferences = AwakeSessionPreferences()
+        let triggerStore = TriggerStore()
+        let driveAliveStore = DriveAliveStore()
+        self.awakeSession = awakeSession
+        self.awakeSessionPreferences = awakeSessionPreferences
+        self.awakeAutomation = AwakeAutomationController(
+            sessions: awakeSession,
+            preferences: awakeSessionPreferences
+        )
+        self.awakeNotifications = AwakeNotificationController(sessions: awakeSession)
+        self.awakeStatistics = AwakeStatisticsController(sessions: awakeSession)
+        self.sessionActivity = SessionActivityController(
+            sessions: awakeSession,
+            preferences: awakeSessionPreferences
+        )
+        self.powerProtect = PowerProtectController()
+        self.launchAtLogin = LaunchAtLoginController()
+        self.awakeHotKeys = AwakeHotKeyController(
+            registry: hotKeyRegistry,
+            sessions: awakeSession,
+            preferences: awakeSessionPreferences
+        )
+        self.triggerStore = triggerStore
+        self.driveAliveStore = driveAliveStore
+        self.driveAlive = DriveAliveController(store: driveAliveStore, sessions: awakeSession)
+        triggerCoordinator = TriggerCoordinator(store: triggerStore, sessions: awakeSession)
+        triggerScheduler = TriggerMonitorScheduler(coordinator: triggerCoordinator)
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        configureQuitAppleEventHandler()
         configureUpdaterIfAvailable()
         showMainWindow()
-        globalHotKey.start { [weak self] in
-            self?.toggleMainWindow()
+        startRuntimeServices(includeTriggerScheduler: false)
+        closedDisplayRecoveryTask = Task { [weak self] in
+            guard let self,
+                  await self.awakeSession.recoverClosedDisplayState(),
+                  !Task.isCancelled else { return }
+            self.triggerScheduler.start()
+            self.awakeAutomation.handleApplicationLaunch()
+            self.closedDisplayRecoveryTask = nil
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        globalHotKey.stop()
+        removeQuitAppleEventHandler()
+        clipboardStore.prepareForTermination()
+        stopRuntimeServices()
+    }
+
+    @objc private func handleQuitAppleEvent(
+        _ event: NSAppleEventDescriptor,
+        withReplyEvent replyEvent: NSAppleEventDescriptor
+    ) {
+        NSApp.terminate(nil)
+    }
+
+    private func configureQuitAppleEventHandler() {
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleQuitAppleEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kCoreEventClass),
+            andEventID: AEEventID(kAEQuitApplication)
+        )
+    }
+
+    private func removeQuitAppleEventHandler() {
+        NSAppleEventManager.shared().removeEventHandler(
+            forEventClass: AEEventClass(kCoreEventClass),
+            andEventID: AEEventID(kAEQuitApplication)
+        )
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard !terminationReplyPending else { return .terminateLater }
+        guard !terminationReplyPending else {
+            lifecycleLogger.notice("Termination request is already pending")
+            return .terminateLater
+        }
+        lifecycleLogger.notice("Termination cleanup started")
         terminationReplyPending = true
-        globalHotKey.stop()
+        stopRuntimeServices()
         viewModel.cancel()
-        Task { [weak self, weak sender] in
-            await self?.viewModel.flushIndexPersistence()
+        Task { @MainActor [weak self, weak sender] in
+            guard let self else {
+                Logger(subsystem: "com.openfind.app", category: "Lifecycle")
+                    .error("Termination delegate disappeared before cleanup")
+                sender?.reply(toApplicationShouldTerminate: false)
+                return
+            }
+            guard await self.awakeSession.requestEndAsync(reason: .applicationTermination) else {
+                self.lifecycleLogger.error("Termination awake-session cleanup failed")
+                self.terminationReplyPending = false
+                self.startRuntimeServices(includeTriggerScheduler: true)
+                sender?.reply(toApplicationShouldTerminate: false)
+                return
+            }
+            self.lifecycleLogger.notice("Termination awake-session cleanup completed")
+            let persistenceCompleted = await self.viewModel.flushIndexPersistence()
+            self.lifecycleLogger.notice(
+                "Termination index flush completed before deadline: \(persistenceCompleted, privacy: .public)"
+            )
             sender?.reply(toApplicationShouldTerminate: true)
+            self.lifecycleLogger.notice("Termination approval replied")
         }
         return .terminateLater
+    }
+
+    private func startRuntimeServices(includeTriggerScheduler: Bool) {
+        driveAlive.start()
+        clipboard.start()
+        keyboardLock.start()
+        awakeAutomation.start()
+        awakeNotifications.start()
+        sessionActivity.start()
+        awakeHotKeys.start()
+        globalHotKey.start { [weak self] in
+            self?.toggleMainWindow()
+        }
+        if includeTriggerScheduler {
+            triggerScheduler.start()
+        }
+    }
+
+    private func stopRuntimeServices() {
+        closedDisplayRecoveryTask?.cancel()
+        closedDisplayRecoveryTask = nil
+        triggerScheduler.stop()
+        driveAlive.stop()
+        clipboard.stop()
+        keyboardLock.stop()
+        awakeAutomation.stop()
+        awakeNotifications.stop()
+        sessionActivity.stop()
+        awakeHotKeys.stop()
+        globalHotKey.stop()
+        hotKeyRegistry.stop()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -49,13 +192,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func showOpenFindWindow(_ sender: Any?) {
         showMainWindow()
-    }
-
-    @objc func showSettingsWindow(_ sender: Any?) {
-        let window = makeSettingsWindowIfNeeded()
-        NSApp.unhide(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
     }
 
     @objc func checkForUpdates(_ sender: Any?) {
@@ -115,12 +251,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    private var availableSettingsWindow: NSWindow? {
-        settingsWindow ?? NSApp.windows.first { window in
-            window.identifier?.rawValue == "OpenFind.settings"
-        }
-    }
-
     private func showMainWindow(_ window: NSWindow? = nil) {
         let window = window ?? makeMainWindowIfNeeded()
 
@@ -158,31 +288,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return window
     }
 
-    private func makeSettingsWindowIfNeeded() -> NSWindow {
-        if let window = availableSettingsWindow {
-            if window.isMiniaturized { window.deminiaturize(nil) }
-            return window
-        }
-
-        let hostingController = NSHostingController(
-            rootView: SettingsView(viewModel: viewModel, globalHotKey: globalHotKey)
-        )
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 520),
-            styleMask: [.titled, .closable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.identifier = NSUserInterfaceItemIdentifier("OpenFind.settings")
-        window.title = L("Settings")
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.contentViewController = hostingController
-        applySavedFrameOrCenter(window, autosaveName: settingsWindowFrameAutosaveName)
-        settingsWindow = window
-        return window
-    }
-
     private func applySavedFrameOrCenter(_ window: NSWindow, autosaveName: NSWindow.FrameAutosaveName) {
         let restored = window.setFrameUsingName(autosaveName)
         window.setFrameAutosaveName(autosaveName)
@@ -198,8 +303,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let window else { return }
         if window === mainWindow {
             window.saveFrame(usingName: mainWindowFrameAutosaveName)
-        } else if window === settingsWindow {
-            window.saveFrame(usingName: settingsWindowFrameAutosaveName)
         }
     }
 

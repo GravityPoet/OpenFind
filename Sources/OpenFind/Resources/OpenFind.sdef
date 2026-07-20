@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="OpenFind Terminology">
+    <suite name="Standard Suite" code="????" description="Common classes and commands for all applications.">
+        <command name="quit" code="aevtquit" description="Quit the application.">
+            <cocoa class="NSQuitCommand"/>
+        </command>
+        <command name="close" code="coreclos" description="Close the targeted window.">
+            <cocoa class="NSCloseCommand"/>
+        </command>
+        <class name="application" code="capp" description="The application's top-level scripting object.">
+            <cocoa class="NSApplication"/>
+            <property name="name" code="pnam" type="text" access="r" description="The name of the application.">
+                <cocoa key="name"/>
+            </property>
+            <property name="frontmost" code="pisf" type="boolean" access="r" description="Is this the active application?">
+                <cocoa key="isActive"/>
+            </property>
+            <property name="version" code="vers" type="text" access="r" description="The version number of the application.">
+                <cocoa key="version"/>
+            </property>
+            <element type="window" access="r">
+                <cocoa key="windows"/>
+            </element>
+        </class>
+        <class name="window" code="cwin" description="A window.">
+            <cocoa class="NSWindow"/>
+            <property name="name" code="pnam" type="text" access="r" description="The title of the window.">
+                <cocoa key="title"/>
+            </property>
+            <property name="id" code="ID  " type="integer" access="r" description="The unique identifier of the window.">
+                <cocoa key="windowNumber"/>
+            </property>
+            <property name="index" code="pidx" type="integer" access="r" description="The index of the window, ordered front to back.">
+                <cocoa key="orderedIndex"/>
+            </property>
+            <property name="bounds" code="pbnd" type="rectangle" description="The bounding rectangle of the window.">
+                <cocoa key="frame"/>
+            </property>
+            <property name="closeable" code="hclb" type="boolean" access="r" description="Does the window have a close button?">
+                <cocoa key="hasCloseBox"/>
+            </property>
+            <property name="miniaturizable" code="ismn" type="boolean" access="r" description="Does the window have a minimize button?">
+                <cocoa key="isMiniaturizable"/>
+            </property>
+            <property name="miniaturized" code="pmnd" type="boolean" description="Is the window minimized right now?">
+                <cocoa key="isMiniaturized"/>
+            </property>
+            <property name="resizable" code="prsz" type="boolean" access="r" description="Can the window be resized?">
+                <cocoa key="isResizable"/>
+            </property>
+            <property name="visible" code="pvis" type="boolean" description="Is the window visible right now?">
+                <cocoa key="isVisible"/>
+            </property>
+            <property name="zoomable" code="iszm" type="boolean" access="r" description="Does the window have a zoom button?">
+                <cocoa key="hasZoomButton"/>
+            </property>
+            <property name="zoomed" code="pzum" type="boolean" description="Is the window zoomed right now?">
+                <cocoa key="isZoomed"/>
+            </property>
+        </class>
+    </suite>
+    <suite name="OpenFind Awake Suite" code="Amph" description="Control OpenFind awake sessions and automation.">
+        <command name="session is active" code="amphcAct" description="Return whether an awake session is active.">
+            <cocoa class="OpenFindScriptCommand"/>
+            <result type="boolean"/>
+        </command>
+        <command name="start new session" code="amphcmOn" description="Start or replace an awake session.">
+            <parameter name="with options" code="optn" type="record" optional="yes" description="Optional duration, interval, and displaySleepAllowed fields.">
+                <cocoa key="options"/>
+            </parameter>
+            <cocoa class="OpenFindScriptCommand"/>
+        </command>
+        <command name="end session" code="amphcOff" description="End the current awake session.">
+            <cocoa class="OpenFindScriptCommand"/>
+        </command>
+        <command name="session time remaining" code="amphSTRm" description="Return remaining seconds or the Amphetamine-compatible sentinel value.">
+            <cocoa class="OpenFindScriptCommand"/>
+            <result type="integer"/>
+        </command>
+        <command name="display sleep allowed" code="amphDSOK">
+            <cocoa class="OpenFindScriptCommand"/>
+            <result type="boolean"/>
+        </command>
+        <command name="allow display sleep" code="amphAWDS"><cocoa class="OpenFindScriptCommand"/></command>
+        <command name="prevent display sleep" code="amphPTDS"><cocoa class="OpenFindScriptCommand"/></command>
+        <command name="screen saver allowed" code="amphSSOK">
+            <cocoa class="OpenFindScriptCommand"/>
+            <result type="boolean"/>
+        </command>
+        <command name="allow screen saver" code="amphAWSS"><cocoa class="OpenFindScriptCommand"/></command>
+        <command name="prevent screen saver" code="amphPTSS"><cocoa class="OpenFindScriptCommand"/></command>
+        <command name="closed display mode enabled" code="amphCDMK">
+            <cocoa class="OpenFindScriptCommand"/>
+            <result type="boolean"/>
+        </command>
+        <command name="enable closed display mode" code="amphECDM"><cocoa class="OpenFindScriptCommand"/></command>
+        <command name="disable closed display mode" code="amphDCDM"><cocoa class="OpenFindScriptCommand"/></command>
+        <command name="session is Trigger" code="amphSisT">
+            <cocoa class="OpenFindScriptCommand"/>
+            <result type="boolean"/>
+        </command>
+        <command name="Triggers are enabled" code="amphTrEn">
+            <cocoa class="OpenFindScriptCommand"/>
+            <result type="boolean"/>
+        </command>
+        <command name="enable Triggers" code="amphEnTr"><cocoa class="OpenFindScriptCommand"/></command>
+        <command name="disable Triggers" code="amphDsTr"><cocoa class="OpenFindScriptCommand"/></command>
+        <command name="Drive Alive is enabled" code="amphDAEn">
+            <cocoa class="OpenFindScriptCommand"/>
+            <result type="boolean"/>
+        </command>
+        <command name="enable Drive Alive" code="amphEnDA"><cocoa class="OpenFindScriptCommand"/></command>
+        <command name="disable Drive Alive" code="amphDsDA"><cocoa class="OpenFindScriptCommand"/></command>
+        <command name="give molecule" code="amphcOoo"><cocoa class="OpenFindScriptCommand"/></command>
+    </suite>
+</dictionary>

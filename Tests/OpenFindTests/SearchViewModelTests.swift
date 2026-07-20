@@ -689,4 +689,17 @@ struct SearchViewModelTests {
         #expect(viewModel.hasFullDiskAccess)
         #expect(probe.count == 1)
     }
+
+    @Test func persistenceFlushCompletionResolvesBeforeOrAfterWaiterInstallation() async {
+        let early = IndexPersistenceFlushCompletion()
+        early.resolve(true)
+        #expect(await early.value())
+
+        let delayed = IndexPersistenceFlushCompletion()
+        Task {
+            try? await Task.sleep(for: .milliseconds(10))
+            delayed.resolve(false)
+        }
+        #expect(await !delayed.value())
+    }
 }

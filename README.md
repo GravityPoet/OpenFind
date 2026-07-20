@@ -63,6 +63,15 @@ Deeply indexes not only plain text but also PDFs, Microsoft Office, iWork format
 Perform advanced boolean querying, metadata checks (`size`, `creation date`), globs, regex, and Finder tags. Summon the minimalist window globally using `⌘⇧Space` and press `Space` to Quick Look files on the spot, or pipe command-line output straight into your development workflows.
 * **AHA Moment:** Quickly check the structure of an indexed PDF by pressing `⌘⇧Space`, typing your query, and tapping `Space` to preview it instantly.
 
+### 4. Native Utility Modules
+OpenFind also replaces three separate menu-bar utilities without embedding or launching their app bundles:
+
+- **Keep Awake:** timed and conditional sessions, all 14 Amphetamine-style Trigger criteria, screen-saver/display policy, closed-display mode with transactional recovery, optional Power Protect, notifications, hot keys, AppleScript, statistics, and Drive Alive.
+- **Clipboard History:** bounded local history for text, rich text, URLs, files, and images, with search, preview, pinning, duplicate handling, ignore rules, encrypted persistence, and paste-without-formatting.
+- **Keyboard Cleaning:** Accessibility-gated keyboard/media-key suppression, pointer-only unlock, countdown, emergency auto-unlock, and lifecycle cleanup.
+
+Privileged closed-display changes are opt-in. Drive Alive writes one bounded marker per selected target and never overwrites an unrelated file.
+
 ---
 
 ## ⚡ Quick Start (60 Seconds)
