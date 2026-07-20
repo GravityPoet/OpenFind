@@ -14,7 +14,8 @@ let package = Package(
             dependencies: [
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
-            path: "Sources/OpenFind"
+            path: "Sources/OpenFind",
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "OpenFindTests",

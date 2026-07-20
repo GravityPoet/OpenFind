@@ -3,9 +3,65 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var viewModel: SearchViewModel
     @Bindable var globalHotKey: GlobalHotKeyController
+    @Bindable var driveAliveStore: DriveAliveStore
+    @Bindable var driveAlive: DriveAliveController
+    @Bindable var clipboardStore: ClipboardHistoryStore
+    @Bindable var clipboard: ClipboardController
+    @Bindable var keyboardLock: KeyboardLockController
+    @Bindable var triggerStore: TriggerStore
+    @Bindable var triggerCoordinator: TriggerCoordinator
+    @Bindable var awakeHotKeys: AwakeHotKeyController
+    @Bindable var awakeSessionPreferences: AwakeSessionPreferences
+    @Bindable var launchAtLogin: LaunchAtLoginController
+    @Bindable var awakeNotifications: AwakeNotificationController
+    @Bindable var awakeStatistics: AwakeStatisticsController
+    @Bindable var sessionActivity: SessionActivityController
+    @Bindable var powerProtect: PowerProtectController
+    @Bindable var awakeSession: AwakeSessionController
     @State private var localUsageRecordCount = 0
 
     var body: some View {
+        TabView {
+            searchSettings
+                .tabItem {
+                    Label(L("Search"), systemImage: "magnifyingglass")
+                }
+
+            awakeSettings
+                .tabItem {
+                    Label(L("Keep Awake"), systemImage: "moon.zzz")
+                }
+
+            triggerSettings
+                .tabItem {
+                    Label(L("Triggers"), systemImage: "bolt")
+                }
+
+            driveAliveSettings
+                .tabItem {
+                    Label(L("Drive Alive"), systemImage: "externaldrive")
+                }
+
+            clipboardSettings
+                .tabItem {
+                    Label(L("Clipboard History"), systemImage: "doc.on.clipboard")
+                }
+
+            keyboardCleaningSettings
+                .tabItem {
+                    Label(L("Keyboard"), systemImage: "keyboard")
+                }
+        }
+        .frame(minWidth: 700, minHeight: 620)
+        .onAppear {
+            localUsageRecordCount = SearchUsageStore.shared.recordCount
+        }
+        .onChange(of: viewModel.options) {
+            Preferences.saveOptions(viewModel.options)
+        }
+    }
+
+    private var searchSettings: some View {
         Form {
             Section(header: Text(L("Durable Defaults"))) {
                 Picker(L("Default Target"), selection: $viewModel.options.target) {
@@ -107,6 +163,9 @@ struct SettingsView: View {
                 case .registered:
                     Label(L("Registered"), systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
+                case .conflict:
+                    Label(L("Shortcut Conflicts"), systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
                 case .failed:
                     Label(L("Shortcut Unavailable"), systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
@@ -124,14 +183,60 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 440, height: 620)
-        .navigationTitle(L("Settings"))
-        .onAppear {
-            localUsageRecordCount = SearchUsageStore.shared.recordCount
+    }
+
+    private var awakeSettings: some View {
+        Form {
+            AwakeSessionDefaultsSection(
+                preferences: awakeSessionPreferences,
+                closedDisplaySupported: awakeSession.closedDisplayModeSupported
+            )
+            AwakeAutomationSettingsSection(
+                preferences: awakeSessionPreferences,
+                launchAtLogin: launchAtLogin
+            )
+            AwakeNotificationSettingsSection(controller: awakeNotifications)
+            AwakeStatisticsSettingsSection(controller: awakeStatistics)
+            SessionActivitySettingsSection(
+                preferences: awakeSessionPreferences,
+                activity: sessionActivity
+            )
+            PowerProtectSettingsSection(controller: powerProtect)
+            AwakeHotKeySettingsSection(controller: awakeHotKeys)
         }
-        .onChange(of: viewModel.options) {
-            Preferences.saveOptions(viewModel.options)
+        .formStyle(.grouped)
+    }
+
+    private var triggerSettings: some View {
+        Form {
+            TriggerSettingsSection(
+                store: triggerStore,
+                coordinator: triggerCoordinator,
+                closedDisplaySupported: awakeSession.closedDisplayModeSupported
+            )
         }
+        .formStyle(.grouped)
+    }
+
+    private var driveAliveSettings: some View {
+        Form {
+            DriveAliveSettingsSection(store: driveAliveStore, controller: driveAlive)
+        }
+        .formStyle(.grouped)
+    }
+
+    private var clipboardSettings: some View {
+        Form {
+            ClipboardSettingsSection(store: clipboardStore, controller: clipboard)
+        }
+        .formStyle(.grouped)
+    }
+
+    private var keyboardCleaningSettings: some View {
+        Form {
+            KeyboardLockSettingsSection(controller: keyboardLock)
+        }
+        .formStyle(.grouped)
     }
 
     private var sizeBinding: Binding<Int> {

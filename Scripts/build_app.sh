@@ -83,6 +83,20 @@ FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 ARCHIVE_TMP="$DIST_DIR/.OpenFind.zip.tmp.$$"
 CHECKSUM_TMP="$DIST_DIR/.OpenFind.zip.sha256.tmp.$$"
 
+remove_known_tree() {
+    local target="$1"
+    case "$target" in
+        "$BUILD_TMP"|"$STALE_APP") ;;
+        *)
+            echo "Error: refusing to remove unexpected build path: $target" >&2
+            return 64
+            ;;
+    esac
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        /bin/rm -R "$target"
+    fi
+}
+
 cleanup() {
     status=$?
     trap - EXIT INT TERM
@@ -92,9 +106,9 @@ cleanup() {
         done < <(find "$APP_DIR/Contents" -type d -name '*.app' -prune -print0 2>/dev/null)
     fi
     "$LSREGISTER" -u "$APP_DIR" >/dev/null 2>&1 || true
-    rm -rf "$BUILD_TMP"
-    rm -f "$ARCHIVE_TMP"
-    rm -f "$CHECKSUM_TMP"
+    remove_known_tree "$BUILD_TMP"
+    /bin/rm -f "$ARCHIVE_TMP"
+    /bin/rm -f "$CHECKSUM_TMP"
     exit "$status"
 }
 trap cleanup EXIT
@@ -108,9 +122,9 @@ mkdir -p "$DIST_DIR"
 
 if [ -d "$STALE_APP" ]; then
     "$LSREGISTER" -u "$STALE_APP" >/dev/null 2>&1 || true
-    rm -rf "$STALE_APP"
+    remove_known_tree "$STALE_APP"
 fi
-rm -f "$ARCHIVE_PATH" "$CHECKSUM_PATH" "$ARCHIVE_TMP" "$CHECKSUM_TMP"
+/bin/rm -f "$ARCHIVE_PATH" "$CHECKSUM_PATH" "$ARCHIVE_TMP" "$CHECKSUM_TMP"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
 export MACOSX_DEPLOYMENT_TARGET="$MINIMUM_MACOS_VERSION"
 
@@ -155,6 +169,7 @@ install_name_tool -add_rpath '@executable_path/../Frameworks' "$MACOS_DIR/OpenFi
 echo "Copying standard application localizations..."
 cp -R Sources/OpenFind/Resources/en.lproj "$RESOURCES_DIR/"
 cp -R Sources/OpenFind/Resources/zh-Hans.lproj "$RESOURCES_DIR/"
+cp Sources/OpenFind/Resources/OpenFind.sdef "$RESOURCES_DIR/"
 
 SPARKLE_FRAMEWORK="$(find "$ROOT_DIR/.build/artifacts" \
     -path '*/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' \
@@ -285,6 +300,16 @@ if [ ! -f "$RESOURCES_DIR/en.lproj/Localizable.strings" ] \
     echo "Error: application localizations are missing from Contents/Resources." >&2
     exit 1
 fi
+if [ ! -f "$RESOURCES_DIR/OpenFind.sdef" ]; then
+    echo "Error: AppleScript definition is missing from Contents/Resources." >&2
+    exit 1
+fi
+if [ "$(plutil -extract NSAppleScriptEnabled raw "$CONTENTS_DIR/Info.plist")" != "true" ] \
+    || [ "$(plutil -extract OSAScriptingDefinition raw "$CONTENTS_DIR/Info.plist")" != "OpenFind.sdef" ]; then
+    echo "Error: AppleScript bundle metadata is invalid." >&2
+    exit 1
+fi
+sdp -fh -o - "$RESOURCES_DIR/OpenFind.sdef" >/dev/null
 for arch in $ARCHS; do
     lipo "$MACOS_DIR/OpenFind" -verify_arch "$arch"
 done
@@ -320,6 +345,10 @@ if [ "$(plutil -extract CFBundleIdentifier raw "$VERIFY_APP/Contents/Info.plist"
     exit 1
 fi
 codesign --verify --deep --strict "$VERIFY_APP"
+if [ ! -f "$VERIFY_APP/Contents/Resources/OpenFind.sdef" ]; then
+    echo "Error: archived app is missing its AppleScript definition." >&2
+    exit 1
+fi
 for arch in $ARCHS; do
     lipo "$VERIFY_APP/Contents/MacOS/OpenFind" -verify_arch "$arch"
 done

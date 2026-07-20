@@ -1,0 +1,124 @@
+import AppKit
+import Carbon
+import Foundation
+import Observation
+
+@MainActor
+@Observable
+final class ClipboardController {
+    static let hotKeyID = "clipboardHistory"
+    static let defaultShortcut = GlobalShortcut(
+        keyCode: UInt32(kVK_ANSI_C),
+        modifiers: UInt32(cmdKey | shiftKey),
+        keyLabel: "C"
+    )
+    private static let shortcutKeyCodeKey = "OpenFind.clipboardShortcut.keyCodeV1"
+    private static let shortcutModifiersKey = "OpenFind.clipboardShortcut.modifiersV1"
+    private static let shortcutLabelKey = "OpenFind.clipboardShortcut.labelV1"
+    private static let shortcutEnabledKey = "OpenFind.clipboardShortcut.enabledV1"
+
+    @ObservationIgnored private let registry: GlobalHotKeyRegistry
+    let store: ClipboardHistoryStore
+    private let monitor: ClipboardMonitor
+    private let windowController: ClipboardHistoryWindowController
+    @ObservationIgnored private let defaults: UserDefaults
+    private var hasStarted = false
+    private(set) var shortcut: GlobalShortcut
+    private(set) var isShortcutEnabled: Bool
+    private(set) var registrationState: GlobalHotKeyRegistry.State = .disabled
+
+    init(
+        registry: GlobalHotKeyRegistry,
+        store: ClipboardHistoryStore = ClipboardHistoryStore(),
+        defaults: UserDefaults = .standard
+    ) {
+        self.registry = registry
+        self.store = store
+        monitor = ClipboardMonitor(store: store)
+        windowController = ClipboardHistoryWindowController(store: store)
+        self.defaults = defaults
+        shortcut = Self.loadShortcut(from: defaults)
+        isShortcutEnabled = defaults.object(forKey: Self.shortcutEnabledKey) as? Bool ?? true
+    }
+
+    func start() {
+        hasStarted = true
+        monitor.start()
+        registry.start()
+        registrationState = registry.bind(
+            id: Self.hotKeyID,
+            shortcut: shortcut,
+            enabled: isShortcutEnabled,
+            action: { [weak self] in self?.toggleWindow() }
+        )
+    }
+
+    func stop() {
+        monitor.stop()
+        windowController.close()
+        registry.unbind(id: Self.hotKeyID)
+        hasStarted = false
+        registrationState = .disabled
+    }
+
+    @discardableResult
+    func setShortcut(_ shortcut: GlobalShortcut) -> Bool {
+        guard shortcut.isValid else { return false }
+        let state = registry.bind(
+            id: Self.hotKeyID,
+            shortcut: shortcut,
+            enabled: isShortcutEnabled && hasStarted,
+            action: { [weak self] in self?.toggleWindow() }
+        )
+        guard state != .conflict, !state.isFailure else {
+            registrationState = state
+            return false
+        }
+        self.shortcut = shortcut
+        defaults.set(Int(shortcut.keyCode), forKey: Self.shortcutKeyCodeKey)
+        defaults.set(Int(shortcut.modifiers), forKey: Self.shortcutModifiersKey)
+        defaults.set(shortcut.keyLabel, forKey: Self.shortcutLabelKey)
+        registrationState = hasStarted ? state : .disabled
+        return true
+    }
+
+    func resetShortcut() {
+        _ = setShortcut(Self.defaultShortcut)
+    }
+
+    func setShortcutEnabled(_ enabled: Bool) {
+        isShortcutEnabled = enabled
+        defaults.set(enabled, forKey: Self.shortcutEnabledKey)
+        registrationState = registry.bind(
+            id: Self.hotKeyID,
+            shortcut: shortcut,
+            enabled: enabled && hasStarted,
+            action: { [weak self] in self?.toggleWindow() }
+        )
+    }
+
+    func toggleWindow() {
+        windowController.toggle()
+    }
+
+    func showWindow() {
+        windowController.show()
+    }
+
+    private static func loadShortcut(from defaults: UserDefaults) -> GlobalShortcut {
+        guard let keyCode = UInt32(exactly: defaults.integer(forKey: shortcutKeyCodeKey)),
+              let modifiers = UInt32(exactly: defaults.integer(forKey: shortcutModifiersKey)),
+              let label = defaults.string(forKey: shortcutLabelKey) else {
+            return defaultShortcut
+        }
+        let candidate = GlobalShortcut(keyCode: keyCode, modifiers: modifiers, keyLabel: label)
+        return candidate.isValid ? candidate : defaultShortcut
+    }
+}
+
+private extension GlobalHotKeyRegistry.State {
+    var isFailure: Bool {
+        if case .failed = self { return true }
+        return false
+    }
+}
