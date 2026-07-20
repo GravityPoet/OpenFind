@@ -169,7 +169,7 @@ transaction and preserve the user's original power policy.
 
 ## Verification Record (2026-07-20)
 
-- `329 tests / 41 suites` passed; three consecutive full-suite runs also passed after
+- `331 tests / 42 suites` passed; three consecutive full-suite runs also passed after
   hardening the IOKit power-source callback lifetime.
 - Customer-signed Universal (`arm64` + `x86_64`) archive passed deep signature, SDEF,
   packaged smoke, checksum, and atomic `/Applications/OpenFind.app` installation checks.
@@ -187,6 +187,8 @@ transaction and preserve the user's original power policy.
 - Network-configuration and USB hot-plug wake callbacks now use the same retained,
   invalidated, weak-monitor context pattern; the full suite passed again after this
   lifecycle hardening.
+- Dedicated restart/stop regression tests cover both native network and USB wake
+  monitors (32 cycles plus idempotent stop) without requiring hardware or privilege.
 - Commit `10930ec` was rebuilt into a fresh customer archive and atomically installed;
   the new installed process reached steady state after the expected cold index pass
   (about 2m43s) and then remained responsive at about 0.9% CPU, with no OpenFind-owned
