@@ -16,6 +16,11 @@ struct TriggerSnapshotProviderTests {
         #expect(snapshot.displayCount == NSScreen.screens.count)
         #expect(snapshot.builtInDisplayCount >= 0)
         #expect(snapshot.builtInDisplayCount <= snapshot.displayCount ?? 0)
+        #expect(
+            snapshot.isMainDisplayMirrored
+                == (CGMainDisplayID() != kCGNullDirectDisplay
+                    && CGDisplayIsInMirrorSet(CGMainDisplayID()) != 0)
+        )
         if let cpu = snapshot.cpuUtilizationPercentage {
             #expect((0...100).contains(cpu))
         }

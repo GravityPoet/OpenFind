@@ -84,11 +84,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         showMainWindow()
         startRuntimeServices(includeTriggerScheduler: false)
         closedDisplayRecoveryTask = Task { [weak self] in
-            guard let self,
-                  await self.awakeSession.recoverClosedDisplayState(),
-                  !Task.isCancelled else { return }
+            guard let self else { return }
+            let recovered = await self.awakeSession.recoverClosedDisplayState()
+            guard !Task.isCancelled else {
+                self.closedDisplayRecoveryTask = nil
+                return
+            }
+            if !recovered {
+                // A stale privileged journal must not strand unrelated
+                // Trigger evaluation and Drive Alive. Closed-display
+                // sessions remain gated by the controller's pending journal;
+                // ordinary criteria can still be evaluated and surfaced to
+                // the user while recovery is repaired.
+                self.lifecycleLogger.error(
+                    "Closed-display recovery failed; continuing non-privileged runtime services"
+                )
+            }
             self.triggerScheduler.start()
-            self.awakeAutomation.handleApplicationLaunch()
+            if recovered {
+                self.awakeAutomation.handleApplicationLaunch()
+            }
             self.closedDisplayRecoveryTask = nil
         }
     }
