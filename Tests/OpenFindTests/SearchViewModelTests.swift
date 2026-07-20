@@ -641,6 +641,45 @@ struct SearchViewModelTests {
     }
 
     @MainActor
+    @Test func prepareForTerminationCancelsRebuildPipeline() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFind-TerminationScope-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let started = BuildInvocationProbe()
+        let cancelled = BuildInvocationProbe()
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFind-TerminationCache-\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let store = SearchIndexStore(persistenceURL: cacheURL, buildOperation: { _ in
+            started.record()
+            do {
+                try await Task.sleep(for: .seconds(30))
+            } catch {
+                cancelled.record()
+            }
+            return SearchIndexBuildResult(nodes: [], unresolvedPaths: [])
+        })
+        let viewModel = makeViewModel(indexStore: store)
+        let prepareTask = Task {
+            await store.prepare(scopes: [root], hasFullDiskAccess: true)
+        }
+
+        for _ in 0..<100 where started.count == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(started.count == 1)
+
+        await viewModel.prepareForTermination()
+        for _ in 0..<100 where cancelled.count == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(cancelled.count == 1)
+        _ = await prepareTask.value
+    }
+
+    @MainActor
     @Test func unavailablePathsStayQuietWhenIndexIsSearchable() {
         let viewModel = makeViewModel()
         viewModel.hasFullDiskAccess = true

@@ -85,7 +85,7 @@ struct LocalizationTests {
         #expect(scriptingDefinition.contains("cocoa class=\"OpenFindScriptCommand\""))
         #expect(scriptingDefinition.contains("<suite name=\"Standard Suite\""))
         #expect(scriptingDefinition.contains("code=\"aevtquit\""))
-        #expect(scriptingDefinition.contains("cocoa class=\"NSQuitCommand\""))
+        #expect(scriptingDefinition.contains("cocoa class=\"OpenFindQuitScriptCommand\""))
         #expect(scriptingDefinition.contains("code=\"capp\""))
         #expect(scriptingDefinition.contains("code=\"cwin\""))
     }

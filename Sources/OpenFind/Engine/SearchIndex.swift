@@ -3331,6 +3331,14 @@ actor SearchIndexStore {
         currentStats
     }
 
+    /// Stops rebuild, watcher, retry, and background content-enrichment work
+    /// before application termination. The index is durable and rebuildable;
+    /// leaving these tasks alive can keep a menu-bar process running after
+    /// AppKit has accepted a quit request.
+    func cancelActiveWorkForTermination() {
+        cancelPipeline()
+    }
+
     func contentIndexHandle() -> ContentSearchIndex {
         contentSearchIndex
     }
