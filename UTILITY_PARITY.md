@@ -28,8 +28,8 @@ implementation defects, or unsafe shell construction.
 - `[x]` Sessions active while a selected file is downloading or changing.
 - `[x]` Per-session display-sleep policy with live override.
 - `[x]` Per-session screen-saver policy, delay, and process exceptions.
-- `[~]` Per-session closed-display policy is implemented and covered; a real privileged
-  `pmset` transition remains an explicit user-run acceptance step.
+- `[x]` Per-session closed-display policy is implemented and covered; a real privileged
+  `pmset` transition was accepted on the installed Mac and restored transactionally.
 - `[x]` Extend or replace an active session without assertion gaps; failed replacement
   leaves the previous session intact.
 - `[x]` Default duration and monotonic-timer/system-clock end-time calculation, including
@@ -94,17 +94,18 @@ device names, process names, IP addresses, DNS addresses, or paths as payloads.
 
 - `[x]` Detect portable support, physical clamshell state, and current `SleepDisabled` state.
 - `[x]` Save the exact pre-session state before any change.
-- `[~]` Apply `pmset -a disablesleep 1` only for a session that requests it (the
+- `[x]` Apply `pmset -a disablesleep 1` only for a session that requests it (the
   privileged write path is fixed-command `osascript`, not user-interpolated shell);
-  the real write remains an explicit P1 acceptance step.
-- `[~]` Restore the saved state on session end, configuration change, normal quit,
-  crash recovery, next launch reconciliation, and power-source changes; real privileged
-  restoration acceptance remains open.
-- `[~]` Optional validated `/etc/sudoers.d` rule for passwordless session toggles is
-  implemented but intentionally not installed during unattended verification.
-- `[~]` Atomic install, `visudo -cf` validation, exact command/content allowlist,
-  root:wheel/0440 validation, uninstall, and rollback are covered; privileged install
-  and uninstall remain explicit P1 acceptance steps.
+  the installed-app P1 run observed `SleepDisabled=1` during the session.
+- `[x]` Restore the saved state on session end, configuration change, normal quit,
+  crash recovery, next launch reconciliation, and power-source changes; the P1 run
+  restored `SleepDisabled=0` and removed the recovery journal.
+- `[x]` Optional validated `/etc/sudoers.d` rule for passwordless session toggles was
+  installed, exercised, and removed again; the pre-existing Amphetamine rule was left
+  untouched.
+- `[x]` Atomic install, `visudo -cf` validation, exact command/content allowlist,
+  root:wheel/0440 validation, uninstall, and rollback are covered; the P1 run verified
+  the install and clean uninstall paths.
 - `[~]` Real-lid warning tone, repeat interval, temporary-volume restoration, and
   ordinary powered-clamshell suppression are implemented; audible/hardware acceptance
   remains open.
@@ -130,15 +131,15 @@ transaction and preserve the user's original power policy.
 - `[~]` Independent configurable hotkeys: start, end, start/end, menu, display sleep,
   and screen saver; duplicate/conflicting registrations are rejected atomically, while
   live global registration remains permission/environment dependent.
-- `[~]` The 21-command Amphetamine-compatible AppleScript dictionary covers session
+- `[x]` The 21-command Amphetamine-compatible AppleScript dictionary covers session
   state/start/end/time, display sleep, screen saver, closed-display mode, Triggers, and
   Drive Alive. Standard Suite properties, all read-only custom queries, both no-option
   and user-record `start new session` forms, end, preference toggles, and `quit` are
   verified against the installed app. The `optn` field is intentionally declared as
   `any` in the SDEF because macOS 27's Cocoa validator rejects a Swift `record` command
   before dispatch; the handler parses the raw record descriptor and preserves the
-  Amphetamine wire format. Privileged closed-display transitions remain a P1 acceptance
-  item.
+  Amphetamine wire format. The installed-app P1 run also exercised the privileged
+  closed-display transition through a real bounded session.
 - `[x]` Quick settings, current-session details, transactional extension, active/inactive
   icon state, remaining/end-time formats, 12/24-hour clock, and optional seconds.
 - `[~]` Start/end/replacement sounds, reminders, automatic-session notifications,
@@ -184,9 +185,13 @@ transaction and preserve the user's original power policy.
   real AppleScript `quit` event exits the installed process within the bounded window.
 - Main window and native Settings scene were opened through Accessibility automation;
   cold-start indexing was observed separately from the steady-state menu-bar process.
-- No `pmset` write, Power Protect install/uninstall, sudoers change, Bluetooth/USB/audio
-  device mutation, Location authorization, or Accessibility authorization was performed.
-  Those hardware/permission rows remain `[~]` by design.
+- The P1 power acceptance recorded the original `SleepDisabled=0`, installed the exact
+  OpenFind rule (`root:wheel`, mode `0440`, `visudo`-valid), observed `SleepDisabled=1`
+  during an OpenFind bounded session, restored `SleepDisabled=0` with the journal
+  removed, and then removed the OpenFind rule. The pre-existing
+  `/private/etc/sudoers.d/amphetamine_PowerProtect` rule remained unchanged.
+- No Bluetooth/USB/audio device mutation, Location authorization, or Accessibility
+  authorization was performed; those hardware/permission rows remain `[~]` by design.
 - A prior test-helper `SIGBUS` was traced to an unretained IOKit power-source callback;
   the current implementation uses a retained, invalidated registration and the repeated
   regression runs above are the acceptance evidence for that fix.
@@ -217,9 +222,9 @@ transaction and preserve the user's original power policy.
 - The current source was rebuilt into a fresh customer archive and atomically installed;
   both cold-index and steady-state processes remained responsive, with no OpenFind-owned
   power assertion after every scripted session ended.
-- Read-only closed-display Dry Run reports portable model `Mac16,1`,
-  `SleepDisabled=0`, and no `/private/etc/sudoers.d/openfind-power-protect` rule;
-  no power-management or sudoers write was performed.
+- Final read-only state reports portable model `Mac16,1`, `SleepDisabled=0`, no
+  `/private/etc/sudoers.d/openfind-power-protect` rule, no OpenFind-owned power
+  assertion, and the pre-existing Amphetamine PowerProtect rule still present.
 
 ## Completion Gate
 
