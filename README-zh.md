@@ -1,10 +1,6 @@
-# 🚀 OpenFind
+# 🌐 [Click here to switch to: English Version](README.md)
 
-<p align="center">
-  <a href="README.md">
-    <img src="https://img.shields.io/badge/Language-English-blue?style=for-the-badge" alt="English" height="40" />
-  </a>
-</p>
+# 🚀 OpenFind
 
 ---
 

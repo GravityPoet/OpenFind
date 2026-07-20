@@ -1,10 +1,6 @@
-# 🚀 OpenFind
+# 🌐 [点击这里切换到：简体中文版 (Chinese Version)](README-zh.md)
 
-<p align="center">
-  <a href="README-zh.md">
-    <img src="https://img.shields.io/badge/Language-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-red?style=for-the-badge" alt="简体中文" height="40" />
-  </a>
-</p>
+# 🚀 OpenFind
 
 ---
 
