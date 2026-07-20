@@ -279,6 +279,7 @@
 "Triggers Help" = "触发器按从上到下的顺序评估。第一个启用且所有条件均满足的触发器拥有自动保持唤醒会话。";
 "No Active Trigger" = "当前没有活动触发器";
 "Trigger Details" = "触发器详情";
+"New Trigger" = "新建触发器";
 "Trigger Name" = "名称";
 "Trigger Enabled" = "已启用";
 "Trigger Requires Criterion" = "至少添加一个条件。";
@@ -423,7 +424,10 @@
 "Clipboard Shortcut Conflicts" = "剪贴板快捷键与 OpenFind 的其他动作冲突";
 "Clipboard Shortcut Unavailable" = "剪贴板快捷键不可用";
 "Clear Clipboard History" = "清除剪贴板历史";
-"Clipboard History Help" = "OpenFind 会在本机记录支持的剪贴板类型。启用持久化后，历史使用 Keychain 保存的密钥加密；不会把内容写入日志。";
+"Clipboard History Help" = "OpenFind 会在本机记录支持的剪贴板类型，并加密保存。Apple 签名版本把密钥存入钥匙串；当前本地版本把密钥存入仅限本用户读取的文件，后续更新不会反复索要密码。剪贴板内容不会写入日志。";
+"Clipboard Migration Required" = "旧剪贴板历史需要一次性迁移";
+"Clipboard Migration Help" = "现有加密历史已保留。只需解锁一次，把旧密钥迁出钥匙串；以后更新 OpenFind 不会再询问。";
+"Unlock and Migrate Clipboard History" = "解锁并迁移历史";
 "Copy Plain Text" = "复制纯文本";
 "Clipboard History Limit" = "历史数量上限";
 "Clipboard Items Format" = "%lld 项";
@@ -450,23 +454,26 @@
 "Clipboard Target Activation Failed" = "OpenFind 无法返回上一个应用。";
 "Clipboard Paste Event Failed" = "OpenFind 无法发送粘贴指令。";
 
-/* Keyboard Lock */
-"Lock Keyboard" = "锁定键盘";
-"Unlock Keyboard" = "解锁键盘";
-"Keyboard Lock" = "键盘锁定";
-"Keyboard Lock Shortcut" = "锁定快捷键";
-"Keyboard Lock Shortcut Registered" = "锁定快捷键已注册";
-"Keyboard Lock Shortcut Conflicts" = "锁定快捷键与 OpenFind 的其他动作冲突";
-"Keyboard Lock Shortcut Unavailable" = "锁定快捷键不可用";
+/* Keyboard Cleaning Lock */
+"Keyboard Cleaning Lock" = "键盘清洁锁定";
+"Lock Keyboard" = "开始键盘清洁锁定";
+"Unlock Keyboard" = "结束键盘清洁锁定";
+"Keyboard Lock" = "键盘清洁锁定";
+"Keyboard Lock Shortcut" = "清洁锁定快捷键";
+"Keyboard Lock Shortcut Registered" = "清洁锁定快捷键已注册";
+"Keyboard Lock Shortcut Conflicts" = "清洁锁定快捷键与 OpenFind 的其他动作冲突";
+"Keyboard Lock Shortcut Unavailable" = "清洁锁定快捷键不可用";
 "Open Accessibility Settings" = "打开辅助功能设置";
-"Keyboard Lock Help" = "键盘锁定使用 macOS 辅助功能权限和会话级事件 tap 吞掉所有软件可见按键；请用仅支持鼠标的悬浮按钮、菜单项或紧急自动解锁恢复输入。";
-"Keyboard Locked" = "键盘已锁定";
-"Keyboard Lock Pointer Help" = "清洁键盘期间所有键盘输入均被拦截。点击下方按钮解锁。";
-"Keyboard Lock Elapsed Format" = "已锁定 %02lld:%02lld:%02lld";
-"Keyboard Lock Countdown" = "%lld 秒后锁定键盘";
+"Keyboard Lock Help" = "键盘清洁锁定使用 macOS 辅助功能权限和会话级事件 tap，在清洁期间拦截所有软件可见按键；请用仅支持鼠标的悬浮按钮、菜单项或紧急自动解锁恢复输入。";
+"Keyboard Locked" = "键盘清洁锁定已开启";
+"Keyboard Lock Pointer Help" = "清洁期间所有键盘输入均被拦截。点击下方按钮结束键盘清洁锁定。";
+"Keyboard Lock Elapsed Format" = "键盘清洁锁定已开启 %02lld:%02lld:%02lld";
+"Keyboard Lock Countdown" = "%lld 秒后开启键盘清洁锁定";
 "Keyboard Lock Auto Unlock" = "紧急自动解锁";
 "Never" = "永不";
 "Keyboard Lock Hardware Limitation" = "macOS 不会把硬件电源键或 Touch ID 按钮暴露给事件 tap，因此无法拦截这些控制。";
+"Keyboard Cleaning Lock Accessibility Permission Required" = "键盘清洁锁定需要辅助功能权限。";
+"Keyboard Cleaning Lock Event Monitor Unavailable" = "OpenFind 无法启动键盘清洁锁定的事件监听。";
 "Allow Display Sleep When Screen Is Locked" = "屏幕锁定后允许显示器休眠";
 "Closed Display Unsupported" = "此 Mac 未暴露受支持的便携式闭盖电源状态。";
 "Trigger Screen Saver Exceptions Help" = "输入以逗号分隔的 Bundle ID、应用名称或进程名称。";
@@ -519,7 +526,8 @@
 "Play Sound When Session Is Replaced" = "会话延长或替换时播放声音";
 "Remove Delivered Notifications" = "发送下一条前移除已送达通知";
 "Notifications and Sounds" = "通知与声音";
-"Notifications and Sounds Help" = "只有获得 macOS 通知权限后才会发送通知。通知正文不会包含路径、进程名、网络名称或剪贴板内容。";
+"Notifications and Sounds Help" = "OpenFind 会自动使用当前构建支持的通知通道。通知正文不会包含路径、进程名、网络名称或剪贴板内容。";
+"Dismiss Notification" = "关闭通知";
 "Notification Permission Denied" = "通知权限已在系统设置中被拒绝。";
 "Awake Session Started" = "保持唤醒会话已开始";
 "OpenFind Is Keeping Mac Awake" = "OpenFind 正在阻止 Mac 休眠。";

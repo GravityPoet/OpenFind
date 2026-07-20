@@ -46,7 +46,18 @@ struct ClipboardHistoryView: View {
             }
             Divider()
 
-            if store.filteredEntries.isEmpty {
+            if store.requiresPersistenceMigration {
+                ContentUnavailableView {
+                    Label(L("Clipboard Migration Required"), systemImage: "key.fill")
+                } description: {
+                    Text(L("Clipboard Migration Help"))
+                } actions: {
+                    Button(L("Unlock and Migrate Clipboard History")) {
+                        store.migratePersistence()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            } else if store.filteredEntries.isEmpty {
                 ContentUnavailableView(
                     L("No Clipboard History"),
                     systemImage: "doc.on.clipboard",

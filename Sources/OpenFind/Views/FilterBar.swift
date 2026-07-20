@@ -7,14 +7,8 @@ struct FilterBar: View {
         OpenFindGlassContainer {
             HStack(spacing: 16) {
                 // Target Picker (Name / Contents / Both)
-                Picker(L("Target"), selection: $viewModel.options.target) {
-                    Text(L("Name")).tag(SearchTarget.name)
-                    Text(L("Contents")).tag(SearchTarget.content)
-                    Text(L("Name or Contents")).tag(SearchTarget.both)
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
-                .openFindGlassRoundedRectangle(cornerRadius: 6)
+                SearchTargetSelector(selection: $viewModel.options.target)
+                    .frame(width: 320, height: 30)
 
                 // Options Dropdown Menu
                 Menu {
@@ -131,5 +125,113 @@ struct FilterBar: View {
             return L("Whole Mac")
         }
         return scope.lastPathComponent.isEmpty ? scope.path(percentEncoded: false) : scope.lastPathComponent
+    }
+}
+
+private struct SearchTargetSelector: View {
+    @Binding var selection: SearchTarget
+    @State private var hoveredTarget: SearchTarget?
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(L("Target"))
+                .fontWeight(.semibold)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 8)
+                .frame(maxHeight: .infinity)
+
+            divider
+
+            ForEach(SearchTarget.allCases) { target in
+                SearchTargetSegmentButton(
+                    target: target,
+                    selection: $selection,
+                    hoveredTarget: $hoveredTarget
+                )
+
+                if target != .both {
+                    divider
+                }
+            }
+        }
+        .openFindGlassRoundedRectangle(cornerRadius: 6)
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .onMoveCommand(perform: moveSelection)
+        .animation(.easeOut(duration: 0.1), value: selection)
+        .animation(.easeOut(duration: 0.1), value: hoveredTarget)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L("Target"))
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.secondary.opacity(0.2))
+            .frame(width: 1)
+            .padding(.vertical, 5)
+    }
+
+    private func moveSelection(_ direction: MoveCommandDirection) {
+        guard let index = SearchTarget.allCases.firstIndex(of: selection) else { return }
+        switch direction {
+        case .left:
+            selection = SearchTarget.allCases[max(0, index - 1)]
+        case .right:
+            selection = SearchTarget.allCases[min(SearchTarget.allCases.count - 1, index + 1)]
+        default:
+            break
+        }
+    }
+}
+
+private struct SearchTargetSegmentButton: View {
+    let target: SearchTarget
+    @Binding var selection: SearchTarget
+    @Binding var hoveredTarget: SearchTarget?
+
+    var body: some View {
+        Button {
+            selection = target
+        } label: {
+            Text(localizedLabel)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .fontWeight(isSelected ? .semibold : .regular)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(backgroundColor)
+        .accessibilityLabel(Text(localizedLabel))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .onHover { isHovering in
+            hoveredTarget = isHovering ? target : nil
+        }
+    }
+
+    private var isSelected: Bool {
+        selection == target
+    }
+
+    private var localizedLabel: String {
+        switch target {
+        case .name: L("Name")
+        case .content: L("Contents")
+        case .both: L("Name or Contents")
+        }
+    }
+
+    private var backgroundColor: Color {
+        if isSelected {
+            return Color.primary.opacity(0.11)
+        }
+        if hoveredTarget == target {
+            return Color.primary.opacity(0.055)
+        }
+        return .clear
     }
 }

@@ -35,7 +35,7 @@ struct TriggerSettingsSection: View {
                 Button {
                     isCreating = true
                     editingTrigger = AwakeTrigger(
-                        name: "New Trigger",
+                        name: L("New Trigger"),
                         criteria: [.wifiNetwork("")]
                     )
                 } label: {
@@ -321,6 +321,7 @@ private struct TriggerEditorView: View {
                         .foregroundStyle(.orange)
                 }
             }
+            .formStyle(.grouped)
 
             Divider()
             HStack {
@@ -338,7 +339,7 @@ private struct TriggerEditorView: View {
             }
             .padding(12)
         }
-        .frame(width: 650, height: 760)
+        .frame(width: 650, height: 620)
         .task { refreshSnapshot() }
         .onChange(of: wifiPermission.state) {
             if wifiPermission.state == .authorized { refreshSnapshot() }
@@ -394,20 +395,23 @@ private struct CriterionEditor: View {
     let onDelete: () -> Void
 
     var body: some View {
-        DisclosureGroup {
-            criterionFields
-        } label: {
-            HStack {
-                Image(systemName: draft.kind.symbolName)
-                Text(draft.kind.displayName)
-                Spacer()
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "minus.circle")
+        HStack(alignment: .top, spacing: 8) {
+            DisclosureGroup {
+                criterionFields
+            } label: {
+                HStack {
+                    Image(systemName: draft.kind.symbolName)
+                    Text(draft.kind.displayName)
                 }
-                .buttonStyle(.borderless)
-                .help(L("Remove Criterion"))
-                .accessibilityLabel(L("Remove Criterion"))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "minus.circle")
+            }
+            .buttonStyle(.borderless)
+            .help(L("Remove Criterion"))
+            .accessibilityLabel(L("Remove Criterion"))
         }
     }
 
@@ -928,8 +932,8 @@ private struct CriterionDraft: Identifiable, Equatable {
         }
         var values = Set<IPAddress>()
         for token in tokens {
-            guard let address = IPAddress(token) else { throw IPDraftError.invalid }
-            values.insert(address)
+            guard let ipAddress = IPAddress(token) else { throw IPDraftError.invalid }
+            values.insert(ipAddress)
         }
         guard !values.isEmpty else { throw IPDraftError.invalid }
         return values

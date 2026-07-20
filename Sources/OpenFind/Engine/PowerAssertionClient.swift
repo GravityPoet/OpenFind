@@ -40,12 +40,19 @@ final class IOKitPowerAssertionClient: PowerAssertionClient {
     }
 
     func release(identifier: UInt32) -> PowerAssertionReleaseResult {
-        switch IOPMAssertionRelease(identifier) {
+        Self.releaseResult(for: IOPMAssertionRelease(identifier))
+    }
+
+    static func releaseResult(for status: Int32) -> PowerAssertionReleaseResult {
+        switch status {
         case kIOReturnSuccess:
             return .released
-        case kIOReturnNotFound:
+        case kIOReturnNotFound, kIOReturnBadArgument:
+            // Timed assertions are released by powerd when they expire. On
+            // current macOS versions, releasing that formerly valid ID again
+            // returns kIOReturnBadArgument instead of kIOReturnNotFound.
             return .alreadyReleased
-        case let status:
+        default:
             return .failed(status)
         }
     }

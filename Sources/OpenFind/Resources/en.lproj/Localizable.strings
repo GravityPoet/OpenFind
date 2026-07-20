@@ -279,6 +279,7 @@
 "Triggers Help" = "Triggers are evaluated from top to bottom. The first enabled Trigger whose criteria are all true owns the automatic awake session.";
 "No Active Trigger" = "No active Trigger";
 "Trigger Details" = "Trigger Details";
+"New Trigger" = "New Trigger";
 "Trigger Name" = "Name";
 "Trigger Enabled" = "Enabled";
 "Trigger Requires Criterion" = "Add at least one criterion.";
@@ -423,7 +424,10 @@
 "Clipboard Shortcut Conflicts" = "Clipboard shortcut conflicts with another OpenFind action";
 "Clipboard Shortcut Unavailable" = "Clipboard shortcut unavailable";
 "Clear Clipboard History" = "Clear clipboard history";
-"Clipboard History Help" = "OpenFind records supported clipboard types locally. When enabled, saved history is encrypted with a Keychain-held key; payloads are never written to logs.";
+"Clipboard History Help" = "OpenFind records supported clipboard types locally. Saved history is encrypted; Apple-signed builds keep the key in Keychain, while this local build keeps it in a user-only file so updates do not repeatedly ask for your password. Payloads are never written to logs.";
+"Clipboard Migration Required" = "One-time clipboard history migration";
+"Clipboard Migration Help" = "Your existing encrypted history is preserved. Unlock it once to move its legacy key out of Keychain; future OpenFind updates will not ask again.";
+"Unlock and Migrate Clipboard History" = "Unlock and Migrate History";
 "Copy Plain Text" = "Copy Plain Text";
 "Clipboard History Limit" = "History limit";
 "Clipboard Items Format" = "%lld items";
@@ -450,23 +454,26 @@
 "Clipboard Target Activation Failed" = "OpenFind could not return to the previous application.";
 "Clipboard Paste Event Failed" = "OpenFind could not send the paste command.";
 
-/* Keyboard Lock */
-"Lock Keyboard" = "Lock Keyboard";
-"Unlock Keyboard" = "Unlock Keyboard";
-"Keyboard Lock" = "Keyboard Lock";
-"Keyboard Lock Shortcut" = "Lock shortcut";
-"Keyboard Lock Shortcut Registered" = "Lock shortcut registered";
-"Keyboard Lock Shortcut Conflicts" = "Lock shortcut conflicts with another OpenFind action";
-"Keyboard Lock Shortcut Unavailable" = "Lock shortcut unavailable";
+/* Keyboard Cleaning Lock */
+"Keyboard Cleaning Lock" = "Keyboard Cleaning Lock";
+"Lock Keyboard" = "Start Keyboard Cleaning Lock";
+"Unlock Keyboard" = "End Keyboard Cleaning Lock";
+"Keyboard Lock" = "Keyboard Cleaning Lock";
+"Keyboard Lock Shortcut" = "Cleaning lock shortcut";
+"Keyboard Lock Shortcut Registered" = "Cleaning lock shortcut registered";
+"Keyboard Lock Shortcut Conflicts" = "Cleaning lock shortcut conflicts with another OpenFind action";
+"Keyboard Lock Shortcut Unavailable" = "Cleaning lock shortcut unavailable";
 "Open Accessibility Settings" = "Open Accessibility Settings";
-"Keyboard Lock Help" = "Keyboard Lock uses macOS Accessibility permission and a session event tap to swallow every software-visible key press. Use the pointer-only floating button, the menu item, or emergency auto-unlock to restore input.";
-"Keyboard Locked" = "Keyboard Locked";
-"Keyboard Lock Pointer Help" = "Keyboard input is blocked while you clean it. Click below to unlock.";
-"Keyboard Lock Elapsed Format" = "Locked for %02lld:%02lld:%02lld";
-"Keyboard Lock Countdown" = "Keyboard locks in %lld seconds";
+"Keyboard Lock Help" = "Keyboard Cleaning Lock uses macOS Accessibility permission and a session event tap to block every software-visible key press while you clean. Use the pointer-only floating button, the menu item, or emergency auto-unlock to restore input.";
+"Keyboard Locked" = "Keyboard Cleaning Lock Active";
+"Keyboard Lock Pointer Help" = "Keyboard input is blocked for cleaning. Click below to end the cleaning lock.";
+"Keyboard Lock Elapsed Format" = "Cleaning lock active for %02lld:%02lld:%02lld";
+"Keyboard Lock Countdown" = "Keyboard cleaning lock starts in %lld seconds";
 "Keyboard Lock Auto Unlock" = "Emergency auto-unlock";
 "Never" = "Never";
 "Keyboard Lock Hardware Limitation" = "macOS does not expose the hardware power or Touch ID buttons to event taps; those controls cannot be blocked.";
+"Keyboard Cleaning Lock Accessibility Permission Required" = "Keyboard Cleaning Lock requires Accessibility permission.";
+"Keyboard Cleaning Lock Event Monitor Unavailable" = "OpenFind could not start the event monitor for Keyboard Cleaning Lock.";
 "Allow Display Sleep When Screen Is Locked" = "Allow display sleep when the screen is locked";
 "Closed Display Unsupported" = "This Mac does not expose a supported portable closed-display power state.";
 "Trigger Screen Saver Exceptions Help" = "Enter comma-separated bundle identifiers, app names, or process names.";
@@ -519,7 +526,8 @@
 "Play Sound When Session Is Replaced" = "Play sound when a session is extended or replaced";
 "Remove Delivered Notifications" = "Remove delivered notifications before the next one";
 "Notifications and Sounds" = "Notifications and Sounds";
-"Notifications and Sounds Help" = "Notifications are delivered only after macOS permission is granted. Session bodies contain no paths, process names, network names, or clipboard content.";
+"Notifications and Sounds Help" = "OpenFind automatically uses the notification channel supported by this build. Session bodies contain no paths, process names, network names, or clipboard content.";
+"Dismiss Notification" = "Dismiss notification";
 "Notification Permission Denied" = "Notification permission was denied in System Settings.";
 "Awake Session Started" = "Awake session started";
 "OpenFind Is Keeping Mac Awake" = "OpenFind is keeping your Mac awake.";

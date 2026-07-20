@@ -65,8 +65,9 @@ Criterion inventory from the installed Amphetamine 5.3.2 build:
 1. `[x]` Schedule: selected weekdays and from/until times, including midnight spans.
 2. `[x]` System Idle Time: less-than or greater-than a minute threshold.
 3. `[x]` DNS Server: configured server-address matching.
-4. `[~]` Wi-Fi Network: exact current SSID and lazy Location permission are implemented;
-   live acceptance requires the user's Location decision.
+4. `[x]` Wi-Fi Network: exact current SSID and lazy Location permission; the installed
+   app received the Location decision and displayed the live criterion without exposing
+   the SSID in logs or acceptance output.
 5. `[x]` IP Matching: exact IPv4/IPv6 value or inclusive value range.
 6. `[~]` Cisco AnyConnect VPN: active configured/dynamic service matching is implemented;
    the current Mac's active network-extension VPN signal passed the live production
@@ -78,10 +79,10 @@ Criterion inventory from the installed Amphetamine 5.3.2 build:
     exclusion; multi-display/mirroring hardware acceptance remains open. The mirror check
     now follows Amphetamine's `CGMainDisplayID()` semantics instead of treating any
     secondary mirror member as the main display.
-11. `[~]` Bluetooth Device: paired-device connection matching is implemented; live
-    Bluetooth hardware acceptance remains open.
-12. `[~]` Audio Output: selected route, built-in output/speakers, or wired headphones;
-    route-change hardware acceptance remains open.
+11. `[x]` Bluetooth Device: paired-device connection matching plus native wake callbacks;
+    a real radio off/on cycle reevaluated in the same installed process without a crash.
+12. `[x]` Audio Output: selected route, built-in output/speakers, or wired headphones;
+    the live default route was switched, observed, and restored.
 13. `[~]` USB Device: selected device connection matching is implemented; hot-plug
     hardware acceptance remains open.
 14. `[~]` Battery & Power Adapter: minimum charge plus connected/disconnected AC
@@ -145,13 +146,15 @@ transaction and preserve the user's original power policy.
   closed-display transition through a real bounded session.
 - `[x]` Quick settings, current-session details, transactional extension, persistent
   ring-and-dot icon, remaining/end-time formats, 12/24-hour clock, and optional seconds.
-- `[~]` Start/end/replacement sounds, reminders, automatic-session notifications,
-  closed-display warnings, and cleanup are implemented; notification authorization and
-  audible acceptance remain open.
-- `[~]` Launch at login uses `SMAppService` when macOS exposes the main-app service and
+- `[x]` Start/end/replacement sounds, reminders, automatic-session notifications,
+  closed-display warnings, and cleanup are implemented. Apple-team builds use
+  `UNUserNotificationCenter`; the self-signed customer build uses OpenFind's own
+  permissionless, nonactivating banner. A real automatic-end banner was visually
+  accepted and disappeared after its bounded display interval.
+- `[x]` Launch at login uses `SMAppService` when macOS exposes the main-app service and
   an atomic user LaunchAgent fallback when the customer-signed build reports `notFound`.
-  The installed toggle and exact create/remove lifecycle passed; an actual next-login
-  process launch remains open because logging out would disrupt the active user session.
+  The installed toggle, exact create/remove lifecycle, bootstrap, and relaunch from
+  `/Applications/OpenFind.app` passed. The final preference is off with no job or plist.
 - `[x]` OpenFind's stable 18-point template icon uses a persistent ring-and-dot mark and
   optional time text. Normal and highlighted menu-bar states were accepted visually;
   arbitrary custom artwork is intentionally not copied from Amphetamine.
@@ -166,8 +169,13 @@ transaction and preserve the user's original power policy.
   clear, pin, ordering, duplicate handling, and bounded retention.
 - `[x]` Ignore rules for transient/concealed/password-manager data and selected apps.
 - `[x]` Configurable size/history limits, paste-without-formatting, and menu-bar access.
-- `[x]` AES-GCM history persistence uses a device-only Keychain key; payloads remain local
-  and never enter logs, analytics, crash breadcrumbs, or sync.
+- `[x]` AES-GCM history persistence keeps Apple-team build keys in Keychain and local
+  self-signed build keys in an owner-only `0600` file. Legacy ciphertext is never
+  overwritten before authenticated migration; symlink, ownership, size, and mode checks
+  are covered. Payloads remain local and never enter logs, analytics, or sync.
+- `[~]` This Mac's 1,019,072-byte legacy ciphertext is preserved byte-for-byte and no
+  longer opens Keychain during startup. Its one-time decryption migration still requires
+  the user to click `解锁并迁移历史` and authorize the old Keychain item once.
 - `[x]` Migration/import is optional; OpenFind does not read Maccy's database silently.
 
 ## Keyboard Cleaning (KeyboardCleanTool-equivalent)
@@ -183,8 +191,8 @@ transaction and preserve the user's original power policy.
 
 ## Verification Record (2026-07-21)
 
-- `340 tests / 43 suites` passed in the latest run; three earlier consecutive full-suite
-  runs also passed after hardening the IOKit power-source callback lifetime.
+- `349 tests / 43 suites` passed in the latest serial run; earlier targeted and full-suite
+  runs also passed after hardening native callback lifetimes and encrypted-key migration.
 - Customer-signed Universal (`arm64` + `x86_64`) archive passed deep signature, SDEF,
   packaged smoke, checksum, and atomic `/Applications/OpenFind.app` installation checks.
 - Physical bundle, Spotlight, LaunchServices, and Dock checks resolve only to
@@ -202,8 +210,8 @@ transaction and preserve the user's original power policy.
   during an OpenFind bounded session, restored `SleepDisabled=0` with the journal
   removed, and then removed the OpenFind rule. The pre-existing
   `/private/etc/sudoers.d/amphetamine_PowerProtect` rule remained unchanged.
-- No Bluetooth/USB/audio device mutation, Location authorization, or Accessibility
-  authorization was performed; those hardware/permission rows remain `[~]` by design.
+- Real Location, Bluetooth, and audio-route acceptance is recorded above. No USB device
+  was available and no Accessibility decision was made; those rows remain `[~]`.
 - The opt-in privacy-safe live Trigger acceptance used production signal collectors and
   evaluators, then crossed `TriggerCoordinator` into an isolated awake-session lifecycle.
   Twelve currently observable kinds passed: schedule, idle, DNS, IP, active VPN service,
@@ -247,6 +255,21 @@ transaction and preserve the user's original power policy.
 - The current source was rebuilt into a fresh customer archive and atomically installed;
   both cold-index and steady-state processes remained responsive, with no OpenFind-owned
   power assertion after every scripted session ended.
+- Bluetooth callbacks now hop from IOBluetooth's queue to the main actor before touching
+  observable state; the installed process survived a real radio off/on cycle with no new
+  crash report and the temporary trigger was removed.
+- The search-target selector is a native custom segmented control whose selected fill
+  reaches both rounded outer edges. Name, content, and combined states were accepted in
+  the installed app; the user's final selection remains `名称或内容`.
+- A real one-minute installed-app session returned `false` after deadline expiry and left
+  no OpenFind assertion. Timed IOPM assertions that powerd already released are now
+  normalized from `kIOReturnBadArgument` to an idempotent release result.
+- Modern notification authorization rejects the self-signed customer identity. The
+  installed build therefore used a local level-25 OpenFind banner for a real automatic
+  session end; it showed the localized title/body and close control without stealing focus.
+- Two clean installed-app relaunches completed without an OpenFind Keychain dialog while
+  retaining the legacy clipboard ciphertext SHA-256
+  `8c03f45357fae81c6693002ba5547544d0dc849e0126765085169aa52099d609`.
 - Final read-only state reports portable model `Mac16,1`, `SleepDisabled=0`, no
   `/private/etc/sudoers.d/openfind-power-protect` rule, no OpenFind-owned power
   assertion, and the pre-existing Amphetamine PowerProtect rule still present.

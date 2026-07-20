@@ -43,6 +43,8 @@
   <string>OpenFind requires access to the Downloads folder to search for files within it.</string>
 	<key>NSLocationUsageDescription</key>
 	<string>OpenFind uses Location Services only when you enable a Wi-Fi Trigger, to identify the current Wi-Fi network.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>OpenFind uses Location Services only when you enable a Wi-Fi Trigger, to identify the current Wi-Fi network.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>OpenFind accesses paired Bluetooth devices only when you enable a Bluetooth Trigger, to detect whether the selected device is connected.</string>
 	<key>NSRemovableVolumesUsageDescription</key>

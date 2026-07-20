@@ -46,6 +46,7 @@ final class ClipboardHistoryStore {
     private(set) var entries: [ClipboardEntry] = []
     private(set) var lastErrorMessage: String?
     private(set) var isPersistenceEnabled = true
+    private(set) var requiresPersistenceMigration = false
     private(set) var historyLimit: Int
     private(set) var itemLimitBytes: Int
     private(set) var ignoredBundleIdentifiers: Set<String>
@@ -81,7 +82,8 @@ final class ClipboardHistoryStore {
         clearHistoryOnQuit = defaults.bool(forKey: Self.clearHistoryOnQuitKey)
         clearSystemClipboardOnQuit = defaults.bool(forKey: Self.clearSystemClipboardOnQuitKey)
         fuzzySearchEnabled = defaults.bool(forKey: Self.fuzzySearchKey)
-        if persistenceEnabled {
+        requiresPersistenceMigration = persistenceEnabled && persistence.requiresExplicitMigration
+        if persistenceEnabled && !requiresPersistenceMigration {
             do {
                 entries = Array(try persistence.load().prefix(Self.maximumEntries))
                 trimToLimits()
@@ -133,13 +135,31 @@ final class ClipboardHistoryStore {
         isPersistenceEnabled = enabled
         defaults.set(enabled, forKey: Self.persistenceEnabledKey)
         guard !enabled else {
+            requiresPersistenceMigration = persistence.requiresExplicitMigration
             persist()
             return
         }
         do {
             try persistence.remove()
+            requiresPersistenceMigration = false
         } catch {
             lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func migratePersistence() -> Bool {
+        guard isPersistenceEnabled, requiresPersistenceMigration else { return true }
+        do {
+            entries = Array(try persistence.load().prefix(Self.maximumEntries))
+            trimToLimits()
+            selectedIndex = 0
+            requiresPersistenceMigration = false
+            lastErrorMessage = nil
+            return true
+        } catch {
+            lastErrorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -148,6 +168,7 @@ final class ClipboardHistoryStore {
         sourceBundleIdentifier: String? = nil,
         sourceIdentifiers: Set<String> = []
     ) -> Bool {
+        guard !requiresPersistenceMigration else { return false }
         var identifiers = sourceIdentifiers
         if let sourceBundleIdentifier { identifiers.insert(sourceBundleIdentifier) }
         identifiers = Set(identifiers.map {
@@ -190,6 +211,7 @@ final class ClipboardHistoryStore {
         kind: ClipboardEntryKind,
         createdAt: Date = Date()
     ) -> Bool {
+        guard !requiresPersistenceMigration else { return false }
         let totalBytes = representations.values.reduce(0) { $0 + $1.count }
         guard !representations.isEmpty else { return false }
         guard totalBytes <= itemLimitBytes else {
@@ -360,7 +382,7 @@ final class ClipboardHistoryStore {
     }
 
     private func persist() {
-        guard isPersistenceEnabled else { return }
+        guard isPersistenceEnabled, !requiresPersistenceMigration else { return }
         do {
             try persistence.save(entries)
             lastErrorMessage = nil

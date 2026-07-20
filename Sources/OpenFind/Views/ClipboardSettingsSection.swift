@@ -8,6 +8,22 @@ struct ClipboardSettingsSection: View {
     var body: some View {
         Section {
             Toggle(L("Enable Clipboard History"), isOn: persistenceBinding)
+            if store.requiresPersistenceMigration {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(
+                        L("Clipboard Migration Required"),
+                        systemImage: "key.fill"
+                    )
+                    .font(.headline)
+                    Text(L("Clipboard Migration Help"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button(L("Unlock and Migrate Clipboard History")) {
+                        store.migratePersistence()
+                    }
+                }
+                .padding(.vertical, 4)
+            }
             Picker(L("Clipboard History Limit"), selection: Binding(
                 get: { store.historyLimit },
                 set: { store.setHistoryLimit($0) }

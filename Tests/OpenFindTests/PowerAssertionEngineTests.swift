@@ -1,4 +1,5 @@
 import Foundation
+import IOKit.pwr_mgt
 import Testing
 @testable import OpenFind
 
@@ -76,6 +77,21 @@ struct PowerAssertionEngineTests {
             try engine.activate(.init(allowsDisplaySleep: true, timeout: .nan))
         }
         #expect(client.creations.isEmpty)
+    }
+
+    @Test func expiredIOKitAssertionsAreTreatedAsAlreadyReleased() {
+        #expect(
+            IOKitPowerAssertionClient.releaseResult(for: kIOReturnBadArgument)
+                == .alreadyReleased
+        )
+        #expect(
+            IOKitPowerAssertionClient.releaseResult(for: kIOReturnNotFound)
+                == .alreadyReleased
+        )
+        #expect(
+            IOKitPowerAssertionClient.releaseResult(for: -77)
+                == .failed(-77)
+        )
     }
 }
 
