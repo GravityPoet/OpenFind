@@ -80,7 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        configureQuitAppleEventHandler()
         configureUpdaterIfAvailable()
         showMainWindow()
         startRuntimeServices(includeTriggerScheduler: false)
@@ -95,33 +94,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        removeQuitAppleEventHandler()
         clipboardStore.prepareForTermination()
         stopRuntimeServices()
         if Self.shared === self { Self.shared = nil }
-    }
-
-    @objc private func handleQuitAppleEvent(
-        _ event: NSAppleEventDescriptor,
-        withReplyEvent replyEvent: NSAppleEventDescriptor
-    ) {
-        NSApp.terminate(nil)
-    }
-
-    private func configureQuitAppleEventHandler() {
-        NSAppleEventManager.shared().setEventHandler(
-            self,
-            andSelector: #selector(handleQuitAppleEvent(_:withReplyEvent:)),
-            forEventClass: AEEventClass(kCoreEventClass),
-            andEventID: AEEventID(kAEQuitApplication)
-        )
-    }
-
-    private func removeQuitAppleEventHandler() {
-        NSAppleEventManager.shared().removeEventHandler(
-            forEventClass: AEEventClass(kCoreEventClass),
-            andEventID: AEEventID(kAEQuitApplication)
-        )
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -132,7 +107,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         lifecycleLogger.notice("Termination cleanup started")
         terminationReplyPending = true
         stopRuntimeServices()
-        viewModel.cancel()
         Task { @MainActor [weak self, weak sender] in
             guard let self else {
                 Logger(subsystem: "com.openfind.app", category: "Lifecycle")
@@ -140,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 sender?.reply(toApplicationShouldTerminate: false)
                 return
             }
+            await self.viewModel.prepareForTermination()
             guard await self.awakeSession.requestEndAsync(reason: .applicationTermination) else {
                 self.lifecycleLogger.error("Termination awake-session cleanup failed")
                 self.terminationReplyPending = false

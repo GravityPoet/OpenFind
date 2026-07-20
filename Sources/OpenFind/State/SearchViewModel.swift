@@ -273,6 +273,14 @@ final class SearchViewModel {
         cancel(preservingResultPageExpansion: false)
     }
 
+    /// Cancels all rebuild and enrichment work that is safe to recreate on the
+    /// next launch. This is separate from `cancel()`, which is also used for
+    /// ordinary query changes and must keep the shared index alive.
+    func prepareForTermination() async {
+        cancel()
+        await indexStore.cancelActiveWorkForTermination()
+    }
+
     private func cancel(preservingResultPageExpansion: Bool) {
         if preservingResultPageExpansion, isExpandingResults {
             if pendingResultPageExpansions < Int.max {

@@ -3,7 +3,7 @@
 <dictionary title="OpenFind Terminology">
     <suite name="Standard Suite" code="????" description="Common classes and commands for all applications.">
         <command name="quit" code="aevtquit" description="Quit the application.">
-            <cocoa class="NSQuitCommand"/>
+            <cocoa class="OpenFindQuitScriptCommand"/>
         </command>
         <command name="close" code="coreclos" description="Close the targeted window.">
             <cocoa class="NSCloseCommand"/>

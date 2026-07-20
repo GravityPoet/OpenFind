@@ -67,7 +67,7 @@ Criterion inventory from the installed Amphetamine 5.3.2 build:
 3. `[x]` DNS Server: configured server-address matching.
 4. `[~]` Wi-Fi Network: exact current SSID and lazy Location permission are implemented;
    live acceptance requires the user's Location decision.
-5. `[x]` IP Address: exact IPv4/IPv6 address or inclusive address range.
+5. `[x]` IP Matching: exact IPv4/IPv6 value or inclusive value range.
 6. `[~]` Cisco AnyConnect VPN: active configured/dynamic service matching is implemented;
    no active Cisco tunnel was available for live acceptance.
 7. `[x]` Volumes/Drives: selected local or network volume mounted.
@@ -171,9 +171,9 @@ transaction and preserve the user's original power policy.
   fast-user switch, and sleep/wake are covered; lifecycle hardware acceptance remains open.
 - `[x]` The UI states that hardware power and Touch ID controls are not exposed by macOS.
 
-## Verification Record (2026-07-20)
+## Verification Record (2026-07-21)
 
-- `333 tests / 42 suites` passed; three consecutive full-suite runs also passed after
+- `334 tests / 42 suites` passed; three consecutive full-suite runs also passed after
   hardening the IOKit power-source callback lifetime.
 - Customer-signed Universal (`arm64` + `x86_64`) archive passed deep signature, SDEF,
   packaged smoke, checksum, and atomic `/Applications/OpenFind.app` installation checks.
@@ -193,16 +193,23 @@ transaction and preserve the user's original power policy.
   lifecycle hardening.
 - Dedicated restart/stop regression tests cover both native network and USB wake
   monitors (32 cycles plus idempotent stop) without requiring hardware or privilege.
+- A termination regression test proves that an in-flight index rebuild is cancelled before
+  the application waits for durable persistence.
 - The installed customer binary now resolves Cocoa scripting through a weak process-local
   delegate reference; fresh `osascript` queries return the Amphetamine sentinels instead
   of the previous “AppleScript service unavailable” error.
 - Raw Apple Event `optn` records (integer/string and built-in numeric minute/hour forms)
   now start bounded and indefinite sessions, return the expected remaining-time values,
   and end cleanly; script-ending a Trigger session preserves Triggers as in Amphetamine.
-- Commit `10930ec` was rebuilt into a fresh customer archive and atomically installed;
-  the new installed process reached steady state after the expected cold index pass
-  (about 2m43s) and then remained responsive at about 0.9% CPU, with no OpenFind-owned
-  power assertion.
+- Standard `quit` is routed through `OpenFindQuitScriptCommand` instead of a raw launch-time
+  Apple Event handler. This survives Cocoa Scripting's lazy dispatcher installation: the
+  installed app completed the full custom-query/start/end/toggle sequence, then accepted
+  `quit` while background indexing was active and exited after its bounded persistence
+  window. Termination also cancels rebuild, watcher, retry, and content-enrichment work
+  before flushing durable index state.
+- The current source was rebuilt into a fresh customer archive and atomically installed;
+  both cold-index and steady-state processes remained responsive, with no OpenFind-owned
+  power assertion after every scripted session ended.
 - Read-only closed-display Dry Run reports portable model `Mac16,1`,
   `SleepDisabled=0`, and no `/private/etc/sudoers.d/openfind-power-protect` rule;
   no power-management or sudoers write was performed.

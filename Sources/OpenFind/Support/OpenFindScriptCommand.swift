@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import OSLog
 
 enum OpenFindScriptError: Error, Equatable, LocalizedError {
     case invalidSessionOptions
@@ -11,6 +12,36 @@ enum OpenFindScriptError: Error, Equatable, LocalizedError {
             L("AppleScript Session Options Invalid")
         case .unavailable:
             L("AppleScript Service Unavailable")
+        }
+    }
+}
+
+/// Cocoa Scripting installs its command dispatcher lazily. Registering a raw
+/// `aevtquit` handler during app launch is therefore not stable: the first
+/// custom command can replace it. Keep quit in the scripting dictionary and
+/// route it through a dedicated command class instead.
+@objc(OpenFindQuitScriptCommand)
+final class OpenFindQuitScriptCommand: NSScriptCommand {
+    private static let logger = Logger(subsystem: "com.openfind.app", category: "Lifecycle")
+
+    override func execute() -> Any? {
+        requestTermination()
+        return nil
+    }
+
+    override func performDefaultImplementation() -> Any? {
+        requestTermination()
+        return nil
+    }
+
+    private func requestTermination() {
+        Self.logger.notice("Cocoa scripting quit command received")
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { NSApp.terminate(nil) }
+            return
+        }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { NSApp.terminate(nil) }
         }
     }
 }
