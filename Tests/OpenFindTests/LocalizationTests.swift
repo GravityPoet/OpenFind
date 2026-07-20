@@ -44,6 +44,27 @@ struct LocalizationTests {
         #expect(Set(declared) == Set(AppLocalization.supportedIdentifiers))
         #expect(info["NSAppleScriptEnabled"] as? Bool == true)
         #expect(info["OSAScriptingDefinition"] as? String == "OpenFind.sdef")
+        #expect(info["NSLocationUsageDescription"] as? String != nil)
+        #expect(info["NSLocationWhenInUseUsageDescription"] as? String != nil)
+
+        for entitlementName in [
+            "OpenFind.direct.entitlements",
+            "OpenFind.local.entitlements",
+            "OpenFind.sandbox.entitlements",
+        ] {
+            let entitlementData = try Data(
+                contentsOf: repositoryRoot
+                    .appendingPathComponent("Entitlements")
+                    .appendingPathComponent(entitlementName)
+            )
+            let entitlements = try #require(
+                PropertyListSerialization.propertyList(
+                    from: entitlementData,
+                    format: nil
+                ) as? [String: Any]
+            )
+            #expect(entitlements["com.apple.security.personal-information.location"] as? Bool == true)
+        }
 
         for identifier in AppLocalization.supportedIdentifiers {
             let stringsURL = repositoryRoot
@@ -65,6 +86,17 @@ struct LocalizationTests {
                 Range(match.range(at: 1), in: stringsSource).map { String(stringsSource[$0]) }
             }
             #expect(keys.count == Set(keys).count)
+
+            if identifier == "en" {
+                #expect(strings["New Trigger"] == "New Trigger")
+                #expect(strings["Keyboard Cleaning Lock"] == "Keyboard Cleaning Lock")
+                #expect(strings["Keyboard Lock"] == "Keyboard Cleaning Lock")
+            } else if identifier == "zh-Hans" {
+                #expect(strings["New Trigger"] == "新建触发器")
+                #expect(strings["Keyboard Cleaning Lock"] == "键盘清洁锁定")
+                #expect(strings["Keyboard Lock"] == "键盘清洁锁定")
+                #expect(strings["Lock Keyboard"] == "开始键盘清洁锁定")
+            }
         }
 
         let scriptingDefinition = try String(

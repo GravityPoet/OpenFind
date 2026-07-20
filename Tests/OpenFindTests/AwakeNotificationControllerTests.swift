@@ -5,6 +5,36 @@ import Testing
 @MainActor
 @Suite("Awake Notification Controller Tests")
 struct AwakeNotificationControllerTests {
+    @Test func notificationChannelMatchesSigningIdentity() {
+        #expect(SystemAwakeNotificationDelivery.shouldUseLocalBanner(
+            signingTeamIdentifier: nil
+        ))
+        #expect(!SystemAwakeNotificationDelivery.shouldUseLocalBanner(
+            signingTeamIdentifier: "ABCDE12345"
+        ))
+    }
+
+    @Test func selfSignedDeliveryUsesThePermissionlessLocalBanner() async throws {
+        let presenter = FakeNotificationBannerPresenter()
+        let delivery = SystemAwakeNotificationDelivery(
+            bundleURL: URL(fileURLWithPath: "/tmp/OpenFindTests-missing-bundle"),
+            bannerPresenter: presenter
+        )
+        let payload = AwakeNotificationPayload(
+            identifier: "test",
+            title: "Title",
+            body: "Body",
+            playsSound: true
+        )
+
+        #expect(try await delivery.requestAuthorization())
+        try await delivery.deliver(payload)
+        #expect(presenter.payloads == [payload])
+
+        delivery.removeDeliveredNotifications()
+        #expect(presenter.dismissCount == 1)
+    }
+
     @Test func automaticStartAndEndNotificationsExcludeManualActions() async throws {
         let suite = "OpenFindTests.AwakeNotifications.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -198,6 +228,20 @@ private final class NotificationPowerAssertions: PowerAssertionControlling {
 
     func deactivate() throws {
         activeConfiguration = nil
+    }
+}
+
+@MainActor
+private final class FakeNotificationBannerPresenter: AwakeNotificationBannerPresenting {
+    private(set) var payloads: [AwakeNotificationPayload] = []
+    private(set) var dismissCount = 0
+
+    func present(_ payload: AwakeNotificationPayload) {
+        payloads.append(payload)
+    }
+
+    func dismiss() {
+        dismissCount += 1
     }
 }
 

@@ -33,7 +33,7 @@ final class AudioOutputWakeMonitor: TriggerSignalWakeMonitoring {
     }
 
     private func registerSystemListener() {
-        let address = AudioObjectPropertyAddress(
+        let propertyAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
@@ -45,7 +45,7 @@ final class AudioOutputWakeMonitor: TriggerSignalWakeMonitoring {
                 self.handler?()
             }
         }
-        var mutableAddress = address
+        var mutableAddress = propertyAddress
         guard AudioObjectAddPropertyListenerBlock(
             AudioObjectID(kAudioObjectSystemObject),
             &mutableAddress,
@@ -54,7 +54,7 @@ final class AudioOutputWakeMonitor: TriggerSignalWakeMonitoring {
         ) == noErr else { return }
         systemRegistration = AudioListenerRegistration(
             object: AudioObjectID(kAudioObjectSystemObject),
-            address: address,
+            propertyAddress: propertyAddress,
             listener: listener
         )
     }
@@ -76,13 +76,13 @@ final class AudioOutputWakeMonitor: TriggerSignalWakeMonitoring {
                 mElement: kAudioObjectPropertyElementMain
             ),
         ]
-        for address in addresses {
-            addDeviceListener(object: device, address: address)
+        for propertyAddress in addresses {
+            addDeviceListener(object: device, propertyAddress: propertyAddress)
         }
         for stream in HardwareTriggerSignals.outputStreams(for: device) {
             addDeviceListener(
                 object: stream,
-                address: AudioObjectPropertyAddress(
+                propertyAddress: AudioObjectPropertyAddress(
                     mSelector: kAudioStreamPropertyTerminalType,
                     mScope: kAudioObjectPropertyScopeGlobal,
                     mElement: kAudioObjectPropertyElementMain
@@ -93,12 +93,12 @@ final class AudioOutputWakeMonitor: TriggerSignalWakeMonitoring {
 
     private func addDeviceListener(
         object: AudioObjectID,
-        address: AudioObjectPropertyAddress
+        propertyAddress: AudioObjectPropertyAddress
     ) {
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             MainActor.assumeIsolated { self?.handler?() }
         }
-        var mutableAddress = address
+        var mutableAddress = propertyAddress
         guard AudioObjectHasProperty(object, &mutableAddress),
               AudioObjectAddPropertyListenerBlock(
                   object,
@@ -108,16 +108,16 @@ final class AudioOutputWakeMonitor: TriggerSignalWakeMonitoring {
               ) == noErr else { return }
         deviceRegistrations.append(.init(
             object: object,
-            address: address,
+            propertyAddress: propertyAddress,
             listener: listener
         ))
     }
 
     private func remove(_ registration: AudioListenerRegistration) {
-        var address = registration.address
+        var propertyAddress = registration.propertyAddress
         AudioObjectRemovePropertyListenerBlock(
             registration.object,
-            &address,
+            &propertyAddress,
             queue,
             registration.listener
         )
@@ -126,7 +126,7 @@ final class AudioOutputWakeMonitor: TriggerSignalWakeMonitoring {
 
 private struct AudioListenerRegistration {
     let object: AudioObjectID
-    let address: AudioObjectPropertyAddress
+    let propertyAddress: AudioObjectPropertyAddress
     let listener: AudioObjectPropertyListenerBlock
 }
 
@@ -157,32 +157,48 @@ final class BluetoothConnectionWakeMonitor: NSObject, TriggerSignalWakeMonitorin
         handler = nil
     }
 
-    @objc private func deviceConnected(
+    @objc nonisolated private func deviceConnected(
         _ notification: IOBluetoothUserNotification,
         device: IOBluetoothDevice
     ) {
-        registerDisconnect(for: device)
-        handler?()
+        let deviceReference = SendableBluetoothDeviceReference(device)
+        Task { @MainActor [weak self, deviceReference] in
+            guard let self, handler != nil else { return }
+            registerDisconnect(for: deviceReference.device)
+            handler?()
+        }
     }
 
-    @objc private func deviceDisconnected(
+    @objc nonisolated private func deviceDisconnected(
         _ notification: IOBluetoothUserNotification,
         device: IOBluetoothDevice
     ) {
-        if let address = device.addressString {
-            disconnectNotifications.removeValue(forKey: address)
+        let deviceIdentifier = device.addressString
+        Task { @MainActor [weak self] in
+            guard let self, handler != nil else { return }
+            if let deviceIdentifier {
+                disconnectNotifications.removeValue(forKey: deviceIdentifier)
+            }
+            handler?()
         }
-        handler?()
     }
 
     private func registerDisconnect(for device: IOBluetoothDevice) {
-        guard let address = device.addressString,
-              disconnectNotifications[address] == nil,
+        guard let deviceIdentifier = device.addressString,
+              disconnectNotifications[deviceIdentifier] == nil,
               let notification = device.register(
                   forDisconnectNotification: self,
                   selector: #selector(deviceDisconnected(_:device:))
               ) else { return }
-        disconnectNotifications[address] = notification
+        disconnectNotifications[deviceIdentifier] = notification
+    }
+}
+
+private final class SendableBluetoothDeviceReference: @unchecked Sendable {
+    let device: IOBluetoothDevice
+
+    init(_ device: IOBluetoothDevice) {
+        self.device = device
     }
 }
 

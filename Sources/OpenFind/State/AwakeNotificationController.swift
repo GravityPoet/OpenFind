@@ -20,13 +20,40 @@ protocol AwakeNotificationDelivering: AnyObject {
 
 @MainActor
 final class SystemAwakeNotificationDelivery: AwakeNotificationDelivering {
-    private let center = UNUserNotificationCenter.current()
+    private let modernCenter: UNUserNotificationCenter?
+    private let bannerPresenter: any AwakeNotificationBannerPresenting
+    private let usesLocalBanner: Bool
+
+    init(
+        bundleURL: URL = Bundle.main.bundleURL,
+        bannerPresenter: any AwakeNotificationBannerPresenting = OpenFindNotificationBannerPresenter()
+    ) {
+        self.bannerPresenter = bannerPresenter
+        let usesLocalBanner = Self.shouldUseLocalBanner(
+            signingTeamIdentifier: Self.signingTeamIdentifier(at: bundleURL)
+        )
+        self.usesLocalBanner = usesLocalBanner
+        modernCenter = usesLocalBanner ? nil : UNUserNotificationCenter.current()
+    }
 
     func requestAuthorization() async throws -> Bool {
-        try await center.requestAuthorization(options: [.alert, .sound])
+        if usesLocalBanner {
+            // macOS rejects notification-center authorization for a stable
+            // self-signed build with no Apple team identifier. OpenFind's own
+            // nonactivating banner needs no permission and remains visible when
+            // the main window is in the background.
+            return true
+        }
+        guard let modernCenter else { return false }
+        return try await modernCenter.requestAuthorization(options: [.alert, .sound])
     }
 
     func deliver(_ payload: AwakeNotificationPayload) async throws {
+        if usesLocalBanner {
+            bannerPresenter.present(payload)
+            return
+        }
+
         let content = UNMutableNotificationContent()
         content.title = payload.title
         content.body = payload.body
@@ -36,16 +63,30 @@ final class SystemAwakeNotificationDelivery: AwakeNotificationDelivering {
             content: content,
             trigger: nil
         )
-        try await center.add(request)
+        guard let modernCenter else { return }
+        try await modernCenter.add(request)
     }
 
     func removeDeliveredNotifications() {
-        center.removeDeliveredNotifications(withIdentifiers: [
+        let identifiers = [
             AwakeNotificationController.startNotificationID,
             AwakeNotificationController.endNotificationID,
             AwakeNotificationController.reminderNotificationID,
             AwakeNotificationController.closedDisplayWarningNotificationID,
-        ])
+        ]
+        if usesLocalBanner {
+            bannerPresenter.dismiss()
+            return
+        }
+        modernCenter?.removeDeliveredNotifications(withIdentifiers: identifiers)
+    }
+
+    static func signingTeamIdentifier(at bundleURL: URL) -> String? {
+        CodeSigningIdentity.teamIdentifier(at: bundleURL)
+    }
+
+    static func shouldUseLocalBanner(signingTeamIdentifier: String?) -> Bool {
+        signingTeamIdentifier?.isEmpty != false
     }
 }
 
@@ -124,13 +165,13 @@ final class SystemClosedDisplayWarningSoundPlayer: ClosedDisplayWarningSoundPlay
     }
 
     private func volume(device: AudioDeviceID) -> Float32? {
-        var address = volumeAddress
-        guard AudioObjectHasProperty(device, &address) else { return nil }
+        var propertyAddress = volumeAddress
+        guard AudioObjectHasProperty(device, &propertyAddress) else { return nil }
         var value: Float32 = 0
         var size = UInt32(MemoryLayout<Float32>.size)
         guard AudioObjectGetPropertyData(
             device,
-            &address,
+            &propertyAddress,
             0,
             nil,
             &size,
@@ -141,10 +182,10 @@ final class SystemClosedDisplayWarningSoundPlayer: ClosedDisplayWarningSoundPlay
 
     @discardableResult
     private func setVolume(_ volume: Float32, device: AudioDeviceID) -> Bool {
-        var address = volumeAddress
+        var propertyAddress = volumeAddress
         var value = min(1, max(0, volume))
         let size = UInt32(MemoryLayout<Float32>.size)
-        return AudioObjectSetPropertyData(device, &address, 0, nil, size, &value) == noErr
+        return AudioObjectSetPropertyData(device, &propertyAddress, 0, nil, size, &value) == noErr
     }
 
     private var volumeAddress: AudioObjectPropertyAddress {

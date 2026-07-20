@@ -287,9 +287,9 @@ enum KeyboardLockError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .permissionRequired:
-            return "Accessibility permission is required to lock the keyboard."
+            return L("Keyboard Cleaning Lock Accessibility Permission Required")
         case .tapUnavailable:
-            return "OpenFind could not create a keyboard event monitor."
+            return L("Keyboard Cleaning Lock Event Monitor Unavailable")
         }
     }
 }

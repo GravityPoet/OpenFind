@@ -49,7 +49,7 @@ struct SettingsView: View {
 
             keyboardCleaningSettings
                 .tabItem {
-                    Label(L("Keyboard"), systemImage: "keyboard")
+                    Label(L("Keyboard Cleaning Lock"), systemImage: "keyboard")
                 }
         }
         .frame(minWidth: 700, minHeight: 620)

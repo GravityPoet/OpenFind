@@ -66,6 +66,190 @@ struct ClipboardHistoryStoreTests {
         #expect(persistence.removeCount == 1)
     }
 
+    @Test func legacyHistoryWaitsForExplicitMigrationWithoutBeingOverwritten() throws {
+        let suite = "OpenFindTests.ClipboardMigrationStore.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let existing = ClipboardEntry(
+            previewText: "preserved",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("preserved".utf8)]
+        )
+        let persistence = MemoryClipboardPersistence(
+            savedEntries: [existing],
+            requiresExplicitMigration: true
+        )
+
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: persistence,
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+
+        #expect(store.requiresPersistenceMigration)
+        #expect(store.entries.isEmpty)
+        #expect(persistence.loadCount == 0)
+        #expect(!store.ingest(
+            representations: ["public.utf8-plain-text": Data("new".utf8)],
+            previewText: "new",
+            kind: .text
+        ))
+        #expect(persistence.saveCount == 0)
+
+        #expect(store.migratePersistence())
+        #expect(!store.requiresPersistenceMigration)
+        #expect(store.entries == [existing])
+        #expect(persistence.loadCount == 1)
+    }
+
+    @Test func selfSignedPersistenceMigratesLegacyKeyOnlyOnce() throws {
+        let suite = "OpenFindTests.ClipboardKeyMigration.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "OpenFindClipboardMigration-\(UUID())",
+            isDirectory: true
+        )
+        let keyURL = directory.appendingPathComponent("clipboard-history-key-v3")
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let keychain = MemoryClipboardKeychain()
+        let existing = ClipboardEntry(
+            previewText: "legacy",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("legacy".utf8)]
+        )
+        let signedWriter = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            keychain: keychain,
+            signingTeamIdentifier: "TESTTEAM"
+        )
+        try signedWriter.save([existing])
+        #expect(!FileManager.default.fileExists(atPath: keyURL.path))
+
+        let localReader = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            keychain: keychain,
+            signingTeamIdentifier: nil
+        )
+        #expect(localReader.requiresExplicitMigration)
+        let readsBeforeMigration = keychain.readCount
+
+        #expect(try localReader.load() == [existing])
+        #expect(!localReader.requiresExplicitMigration)
+        #expect(keychain.readCount == readsBeforeMigration + 1)
+        let attributes = try FileManager.default.attributesOfItem(atPath: keyURL.path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+
+        let readsAfterMigration = keychain.readCount
+        #expect(try localReader.load() == [existing])
+        #expect(keychain.readCount == readsAfterMigration)
+    }
+
+    @Test func newSelfSignedHistoryCreatesAFileKeyWithoutOpeningKeychain() throws {
+        let suite = "OpenFindTests.ClipboardLocalKey.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "OpenFindClipboardLocalKey-\(UUID())",
+            isDirectory: true
+        )
+        let keyURL = directory.appendingPathComponent("clipboard-history-key-v3")
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let keychain = MemoryClipboardKeychain()
+        let persistence = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            keychain: keychain,
+            signingTeamIdentifier: nil
+        )
+        let entry = ClipboardEntry(
+            previewText: "new",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("new".utf8)]
+        )
+
+        try persistence.save([entry])
+
+        #expect(keychain.readCount == 0)
+        #expect(keychain.storeCount == 0)
+        #expect(try persistence.load() == [entry])
+        #expect(FileManager.default.fileExists(atPath: keyURL.path))
+    }
+
+    @Test func localKeySymlinkIsRejectedWithoutTouchingItsTarget() throws {
+        let suite = "OpenFindTests.ClipboardKeySymlink.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "OpenFindClipboardKeySymlink-\(UUID())",
+            isDirectory: true
+        )
+        let targetURL = directory.appendingPathComponent("unrelated")
+        let keyURL = directory.appendingPathComponent("clipboard-history-key-v3")
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        let unrelated = Data(repeating: 7, count: 32)
+        try unrelated.write(to: targetURL)
+        try FileManager.default.createSymbolicLink(at: keyURL, withDestinationURL: targetURL)
+        let persistence = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            keychain: MemoryClipboardKeychain(),
+            signingTeamIdentifier: nil
+        )
+
+        #expect(throws: ClipboardHistoryError.persistenceUnavailable) {
+            try persistence.save([])
+        }
+        #expect(try Data(contentsOf: targetURL) == unrelated)
+    }
+
+    @Test func corruptLegacyCiphertextNeverCommitsTheMigratedKey() throws {
+        let suite = "OpenFindTests.ClipboardCorruptMigration.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "OpenFindClipboardCorruptMigration-\(UUID())",
+            isDirectory: true
+        )
+        let keyURL = directory.appendingPathComponent("clipboard-history-key-v3")
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let keychain = MemoryClipboardKeychain()
+        let signedWriter = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            keychain: keychain,
+            signingTeamIdentifier: "TESTTEAM"
+        )
+        try signedWriter.save([])
+        defaults.set(Data(repeating: 0, count: 64), forKey: EncryptedClipboardHistoryPersistence.ciphertextKey)
+        let localReader = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            keychain: keychain,
+            signingTeamIdentifier: nil
+        )
+
+        #expect(throws: ClipboardHistoryError.persistenceCorrupt) {
+            try localReader.load()
+        }
+        #expect(!FileManager.default.fileExists(atPath: keyURL.path))
+        #expect(localReader.requiresExplicitMigration)
+    }
+
     @Test func oversizedItemsAreRejectedBeforePersistence() throws {
         let suite = "OpenFindTests.Clipboard.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -317,15 +501,51 @@ struct ClipboardHistoryStoreTests {
 private final class MemoryClipboardPersistence: ClipboardHistoryPersisting {
     private(set) var savedEntries: [ClipboardEntry]
     private(set) var removeCount = 0
+    private(set) var loadCount = 0
+    private(set) var saveCount = 0
+    var requiresExplicitMigration: Bool
 
-    init(savedEntries: [ClipboardEntry] = []) {
+    init(
+        savedEntries: [ClipboardEntry] = [],
+        requiresExplicitMigration: Bool = false
+    ) {
         self.savedEntries = savedEntries
+        self.requiresExplicitMigration = requiresExplicitMigration
     }
 
-    func load() throws -> [ClipboardEntry] { savedEntries }
-    func save(_ entries: [ClipboardEntry]) throws { savedEntries = entries }
+    func load() throws -> [ClipboardEntry] {
+        loadCount += 1
+        requiresExplicitMigration = false
+        return savedEntries
+    }
+
+    func save(_ entries: [ClipboardEntry]) throws {
+        saveCount += 1
+        savedEntries = entries
+    }
+
     func remove() throws {
         savedEntries = []
         removeCount += 1
+    }
+}
+
+private final class MemoryClipboardKeychain: ClipboardHistoryKeychainAccessing {
+    var data: Data?
+    private(set) var readCount = 0
+    private(set) var storeCount = 0
+
+    func read() throws -> Data? {
+        readCount += 1
+        return data
+    }
+
+    func store(_ data: Data) throws {
+        storeCount += 1
+        self.data = data
+    }
+
+    func remove() throws {
+        data = nil
     }
 }
