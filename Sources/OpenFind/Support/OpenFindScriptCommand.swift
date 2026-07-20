@@ -53,9 +53,17 @@ final class OpenFindScriptingService {
 
     var sessionIsActive: Bool { sessions.isActive }
 
+    func sessionRequest(options: Any?) throws -> AwakeSessionRequest {
+        try Self.sessionRequest(options: options, preferences: preferences)
+    }
+
     func startNewSession(options: Any?) async throws -> Bool {
-        let request = try Self.sessionRequest(options: options, preferences: preferences)
-        return await sessions.requestStartAsync(request)
+        let request = try sessionRequest(options: options)
+        return await startNewSession(request: request)
+    }
+
+    func startNewSession(request: AwakeSessionRequest) async -> Bool {
+        await sessions.requestStartAsync(request)
     }
 
     func endSession() async -> Bool {
@@ -269,7 +277,7 @@ final class OpenFindScriptCommand: NSScriptCommand {
 
     @MainActor
     private func performOnMainActor() -> Any? {
-        guard let delegate = NSApp.delegate as? AppDelegate else {
+        guard let delegate = AppDelegate.shared ?? (NSApp.delegate as? AppDelegate) else {
             setError(OpenFindScriptError.unavailable)
             return nil
         }
@@ -279,8 +287,14 @@ final class OpenFindScriptCommand: NSScriptCommand {
             return NSNumber(value: service.sessionIsActive)
         case "start new session":
             let options = evaluatedArguments?["options"] ?? arguments?["options"]
-            return suspendAndRun {
-                NSNumber(value: try await service.startNewSession(options: options))
+            do {
+                let request = try service.sessionRequest(options: options)
+                return suspendAndRun {
+                    NSNumber(value: await service.startNewSession(request: request))
+                }
+            } catch {
+                setError(error)
+                return nil
             }
         case "end session":
             return suspendAndRun { NSNumber(value: await service.endSession()) }

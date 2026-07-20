@@ -5,6 +5,12 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    /// SwiftUI's `NSApplicationDelegateAdaptor` may expose a forwarding
+    /// delegate while Cocoa scripting is dispatching an `NSScriptCommand`.
+    /// Keep a weak, process-local reference so scripting can still resolve
+    /// the live application services without extending the delegate lifetime.
+    private(set) static weak var shared: AppDelegate?
+
     private let lifecycleLogger = Logger(subsystem: "com.openfind.app", category: "Lifecycle")
     let viewModel = SearchViewModel()
     let hotKeyRegistry: GlobalHotKeyRegistry
@@ -70,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         triggerCoordinator = TriggerCoordinator(store: triggerStore, sessions: awakeSession)
         triggerScheduler = TriggerMonitorScheduler(coordinator: triggerCoordinator)
         super.init()
+        Self.shared = self
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -91,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         removeQuitAppleEventHandler()
         clipboardStore.prepareForTermination()
         stopRuntimeServices()
+        if Self.shared === self { Self.shared = nil }
     }
 
     @objc private func handleQuitAppleEvent(
