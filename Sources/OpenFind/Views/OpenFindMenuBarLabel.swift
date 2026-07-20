@@ -17,7 +17,8 @@ struct OpenFindMenuBarLabel: View {
 
     private func label(timeText: String?) -> some View {
         HStack(spacing: 3) {
-            Image(nsImage: MenuBarIcon.make(isActive: controller.isActive))
+            Image(nsImage: MenuBarIcon.make())
+                .renderingMode(.template)
             if let timeText {
                 Text(timeText)
                     .monospacedDigit()

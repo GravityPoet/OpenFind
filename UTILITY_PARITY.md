@@ -69,7 +69,8 @@ Criterion inventory from the installed Amphetamine 5.3.2 build:
    live acceptance requires the user's Location decision.
 5. `[x]` IP Matching: exact IPv4/IPv6 value or inclusive value range.
 6. `[~]` Cisco AnyConnect VPN: active configured/dynamic service matching is implemented;
-   no active Cisco tunnel was available for live acceptance.
+   the current Mac's active network-extension VPN signal passed the live production
+   snapshot/evaluator/session chain, while a Cisco-specific tunnel remains unavailable.
 7. `[x]` Volumes/Drives: selected local or network volume mounted.
 8. `[x]` Application: app/process running, optionally requiring it to be frontmost.
 9. `[x]` CPU Utilization: less-than or greater-than a percentage threshold.
@@ -140,13 +141,14 @@ transaction and preserve the user's original power policy.
   before dispatch; the handler parses the raw record descriptor and preserves the
   Amphetamine wire format. The installed-app P1 run also exercised the privileged
   closed-display transition through a real bounded session.
-- `[x]` Quick settings, current-session details, transactional extension, active/inactive
-  icon state, remaining/end-time formats, 12/24-hour clock, and optional seconds.
+- `[x]` Quick settings, current-session details, transactional extension, persistent
+  ring-and-dot icon, remaining/end-time formats, 12/24-hour clock, and optional seconds.
 - `[~]` Start/end/replacement sounds, reminders, automatic-session notifications,
   closed-display warnings, and cleanup are implemented; notification authorization and
   audible acceptance remain open.
 - `[~]` Launch at login uses `SMAppService`; enabling it remains a user-controlled action.
-- `[~]` OpenFind's template icon has active/inactive states and optional time text;
+- `[x]` OpenFind's stable 18-point template icon uses a persistent ring-and-dot mark and
+  optional time text. Normal and highlighted menu-bar states were accepted visually;
   arbitrary custom artwork is intentionally not copied from Amphetamine.
 - `[x]` Opt-in local aggregate statistics, live totals/average, persistence, and reset.
   OpenFind has no persistent “do not show again” flags, so a dialog-reset control would
@@ -176,7 +178,7 @@ transaction and preserve the user's original power policy.
 
 ## Verification Record (2026-07-21)
 
-- `334 tests / 42 suites` passed; three consecutive full-suite runs also passed after
+- `336 tests / 43 suites` passed; three consecutive full-suite runs also passed after
   hardening the IOKit power-source callback lifetime.
 - Customer-signed Universal (`arm64` + `x86_64`) archive passed deep signature, SDEF,
   packaged smoke, checksum, and atomic `/Applications/OpenFind.app` installation checks.
@@ -192,6 +194,15 @@ transaction and preserve the user's original power policy.
   `/private/etc/sudoers.d/amphetamine_PowerProtect` rule remained unchanged.
 - No Bluetooth/USB/audio device mutation, Location authorization, or Accessibility
   authorization was performed; those hardware/permission rows remain `[~]` by design.
+- The opt-in privacy-safe live Trigger acceptance used production signal collectors and
+  evaluators, then crossed `TriggerCoordinator` into an isolated awake-session lifecycle.
+  Twelve currently observable kinds passed: schedule, idle, DNS, IP, active VPN service,
+  volume, application, CPU, display count, Bluetooth, audio output, and battery/adapter.
+  Wi-Fi SSID (Location decision absent) and USB (no connected device) were reported as
+  unavailable without printing identifiers or changing system state.
+- The installed menu-bar item now keeps one persistent center dot inside the OpenFind ring.
+  The monochrome template renders as the user-approved white ring/white dot on the current
+  menu bar and remains system-adaptive across appearance and highlighted states.
 - A prior test-helper `SIGBUS` was traced to an unretained IOKit power-source callback;
   the current implementation uses a retained, invalidated registration and the repeated
   regression runs above are the acceptance evidence for that fix.
