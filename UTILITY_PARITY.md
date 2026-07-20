@@ -191,6 +191,9 @@ transaction and preserve the user's original power policy.
   the new installed process reached steady state after the expected cold index pass
   (about 2m43s) and then remained responsive at about 0.9% CPU, with no OpenFind-owned
   power assertion.
+- Read-only closed-display Dry Run reports portable model `Mac16,1`,
+  `SleepDisabled=0`, and no `/private/etc/sudoers.d/openfind-power-protect` rule;
+  no power-management or sudoers write was performed.
 
 ## Completion Gate
 
