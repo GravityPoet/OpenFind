@@ -1,4 +1,4 @@
-# 🌐 [Click here to switch to: English Version](README.md)
+## 🌐 [Click here to switch to: English Version](README.md)
 
 # 🚀 OpenFind
 
