@@ -450,7 +450,9 @@ struct ContentSearchIndexTests {
         let diagnostics = await contentIndex.diagnostics()
         #expect(diagnostics.indexedDocuments == 520)
         #expect(diagnostics.recordTransactions == 1)
-        #expect(diagnostics.checkpoints == 1)
+        // Under full-suite load, extraction can cross the 30-second WAL interval and
+        // legitimately add one passive checkpoint before the final truncate.
+        #expect((1...2).contains(diagnostics.checkpoints))
     }
 
     @Test func backgroundReconciliationReadsMetadataWithoutQueryingFTS() async throws {
