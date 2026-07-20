@@ -1,4 +1,4 @@
-## 🌐 [点击这里切换到：简体中文版 (Chinese Version)](README-zh.md)
+## 🌐 [点击这里切换到：中文版 (Chinese Version)](README-zh.md)
 
 # 🚀 OpenFind
 
