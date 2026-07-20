@@ -67,7 +67,7 @@ final class OpenFindScriptingService {
     }
 
     func endSession() async -> Bool {
-        await sessions.requestEndAsync(reason: .requested)
+        await sessions.requestEndAsync(reason: .scriptRequested)
     }
 
     var sessionTimeRemaining: Int {
@@ -155,7 +155,7 @@ final class OpenFindScriptingService {
         preferences: AwakeSessionPreferences
     ) throws -> AwakeSessionRequest {
         guard let options else { return preferences.defaultRequest(source: .appleScript) }
-        guard let dictionary = options as? NSDictionary else {
+        guard let dictionary = optionDictionary(from: options) else {
             throw OpenFindScriptError.invalidSessionOptions
         }
         var normalized: [String: Any] = [:]
@@ -196,6 +196,33 @@ final class OpenFindScriptingService {
         )
     }
 
+    private static func optionDictionary(from value: Any) -> NSDictionary? {
+        if let dictionary = value as? NSDictionary { return dictionary }
+        guard let descriptor = value as? NSAppleEventDescriptor,
+              descriptor.isRecordDescriptor,
+              let fields = descriptor.forKeyword(userRecordFieldsKeyword),
+              fields.numberOfItems.isMultiple(of: 2) else { return nil }
+
+        var dictionary: [String: Any] = [:]
+        var index = 1
+        while index <= fields.numberOfItems {
+            guard let keyDescriptor = fields.atIndex(index),
+                  let key = keyDescriptor.stringValue,
+                  let valueDescriptor = fields.atIndex(index + 1) else {
+                return nil
+            }
+            dictionary[key] = valueDescriptor
+            index += 2
+        }
+        return dictionary as NSDictionary
+    }
+
+    private static let userRecordFieldsKeyword: AEKeyword = {
+        "usrf".utf8.reduce(0) { (partial, byte) in
+            (partial << 8) | AEKeyword(byte)
+        }
+    }()
+
     private enum ScriptInterval: Equatable {
         case minutes
         case hours
@@ -204,12 +231,24 @@ final class OpenFindScriptingService {
 
     private static func integerValue(_ value: Any?) -> Int? {
         if let value = value as? NSNumber { return value.intValue }
+        if let descriptor = value as? NSAppleEventDescriptor {
+            switch descriptor.descriptorType {
+            case typeSInt16, typeSInt32, typeSInt64:
+                return Int(descriptor.int32Value)
+            default:
+                break
+            }
+        }
         if let value = value as? String { return Int(value) }
         return nil
     }
 
     private static func boolValue(_ value: Any?) -> Bool? {
         if let value = value as? NSNumber { return value.boolValue }
+        if let descriptor = value as? NSAppleEventDescriptor,
+           [typeBoolean, typeTrue, typeFalse].contains(descriptor.descriptorType) {
+            return descriptor.booleanValue
+        }
         if let value = value as? Bool { return value }
         if let value = value as? String {
             switch value.lowercased() {
@@ -223,10 +262,33 @@ final class OpenFindScriptingService {
 
     private static func intervalValue(_ value: Any?) -> ScriptInterval? {
         guard let value else { return nil }
-        if let number = value as? NSNumber, number.intValue == 0 { return .indefinite }
+        if let number = value as? NSNumber {
+            switch number.intValue {
+            case 0: return .indefinite
+            case 60: return .minutes
+            case 3_600: return .hours
+            default: break
+            }
+        }
         let raw: String
         if let descriptor = value as? NSAppleEventDescriptor {
+            if [typeSInt16, typeSInt32, typeSInt64].contains(descriptor.descriptorType) {
+                switch descriptor.int32Value {
+                case 0: return .indefinite
+                case 60: return .minutes
+                case 3_600: return .hours
+                default: break
+                }
+            }
             if descriptor.descriptorType == typeEnumerated {
+                // AppleScript's built-in `minutes` and `hours` values are
+                // encoded as their duration in seconds in a user record.
+                switch descriptor.enumCodeValue {
+                case 0: return .indefinite
+                case 60: return .minutes
+                case 3_600: return .hours
+                default: break
+                }
                 raw = fourCharacterString(descriptor.enumCodeValue)
             } else {
                 raw = descriptor.stringValue ?? ""
@@ -254,6 +316,19 @@ final class OpenFindScriptingService {
 
 @objc(OpenFindScriptCommand)
 final class OpenFindScriptCommand: NSScriptCommand {
+    private static let optionsKeyword: AEKeyword = {
+        "optn".utf8.reduce(0) { (partial, byte) in
+            (partial << 8) | AEKeyword(byte)
+        }
+    }()
+    override func execute() -> Any? {
+        // The Cocoa validator rejects user-record parameters before it reaches
+        // `performDefaultImplementation` on current macOS. OpenFind has no
+        // receiver/object-specifier commands, so dispatch directly and parse
+        // the raw event descriptor ourselves.
+        performDefaultImplementation()
+    }
+
     override func performDefaultImplementation() -> Any? {
         // NSScriptCommand is explicitly non-Sendable in current SDKs, but its
         // implementation must touch the AppKit graph on the main actor. The
@@ -286,7 +361,13 @@ final class OpenFindScriptCommand: NSScriptCommand {
         case "session is active":
             return NSNumber(value: service.sessionIsActive)
         case "start new session":
-            let options = evaluatedArguments?["options"] ?? arguments?["options"]
+            // Cocoa's evaluated-arguments bridge cannot materialize the
+            // user-record form emitted by AppleScript on recent macOS. Read
+            // the raw `optn` descriptor first, then retain the dictionary
+            // bridge as a fallback for programmatic NSScriptCommand users.
+            let options = appleEvent?.paramDescriptor(forKeyword: Self.optionsKeyword)
+                ?? evaluatedArguments?["options"]
+                ?? arguments?["options"]
             do {
                 let request = try service.sessionRequest(options: options)
                 return suspendAndRun {

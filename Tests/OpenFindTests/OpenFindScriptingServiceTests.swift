@@ -37,6 +37,29 @@ struct OpenFindScriptingServiceTests {
         }
     }
 
+    @Test func parsesAppleEventUserRecordOptionsAndBuiltInIntervalEnums() throws {
+        let suite = "OpenFindTests.Scripting.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AwakeSessionPreferences(defaults: defaults)
+        let fields = NSAppleEventDescriptor.list()
+        fields.insert(NSAppleEventDescriptor(string: "duration"), at: fields.numberOfItems + 1)
+        fields.insert(NSAppleEventDescriptor(int32: 1), at: fields.numberOfItems + 1)
+        fields.insert(NSAppleEventDescriptor(string: "interval"), at: fields.numberOfItems + 1)
+        fields.insert(NSAppleEventDescriptor(enumCode: 60), at: fields.numberOfItems + 1)
+        fields.insert(NSAppleEventDescriptor(string: "displaySleepAllowed"), at: fields.numberOfItems + 1)
+        fields.insert(NSAppleEventDescriptor(boolean: false), at: fields.numberOfItems + 1)
+        let options = NSAppleEventDescriptor.record()
+        options.setDescriptor(fields, forKeyword: 0x75737266) // `usrf`
+
+        let request = try OpenFindScriptingService.sessionRequest(
+            options: options,
+            preferences: preferences
+        )
+        #expect(request.endCondition == .after(60))
+        #expect(!request.options.allowsDisplaySleep)
+    }
+
     @Test func sessionQueriesAndSentinelsMatchThePublishedDictionary() async throws {
         let fixture = try ScriptingFixture()
         defer { fixture.removeDefaults() }

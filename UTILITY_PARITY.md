@@ -130,11 +130,13 @@ transaction and preserve the user's original power policy.
   live global registration remains permission/environment dependent.
 - `[~]` The 21-command Amphetamine-compatible AppleScript dictionary covers session
   state/start/end/time, display sleep, screen saver, closed-display mode, Triggers, and
-  Drive Alive. Standard Suite properties, all read-only custom queries, no-option
-  start/end, preference toggles, and `quit` are verified against the installed app;
-  option-record `start new session` and privileged closed-display transitions remain
-  environment/P1 acceptance items (the same option-record invocation also fails against
-  the installed Amphetamine 5.3.2 build on this macOS).
+  Drive Alive. Standard Suite properties, all read-only custom queries, both no-option
+  and user-record `start new session` forms, end, preference toggles, and `quit` are
+  verified against the installed app. The `optn` field is intentionally declared as
+  `any` in the SDEF because macOS 27's Cocoa validator rejects a Swift `record` command
+  before dispatch; the handler parses the raw record descriptor and preserves the
+  Amphetamine wire format. Privileged closed-display transitions remain a P1 acceptance
+  item.
 - `[x]` Quick settings, current-session details, transactional extension, active/inactive
   icon state, remaining/end-time formats, 12/24-hour clock, and optional seconds.
 - `[~]` Start/end/replacement sounds, reminders, automatic-session notifications,
@@ -171,7 +173,7 @@ transaction and preserve the user's original power policy.
 
 ## Verification Record (2026-07-20)
 
-- `331 tests / 42 suites` passed; three consecutive full-suite runs also passed after
+- `333 tests / 42 suites` passed; three consecutive full-suite runs also passed after
   hardening the IOKit power-source callback lifetime.
 - Customer-signed Universal (`arm64` + `x86_64`) archive passed deep signature, SDEF,
   packaged smoke, checksum, and atomic `/Applications/OpenFind.app` installation checks.
@@ -194,6 +196,9 @@ transaction and preserve the user's original power policy.
 - The installed customer binary now resolves Cocoa scripting through a weak process-local
   delegate reference; fresh `osascript` queries return the Amphetamine sentinels instead
   of the previous “AppleScript service unavailable” error.
+- Raw Apple Event `optn` records (integer/string and built-in numeric minute/hour forms)
+  now start bounded and indefinite sessions, return the expected remaining-time values,
+  and end cleanly; script-ending a Trigger session preserves Triggers as in Amphetamine.
 - Commit `10930ec` was rebuilt into a fresh customer archive and atomically installed;
   the new installed process reached steady state after the expected cold index pass
   (about 2m43s) and then remained responsive at about 0.9% CPU, with no OpenFind-owned
