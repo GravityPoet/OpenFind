@@ -192,6 +192,7 @@ final class USBDeviceWakeMonitor: TriggerSignalWakeMonitoring {
     private var runLoopSource: CFRunLoopSource?
     private var matchedIterator: io_iterator_t = 0
     private var terminatedIterator: io_iterator_t = 0
+    private var callbackContext: Unmanaged<USBDeviceWakeCallbackContext>?
     private var handler: (@MainActor () -> Void)?
 
     func start(handler: @escaping @MainActor () -> Void) {
@@ -206,7 +207,9 @@ final class USBDeviceWakeMonitor: TriggerSignalWakeMonitoring {
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
 
-        let context = Unmanaged.passUnretained(self).toOpaque()
+        let retainedContext = Unmanaged.passRetained(USBDeviceWakeCallbackContext(monitor: self))
+        callbackContext = retainedContext
+        let context = retainedContext.toOpaque()
         guard IOServiceAddMatchingNotification(
             port,
             kIOMatchedNotification,
@@ -237,10 +240,13 @@ final class USBDeviceWakeMonitor: TriggerSignalWakeMonitoring {
         terminatedIterator = 0
         if let runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .defaultMode)
+            CFRunLoopSourceInvalidate(runLoopSource)
         }
         runLoopSource = nil
         if let notificationPort { IONotificationPortDestroy(notificationPort) }
         notificationPort = nil
+        callbackContext?.release()
+        callbackContext = nil
         handler = nil
     }
 
@@ -256,8 +262,21 @@ final class USBDeviceWakeMonitor: TriggerSignalWakeMonitoring {
     }
 }
 
+private final class USBDeviceWakeCallbackContext: @unchecked Sendable {
+    @MainActor weak var monitor: USBDeviceWakeMonitor?
+
+    @MainActor
+    init(monitor: USBDeviceWakeMonitor) {
+        self.monitor = monitor
+    }
+}
+
 private let openFindUSBDeviceChanged: IOServiceMatchingCallback = { context, iterator in
     guard let context else { return }
-    let monitor = Unmanaged<USBDeviceWakeMonitor>.fromOpaque(context).takeUnretainedValue()
-    MainActor.assumeIsolated { monitor.drain(iterator, notify: true) }
+    let callbackContext = Unmanaged<USBDeviceWakeCallbackContext>
+        .fromOpaque(context)
+        .takeUnretainedValue()
+    MainActor.assumeIsolated {
+        callbackContext.monitor?.drain(iterator, notify: true)
+    }
 }
