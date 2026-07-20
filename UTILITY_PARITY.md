@@ -73,8 +73,10 @@ Criterion inventory from the installed Amphetamine 5.3.2 build:
 7. `[x]` Volumes/Drives: selected local or network volume mounted.
 8. `[x]` Application: app/process running, optionally requiring it to be frontmost.
 9. `[x]` CPU Utilization: less-than or greater-than a percentage threshold.
-10. `[~]` Displays: count `<`, `=`, or `>`; mirroring; optional built-in-display exclusion;
-    multi-display/mirroring hardware acceptance remains open.
+10. `[~]` Displays: count `<`, `=`, or `>`; main-display mirroring; optional built-in-display
+    exclusion; multi-display/mirroring hardware acceptance remains open. The mirror check
+    now follows Amphetamine's `CGMainDisplayID()` semantics instead of treating any
+    secondary mirror member as the main display.
 11. `[~]` Bluetooth Device: paired-device connection matching is implemented; live
     Bluetooth hardware acceptance remains open.
 12. `[~]` Audio Output: selected route, built-in output/speakers, or wired headphones;
@@ -195,6 +197,11 @@ transaction and preserve the user's original power policy.
   monitors (32 cycles plus idempotent stop) without requiring hardware or privilege.
 - A termination regression test proves that an in-flight index rebuild is cancelled before
   the application waits for durable persistence.
+- The display Trigger snapshot now checks only `CGMainDisplayID()` for the mirroring
+  criterion; the installed-app snapshot test compares that result with CoreGraphics.
+- Startup closed-display journal recovery no longer strands non-privileged Trigger and
+  Drive Alive services when a privileged reconciliation fails. Automatic launch is held
+  back until recovery succeeds, while ordinary Trigger evaluation remains available.
 - The installed customer binary now resolves Cocoa scripting through a weak process-local
   delegate reference; fresh `osascript` queries return the Amphetamine sentinels instead
   of the previous “AppleScript service unavailable” error.

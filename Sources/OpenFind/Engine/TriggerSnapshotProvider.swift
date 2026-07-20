@@ -96,15 +96,20 @@ final class LocalTriggerSnapshotProvider: TriggerSnapshotProviding {
 
     private func displaySnapshot() -> (count: Int, builtInCount: Int, isMirrored: Bool) {
         var builtInCount = 0
-        var mirrored = false
         for screen in NSScreen.screens {
             guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
                 continue
             }
             let displayID = CGDirectDisplayID(number.uint32Value)
             if CGDisplayIsBuiltin(displayID) != 0 { builtInCount += 1 }
-            if CGDisplayIsInMirrorSet(displayID) != 0 { mirrored = true }
         }
+        // Amphetamine's “main display is mirrored” criterion is about the
+        // main display, not whether any secondary display happens to belong
+        // to a mirror set. Checking every screen can produce a false
+        // positive on asymmetric mirror configurations.
+        let mainDisplay = CGMainDisplayID()
+        let mirrored = mainDisplay != kCGNullDirectDisplay
+            && CGDisplayIsInMirrorSet(mainDisplay) != 0
         return (NSScreen.screens.count, builtInCount, mirrored)
     }
 
