@@ -110,6 +110,25 @@ struct TriggerCoordinatorTests {
         await coordinator.evaluate(snapshot: snapshot)
         #expect(!sessions.isActive)
     }
+
+    @Test func scriptEndingTriggerSessionPreservesTriggersAndAllowsRestart() async throws {
+        let suiteName = "OpenFindTests.TriggerCoordinator.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TriggerStore(defaults: defaults)
+        let triggerID = try store.add(AwakeTrigger(name: "Studio", criteria: [.wifiNetwork("Studio")]))
+        let sessions = AwakeSessionController(assertions: FakeCoordinatorAssertions())
+        let coordinator = TriggerCoordinator(store: store, sessions: sessions)
+        let snapshot = TriggerSnapshot(wifiSSID: "Studio")
+
+        await coordinator.evaluate(snapshot: snapshot)
+        #expect(sessions.activeSession?.source == .trigger(triggerID))
+        #expect(await sessions.requestEndAsync(reason: .scriptRequested))
+        #expect(store.isEnabled)
+
+        await coordinator.evaluate(snapshot: snapshot)
+        #expect(sessions.activeSession?.source == .trigger(triggerID))
+    }
 }
 
 private final class FakeCoordinatorAssertions: PowerAssertionControlling {

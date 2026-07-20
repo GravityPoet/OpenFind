@@ -66,7 +66,7 @@
             <result type="boolean"/>
         </command>
         <command name="start new session" code="amphcmOn" description="Start or replace an awake session.">
-            <parameter name="with options" code="optn" type="record" optional="yes" description="Optional duration, interval, and displaySleepAllowed fields.">
+            <parameter name="with options" code="optn" type="any" optional="yes" description="Optional duration, interval, and displaySleepAllowed fields.">
                 <cocoa key="options"/>
             </parameter>
             <cocoa class="OpenFindScriptCommand"/>

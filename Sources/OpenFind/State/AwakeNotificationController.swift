@@ -645,7 +645,7 @@ final class AwakeNotificationController {
 
     private func isAutomaticEnd(_ reason: AwakeSessionEndReason) -> Bool {
         switch reason {
-        case .requested, .applicationTermination:
+        case .requested, .scriptRequested, .applicationTermination:
             false
         case .deadline, .condition, .triggerCondition, .forcedSleep, .sessionResign,
              .lowBattery, .closedDisplayPowerChange:

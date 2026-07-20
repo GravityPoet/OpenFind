@@ -113,7 +113,9 @@ final class TriggerCoordinator {
         // A manual end must be durable. Otherwise the still-true criterion
         // would silently recreate the session on the next native event or
         // fallback poll. This mirrors Amphetamine's "disable Triggers and end"
-        // behavior across the menu, hot keys, and AppleScript.
+        // behavior across the menu and hot keys. AppleScript has a distinct
+        // end reason because Amphetamine's dictionary intentionally preserves
+        // Triggers for its `end session` command.
         store.setEnabled(false)
         activeTriggerID = nil
     }

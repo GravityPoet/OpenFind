@@ -70,6 +70,7 @@ enum AwakeSessionSource: Equatable, Sendable {
 
 enum AwakeSessionEndReason: Equatable, Sendable {
     case requested
+    case scriptRequested
     case deadline
     case condition
     case triggerCondition
