@@ -148,7 +148,10 @@ transaction and preserve the user's original power policy.
 - `[~]` Start/end/replacement sounds, reminders, automatic-session notifications,
   closed-display warnings, and cleanup are implemented; notification authorization and
   audible acceptance remain open.
-- `[~]` Launch at login uses `SMAppService`; enabling it remains a user-controlled action.
+- `[~]` Launch at login uses `SMAppService` when macOS exposes the main-app service and
+  an atomic user LaunchAgent fallback when the customer-signed build reports `notFound`.
+  The installed toggle and exact create/remove lifecycle passed; an actual next-login
+  process launch remains open because logging out would disrupt the active user session.
 - `[x]` OpenFind's stable 18-point template icon uses a persistent ring-and-dot mark and
   optional time text. Normal and highlighted menu-bar states were accepted visually;
   arbitrary custom artwork is intentionally not copied from Amphetamine.
@@ -180,8 +183,8 @@ transaction and preserve the user's original power policy.
 
 ## Verification Record (2026-07-21)
 
-- `337 tests / 43 suites` passed; three consecutive full-suite runs also passed after
-  hardening the IOKit power-source callback lifetime.
+- `340 tests / 43 suites` passed in the latest run; three earlier consecutive full-suite
+  runs also passed after hardening the IOKit power-source callback lifetime.
 - Customer-signed Universal (`arm64` + `x86_64`) archive passed deep signature, SDEF,
   packaged smoke, checksum, and atomic `/Applications/OpenFind.app` installation checks.
 - Physical bundle, Spotlight, LaunchServices, and Dock checks resolve only to
@@ -189,6 +192,11 @@ transaction and preserve the user's original power policy.
   real AppleScript `quit` event exits the installed process within the bounded window.
 - Main window and native Settings scene were opened through Accessibility automation;
   cold-start indexing was observed separately from the steady-state menu-bar process.
+- The installed customer build originally exposed `SMAppService.mainApp.status ==
+  notFound` as a disabled launch-at-login control. After the fallback fix, the same real
+  Settings control was enabled; toggling it on wrote a `plutil`-valid, fixed-command
+  LaunchAgent for `/Applications/OpenFind.app`, and toggling it off removed the file.
+  The user's final preference remains off and no launch-item residue remains.
 - The P1 power acceptance recorded the original `SleepDisabled=0`, installed the exact
   OpenFind rule (`root:wheel`, mode `0440`, `visudo`-valid), observed `SleepDisabled=1`
   during an OpenFind bounded session, restored `SleepDisabled=0` with the journal
