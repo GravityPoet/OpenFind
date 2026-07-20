@@ -184,6 +184,9 @@ transaction and preserve the user's original power policy.
 - A prior test-helper `SIGBUS` was traced to an unretained IOKit power-source callback;
   the current implementation uses a retained, invalidated registration and the repeated
   regression runs above are the acceptance evidence for that fix.
+- Network-configuration and USB hot-plug wake callbacks now use the same retained,
+  invalidated, weak-monitor context pattern; the full suite passed again after this
+  lifecycle hardening.
 
 ## Completion Gate
 

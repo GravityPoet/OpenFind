@@ -146,14 +146,16 @@ final class SystemTriggerWakeEventSource: TriggerWakeEventSourcing {
 final class NetworkConfigurationWakeMonitor: TriggerSignalWakeMonitoring {
     private var store: SCDynamicStore?
     private var source: CFRunLoopSource?
+    private var callbackContext: Unmanaged<NetworkWakeCallbackContext>?
     private var handler: (@MainActor () -> Void)?
 
     func start(handler: @escaping @MainActor () -> Void) {
         stop()
         self.handler = handler
+        let retainedContext = Unmanaged.passRetained(NetworkWakeCallbackContext(monitor: self))
         var context = SCDynamicStoreContext(
             version: 0,
-            info: Unmanaged.passUnretained(self).toOpaque(),
+            info: retainedContext.toOpaque(),
             retain: nil,
             release: nil,
             copyDescription: nil
@@ -163,23 +165,31 @@ final class NetworkConfigurationWakeMonitor: TriggerSignalWakeMonitoring {
             "OpenFind.TriggerWake" as CFString,
             openFindNetworkConfigurationChanged,
             &context
-        ) else { return }
+        ) else {
+            retainedContext.release()
+            return
+        }
         let patterns = ["State:/Network/.*"] as CFArray
         guard SCDynamicStoreSetNotificationKeys(store, nil, patterns),
               let source = SCDynamicStoreCreateRunLoopSource(kCFAllocatorDefault, store, 0) else {
+            retainedContext.release()
             return
         }
         self.store = store
         self.source = source
+        self.callbackContext = retainedContext
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
     }
 
     func stop() {
         if let source {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
+            CFRunLoopSourceInvalidate(source)
             self.source = nil
         }
         store = nil
+        callbackContext?.release()
+        callbackContext = nil
         handler = nil
     }
 
@@ -188,11 +198,20 @@ final class NetworkConfigurationWakeMonitor: TriggerSignalWakeMonitoring {
     }
 }
 
+private final class NetworkWakeCallbackContext: @unchecked Sendable {
+    @MainActor weak var monitor: NetworkConfigurationWakeMonitor?
+
+    @MainActor
+    init(monitor: NetworkConfigurationWakeMonitor) {
+        self.monitor = monitor
+    }
+}
+
 private let openFindNetworkConfigurationChanged: SCDynamicStoreCallBack = {
     _, _, info in
     guard let info else { return }
-    let monitor = Unmanaged<NetworkConfigurationWakeMonitor>
+    let context = Unmanaged<NetworkWakeCallbackContext>
         .fromOpaque(info)
         .takeUnretainedValue()
-    MainActor.assumeIsolated { monitor.emit() }
+    MainActor.assumeIsolated { context.monitor?.emit() }
 }
