@@ -130,9 +130,11 @@ transaction and preserve the user's original power policy.
   live global registration remains permission/environment dependent.
 - `[~]` The 21-command Amphetamine-compatible AppleScript dictionary covers session
   state/start/end/time, display sleep, screen saver, closed-display mode, Triggers, and
-  Drive Alive. Standard Suite properties and `quit` are verified; external custom events
-  are blocked in the current macOS Apple Events environment for both OpenFind and
-  Amphetamine 5.3.2.
+  Drive Alive. Standard Suite properties, all read-only custom queries, no-option
+  start/end, preference toggles, and `quit` are verified against the installed app;
+  option-record `start new session` and privileged closed-display transitions remain
+  environment/P1 acceptance items (the same option-record invocation also fails against
+  the installed Amphetamine 5.3.2 build on this macOS).
 - `[x]` Quick settings, current-session details, transactional extension, active/inactive
   icon state, remaining/end-time formats, 12/24-hour clock, and optional seconds.
 - `[~]` Start/end/replacement sounds, reminders, automatic-session notifications,
@@ -189,6 +191,9 @@ transaction and preserve the user's original power policy.
   lifecycle hardening.
 - Dedicated restart/stop regression tests cover both native network and USB wake
   monitors (32 cycles plus idempotent stop) without requiring hardware or privilege.
+- The installed customer binary now resolves Cocoa scripting through a weak process-local
+  delegate reference; fresh `osascript` queries return the Amphetamine sentinels instead
+  of the previous “AppleScript service unavailable” error.
 - Commit `10930ec` was rebuilt into a fresh customer archive and atomically installed;
   the new installed process reached steady state after the expected cold index pass
   (about 2m43s) and then remained responsive at about 0.9% CPU, with no OpenFind-owned
