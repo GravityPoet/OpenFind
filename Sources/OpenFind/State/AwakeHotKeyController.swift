@@ -6,6 +6,7 @@ enum AwakeHotKeyAction: String, CaseIterable, Identifiable, Sendable {
     case startSession
     case endSession
     case toggleSession
+    case openMenu
     case toggleDisplaySleep
     case toggleScreenSaver
     case toggleClosedDisplaySleep
@@ -17,6 +18,7 @@ enum AwakeHotKeyAction: String, CaseIterable, Identifiable, Sendable {
         case .startSession: L("Hotkey Start Awake Session")
         case .endSession: L("Hotkey End Awake Session")
         case .toggleSession: L("Hotkey Toggle Awake Session")
+        case .openMenu: L("Hotkey Open Menu")
         case .toggleDisplaySleep: L("Hotkey Toggle Display Sleep")
         case .toggleScreenSaver: L("Hotkey Toggle Screen Saver")
         case .toggleClosedDisplaySleep: L("Hotkey Toggle Closed Display Sleep")
@@ -32,6 +34,8 @@ enum AwakeHotKeyAction: String, CaseIterable, Identifiable, Sendable {
             GlobalShortcut(keyCode: UInt32(kVK_ANSI_E), modifiers: modifiers, keyLabel: "E")
         case .toggleSession:
             GlobalShortcut(keyCode: UInt32(kVK_ANSI_A), modifiers: modifiers, keyLabel: "A")
+        case .openMenu:
+            GlobalShortcut(keyCode: UInt32(kVK_ANSI_M), modifiers: modifiers, keyLabel: "M")
         case .toggleDisplaySleep:
             GlobalShortcut(keyCode: UInt32(kVK_ANSI_D), modifiers: modifiers, keyLabel: "D")
         case .toggleScreenSaver:
@@ -59,6 +63,7 @@ final class AwakeHotKeyController {
     @ObservationIgnored private let registry: GlobalHotKeyRegistry
     @ObservationIgnored private let sessions: AwakeSessionController
     @ObservationIgnored private let preferences: AwakeSessionPreferences
+    @ObservationIgnored private let openMenu: @MainActor () -> Void
     private(set) var bindings: [AwakeHotKeyBinding]
     private var hasStarted = false
 
@@ -66,11 +71,13 @@ final class AwakeHotKeyController {
         registry: GlobalHotKeyRegistry,
         sessions: AwakeSessionController,
         preferences: AwakeSessionPreferences = AwakeSessionPreferences(),
+        openMenu: @escaping @MainActor () -> Void,
         defaults: UserDefaults = .standard
     ) {
         self.registry = registry
         self.sessions = sessions
         self.preferences = preferences
+        self.openMenu = openMenu
         self.defaults = defaults
         bindings = AwakeHotKeyAction.allCases.map { action in
             Self.loadBinding(action: action, defaults: defaults)
@@ -157,7 +164,7 @@ final class AwakeHotKeyController {
         { [weak self] in self?.perform(action) }
     }
 
-    private func perform(_ action: AwakeHotKeyAction) {
+    func perform(_ action: AwakeHotKeyAction) {
         switch action {
         case .startSession:
             guard !sessions.isActive else { return }
@@ -171,6 +178,8 @@ final class AwakeHotKeyController {
             } else {
                 sessions.requestStart(preferences.defaultRequest())
             }
+        case .openMenu:
+            openMenu()
         case .toggleDisplaySleep:
             guard let session = sessions.activeSession else { return }
             sessions.requestDisplaySleepAllowed(!session.options.allowsDisplaySleep)

@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let sessionActivity: SessionActivityController
     let powerProtect: PowerProtectController
     let launchAtLogin: LaunchAtLoginController
+    let menuBarPresentation: MenuBarPresentationController
     let awakeHotKeys: AwakeHotKeyController
     let triggerStore: TriggerStore
     let driveAliveStore: DriveAliveStore
@@ -65,10 +66,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         self.powerProtect = PowerProtectController()
         self.launchAtLogin = LaunchAtLoginController()
+        let menuBarPresentation = MenuBarPresentationController()
+        self.menuBarPresentation = menuBarPresentation
         self.awakeHotKeys = AwakeHotKeyController(
             registry: hotKeyRegistry,
             sessions: awakeSession,
-            preferences: awakeSessionPreferences
+            preferences: awakeSessionPreferences,
+            openMenu: {
+                _ = menuBarPresentation.present()
+            }
         )
         self.triggerStore = triggerStore
         self.driveAliveStore = driveAliveStore

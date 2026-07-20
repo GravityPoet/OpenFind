@@ -47,6 +47,7 @@ struct AwakeHotKeyControllerTests {
         let controller = AwakeHotKeyController(
             registry: registry,
             sessions: sessions,
+            openMenu: {},
             defaults: defaults
         )
         let custom = GlobalShortcut(
@@ -62,10 +63,27 @@ struct AwakeHotKeyControllerTests {
         let reloaded = AwakeHotKeyController(
             registry: GlobalHotKeyRegistry(),
             sessions: sessions,
+            openMenu: {},
             defaults: defaults
         )
         #expect(reloaded.binding(for: .toggleSession)?.isEnabled == true)
         #expect(reloaded.binding(for: .toggleSession)?.shortcut == custom)
+    }
+
+    @Test func openMenuActionInvokesPresenterWithoutStartingSession() {
+        var presentationCount = 0
+        let sessions = AwakeSessionController(assertions: HotKeyFakeAssertions())
+        let controller = AwakeHotKeyController(
+            registry: GlobalHotKeyRegistry(),
+            sessions: sessions,
+            openMenu: { presentationCount += 1 }
+        )
+
+        controller.perform(.openMenu)
+
+        #expect(presentationCount == 1)
+        #expect(!sessions.isActive)
+        #expect(AwakeHotKeyAction.openMenu.defaultShortcut.keyLabel == "M")
     }
 }
 

@@ -1,8 +1,10 @@
 import AppKit
+import MenuBarExtraAccess
 import SwiftUI
 
 struct OpenFindApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var isMenuPresented = false
 
     var body: some Scene {
         MenuBarExtra {
@@ -62,6 +64,9 @@ struct OpenFindApp: App {
                 controller: appDelegate.awakeSession,
                 preferences: appDelegate.awakeSessionPreferences
             )
+        }
+        .menuBarExtraAccess(isPresented: $isMenuPresented) { statusItem in
+            appDelegate.menuBarPresentation.attach(statusItem)
         }
         .menuBarExtraStyle(.menu)
 
