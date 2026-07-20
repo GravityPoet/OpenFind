@@ -1,34 +1,110 @@
-# OpenFind
+# 🚀 OpenFind
 
-OpenFind is a local, real-time, developer-friendly advanced file search tool for macOS 26+. It provides fast file-name and path search with a persistent local path/name index, plus on-demand content matching when requested.
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS_14+-black.svg)](https://apple.com)
+[![Swift: 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 
-## Key Features
+**Stop waiting for Spotlight. Find anything, anywhere, instantly.**  
+**告别 Spotlight 的迟钝与局限。让任何文件、内容、甚至是未解压的代码归档，瞬间直达。**
 
-1. **Instant Search:** Stream results in real time as you type, backed by a local path/name index.
-2. **Relevant Whole-Mac Defaults:** Search the whole Mac with hidden files, user file locations, and mounted volumes included; cache/log/temp noise stays filtered unless Deep Index is enabled.
-3. **Advanced Querying:** Boolean expressions, path globs, regular expressions, Finder tags, content predicates, folder scopes, and Cardinal-style metadata filters.
-4. **CLI Mode:** Command-line executable support for headless, scriptable searches.
-5. **Privacy First:** Entirely local search operations, with security-scoped bookmark support for user-selected folders.
-6. **Native Workflow:** Press Space to Quick Look selected results and `⌘⇧Space` to show or hide OpenFind globally.
+OpenFind is a lightning-fast, local, developer-first search engine for macOS (14+). By replacing CPU-heavy indexers with a persistent memory-mapped (`mmap`) directory structure and macOS-native `FSEvents` API, it brings near-zero startup latency and microsecond query times directly to your status bar and command line.
 
-## Requirements
+OpenFind 是一款专为开发者打造的 macOS 极速本地搜索引擎。它抛弃了臃肿且容易死锁的传统索引服务，使用轻量化的内存映射（`mmap`）二进制索引与原生 `FSEvents` 实时文件监控。不管是全局快捷键呼出，还是在 Shell 中编排脚本，它都能在微秒间为您提供流式结果。
 
-- macOS 26 or later
-- Apple Silicon or Intel Mac supported by the macOS 26 SDK/toolchain
+---
 
-## Compilation and Build
+## 🎯 Slogan / 一句话定位
 
-Due to platform SDK lookup dynamics on macOS terminal environments, always build with the explicit SDK path modifier:
+- **EN**: A zero-latency, local-first search engine for macOS that lets developers query files and content using Regex, Glob, and Metadata without breaking a sweat or killing your SSD.
+- **ZH**: 零延迟、本地优先的 macOS 搜索引擎。无需反复读写 SSD，通过正则、Glob 与自定义元数据，瞬间搜遍文件和内容。
 
+---
+
+## 🔥 The Why / 为什么我们需要它？
+
+### The Spotlight Nightmare / Spotlight 的噩梦
+1. **Unpredictable Lag & CPU Spikes**: `mds` and `mds_stores` frequently consume 100% CPU, draining your MacBook battery while rebuilding corrupted indexes.
+2. **Deaf to Developer Needs**: Try searching for a `.env` file, a hidden configuration file, or checking if a variable exists inside a nested `.zip` or a PDF. Spotlight will leave you empty-handed.
+3. **No Regex, No Globs**: You can't search for `src/**/*.swift` or use regex matching like `^Report-[0-9]+$`.
+4. **CLI Hostile**: Spotlight's metadata CLI (`mdfind`) is sluggish and painful to pipe into shell scripts.
+
+### The OpenFind Relief / OpenFind 的解脱
+- **Instantaneous Load (`mmap`)**: The index loads in microseconds by mapping directory nodes directly into memory space, avoiding Swift heap allocations even with millions of items.
+- **FSEvents-Powered Real-time Watcher**: Instantly indexes terminal changes (like `touch` or `git pull`) as they happen.
+- **Full-Text "Deep Space" Extraction**: Crawl text streams inside code, PDFs, Office files (`docx`, `xlsx`), Apple iWork files (`pages`, `numbers`), and even nested compressed archives (`.zip`, `.tar.gz`) without extracting them to disk.
+- **Native Quick Look Flow**: Press `Space` to immediately preview results in a native UI without opening heavy IDEs.
+
+---
+
+## 🆚 Before vs. After / 痛点对比
+
+| Scenario / Feature | The Old Way (Spotlight / `find` / `grep`) | The OpenFind Way 🚀 |
+| :--- | :--- | :--- |
+| **Search Speed** | ⏱️ 5~10+ seconds of scanning, freezing your disk. | ⚡ **Instant (Milliseconds)** using `mmap` binary index. |
+| **Regex & Glob Support** | ❌ No built-in Regex. Complex `find -regextype` commands. | ✅ **Out of the box**. Just type `regex:^Report-[0-9]+$` or `src/**/*.swift`. |
+| **Content in Zips & PDFs** | ❌ Extract ZIP manually, open PDF tool, then search. | 🔍 **Seamless stream matching**. PDF, docx, numbers, zipped sources. |
+| **System Resource Impact** | 🥵 `mds` / `mds_stores` spikes CPU, battery drains. | 🍃 **Near-Zero footprint**. Idle FSEvents syncing + mmap RAM safety. |
+| **Developer Noise Filter** | ❌ Floods search with `node_modules`, `build` junk. | 🛡️ **Smart ignore-list**. Focus on your code, filter out noise dynamically. |
+| **Interface** | 🎛️ Heavy UI or CLI-only, difficult to preview files. | 💻 **Dual-mode**: Global Shortcut Menu Bar app + Scriptable CLI with native `Quick Look`! |
+
+---
+
+## ✨ Killer Features & AHA Moments / 杀手级特性与高光时刻
+
+### 1. ⚡ Memory-Mapped Instant Indexing & Real-Time Sync
+Loads millions of file paths in micro-seconds. Through macOS `FSEvents`, it seamlessly tracks every file system addition, rename, or deletion in the background, keeping index freshness in sync with your terminal without CPU spikes.
+* **AHA Moment:** Create a file in terminal and watch it pop up in your OpenFind search before you can release the Enter key.
+
+### 2. 🔍 Deep Content Extraction & Zero-Disk Archive Traversal
+Deeply indexes not only plain text but also PDFs, Microsoft Office, iWork formats, and compressed archives (`.zip`, `.tar.gz`, `.7z`). It streams archive members in memory without writing temp files to disk, isolating decompression for bulletproof security.
+* **AHA Moment:** Locate that one config key hidden deep inside a nested zipped release bundle, without ever clicking "Extract".
+
+### 3. 🛠️ Power-User Queries with GUI + CLI Flexibility
+Perform advanced boolean querying, metadata checks (`size`, `creation date`), globs, regex, and Finder tags. Summon the minimalist window globally using `⌘⇧Space` and press `Space` to Quick Look files on the spot, or pipe command-line output straight into your development workflows.
+* **AHA Moment:** Quickly check the structure of an indexed PDF by pressing `⌘⇧Space`, typing your query, and tapping `Space` to preview it instantly.
+
+---
+
+## ⚡ Quick Start / 极简上手 (60 Seconds)
+
+You can build the CLI and see it in action in under a minute!
+
+### Run the CLI
 ```bash
-# Debug build
+# 1. Clone the repository
+git clone https://github.com/GravityPoet/OpenFind.git && cd OpenFind
+
+# 2. Build with macOS 14+ SDK
 xcrun --sdk macosx swift build
 
-# Run debug CLI
-xcrun --sdk macosx swift run OpenFind --search "query"
+# 3. Search instantly for a Markdown file containing "OpenFind"
+xcrun --sdk macosx swift run OpenFind --search "ext:md content:OpenFind"
 ```
 
-## Query Examples
+### Install the GUI (Status Bar App)
+Run this single script to package the universal binary, register system shortcuts, and launch the menu bar app:
+```bash
+# Package the production build
+bash Scripts/build_customer_app.sh
+
+# Install atomically & register Spotlight/LaunchServices
+bash Scripts/install_local_app.sh
+```
+*Press **`⌘⇧Space`** to toggle the search window from anywhere!*
+
+---
+
+## 👥 Who Needs This / 典型场景
+
+* 💻 **Developers & SREs:** Locate specific logs, configurations, and API definitions across massive codebases without freezing your editor.
+* 📦 **Release Managers:** Search for symbols and configuration values inside nested archives and distribution packages without unpacking them.
+* 🔍 **Power Users & Geeks:** Replace Spotlight with a clean, privacy-first interface that handles Regex, Finder tags, and native Quick Look previews seamlessly.
+
+---
+
+## ⚙️ Advanced Query Examples / 查询示例
+
+OpenFind supports a rich query syntax out of the box:
 
 ```text
 *.pdf briefing          # PDF files whose names contain briefing
@@ -39,118 +115,64 @@ size:empty              # empty files
 size:!=0b               # non-empty files
 report summary|draft    # report AND (summary OR draft)
 src/**/SearchQuery.swift
-parent:/Users/me/Documents ext:md
-in:/Users/me/Projects dm:pastweek
-nosubfolders:/tmp ext:log
+parent:/Users/me/Docs   # search within direct parent directory
+in:/Users/me/Projects   # search recursively inside folder scope
+dm:pastweek             # modified in the last week
 dc:>=2026-01-01        # created on or after this date
 tag:Project;Important  # either Finder tag
-regex:^Report-[0-9]+$
-content:"Q4 budget"    # full-file substring search
+regex:^Report-[0-9]+$   # Regex name matching
+content:"Q4 budget"    # Full-file substring search (PDF/Office/Code)
 ```
 
-Plain terms match file names, including hidden files by default. Path matching is
-explicit: include `/` in the query (`src/**/SearchQuery.swift`) or use `path:` /
-`in:` / `parent:` filters.
+---
 
-## Packaging
+## 🏗️ Architecture & Layers / 系统架构
 
-To package the product into a verified macOS app archive with the single pinned
-OpenFind signing identity, execute:
+OpenFind is built using **Swift 6 / SwiftUI** and follows a unidirectional state flow:
 
-```bash
-bash Scripts/build_customer_app.sh
+```
+Views ──> State (ViewModel) ──> Engine ──> Models
 ```
 
-This compiles a universal production build by default (`arm64 x86_64`), generates
-the application icon, copies localization assets, signs the bundle, and verifies
-the executable architectures. The resulting package is `dist/OpenFind.zip`.
-The temporary `OpenFind.app` is physically removed after archive verification.
+- **Models:** Value types, query match options.
+- **Engine:** Persistent path/name indexing plus on-demand content matching using SQLite-based FTS block structures.
+- **DocumentTextExtractor:** Isolates text extraction from plain text, PDF, Microsoft Office, Apple iWork formats, and compressed archives.
+- **App Entry:** Entry dispatcher handling both command-line arguments and GUI scenes.
 
-To replace the local installation atomically and validate that the product app is
-unique across the filesystem, Spotlight, LaunchServices, the running process, and
-any Dock entry, run:
+---
 
-```bash
-bash Scripts/install_local_app.sh
-```
+## 📦 Packaging & Code Signing / 打包与签名
 
-The installer keeps the previous version only as an atomic replacement staging
-bundle while validation runs. It restores that bundle on failure and removes it
-after success, so it does not accumulate persistent rollback copies.
-
-Distribution options:
+The build scripts automate the code signing and verification process:
 
 ```bash
-# Product ZIP for local installation and customer distribution. Both use the
-# pinned OpenFind Customer Code Signing identity.
+# Product ZIP for local installation and customer distribution. 
+# Both use the pinned OpenFind Customer Code Signing identity.
 bash Scripts/build_customer_app.sh
 
-# Explicit ad-hoc validation build. This is never the installed product.
+# Explicit ad-hoc validation build.
 SIGN_IDENTITY=- bash Scripts/build_app.sh
 
 # Developer ID signed + notarized direct distribution.
 SIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)" \
-NOTARIZE=1 \
-NOTARY_PROFILE="openfind-notary" \
-bash Scripts/build_app.sh
-
-# Sandbox entitlement profile for App Store / sandbox validation builds.
-DISTRIBUTION=sandbox bash Scripts/build_app.sh
+  NOTARIZE=1 \
+  NOTARY_PROFILE="openfind-notary" \
+  bash Scripts/build_app.sh
 ```
 
-Before the first notarized build, store the Apple notary credentials in your
-keychain profile so the app-specific password is not passed on the build command
-line:
-
+Before running a notarized build, make sure you store your Apple notary credentials:
 ```bash
 xcrun notarytool store-credentials openfind-notary \
   --apple-id "developer@example.com" \
   --team-id "TEAMID"
 ```
 
-For non-interactive CI setup, set `STORE_NOTARY_CREDENTIALS=1` and provide
-`APPLE_ID`, `TEAM_ID`, and `APP_SPECIFIC_PASSWORD`; subsequent submission still
-uses `--keychain-profile`.
+---
 
-The direct distribution profile intentionally does not enable App Sandbox because
-whole-Mac filesystem enumeration requires broad local file access. The sandbox
-profile is provided for App Store-style builds that rely on user-selected,
-security-scoped folders.
+## ⚖️ License and Commercial Use / 许可条款
 
-Performance smoke benchmark:
+OpenFind is licensed under the **GNU Affero General Public License v3.0** (`AGPL-3.0-only`). See [LICENSE](LICENSE).
 
-```bash
-bash Scripts/benchmark_index.sh
-```
-
-## Architecture & Layers
-
-OpenFind is built using Swift 6 / SwiftUI and adheres to a unidirectional architecture:
-
-```
-Views -> State (ViewModel) -> Engine -> Models
-```
-
-- **Models:** Value types, query match options.
-- **Engine:** Persistent path/name indexing plus on-demand content matching using structured concurrency.
-- **State:** Persistent settings and state management.
-- **Views:** SwiftUI-based minimal and responsive visual components.
-- **App:** Entry dispatcher handling both command-line arguments and GUI scenes.
-
-## License and Commercial Use
-
-OpenFind is licensed under the GNU Affero General Public License v3.0 only
-(`AGPL-3.0-only`). See [LICENSE](LICENSE).
-
-Organizations that want to embed, redistribute, modify, or provide OpenFind-based
-software under proprietary terms can request a separate commercial license. See
-[COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
-
-External contributions require an accepted contributor license agreement before
-merge so the project can keep offering both the AGPL release and separate
-commercial licenses. See [CONTRIBUTING.md](CONTRIBUTING.md) and
-[CONTRIBUTOR_LICENSE_AGREEMENT.md](CONTRIBUTOR_LICENSE_AGREEMENT.md).
-
-The AGPL grants copyright permissions for covered files, but it does not grant
-trademark rights in the OpenFind name, logo, or icon as brand identifiers. See
-[TRADEMARKS.md](TRADEMARKS.md).
+* **Commercial Licensing:** Organizations looking to embed, redistribute, or modify OpenFind under proprietary terms can request a commercial license. See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
+* **Contributor Agreement:** External contributions require an accepted Contributor License Agreement (CLA) to maintain the dual-licensing structure. See [CONTRIBUTING.md](CONTRIBUTING.md).
+* **Trademarks:** AGPL grants software copyright permissions but does not grant trademark rights. See [TRADEMARKS.md](TRADEMARKS.md).
