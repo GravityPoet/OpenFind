@@ -402,6 +402,7 @@
 "Hotkey Start Awake Session" = "Start session";
 "Hotkey End Awake Session" = "End session";
 "Hotkey Toggle Awake Session" = "Start / end session";
+"Hotkey Open Menu" = "Open menu";
 "Hotkey Toggle Display Sleep" = "Toggle display sleep";
 "Hotkey Toggle Screen Saver" = "Toggle screen saver";
 "Hotkey Toggle Closed Display Sleep" = "Toggle closed-display sleep";

@@ -129,9 +129,11 @@ transaction and preserve the user's original power policy.
 
 ## Automation, Menu Bar, and Notifications
 
-- `[~]` Independent configurable hotkeys: start, end, start/end, menu, display sleep,
-  and screen saver; duplicate/conflicting registrations are rejected atomically, while
-  live global registration remains permission/environment dependent.
+- `[x]` Independent configurable hotkeys cover all six Amphetamine actions: start,
+  end, start/end, open menu, toggle display sleep, and toggle screen saver. OpenFind
+  additionally exposes a closed-display sleep toggle. Duplicate/conflicting
+  registrations are rejected atomically; a live `Control-Option-M` acceptance opened
+  the installed app's native menu from Chrome without Accessibility or admin access.
 - `[x]` The 21-command Amphetamine-compatible AppleScript dictionary covers session
   state/start/end/time, display sleep, screen saver, closed-display mode, Triggers, and
   Drive Alive. Standard Suite properties, all read-only custom queries, both no-option
@@ -178,7 +180,7 @@ transaction and preserve the user's original power policy.
 
 ## Verification Record (2026-07-21)
 
-- `336 tests / 43 suites` passed; three consecutive full-suite runs also passed after
+- `337 tests / 43 suites` passed; three consecutive full-suite runs also passed after
   hardening the IOKit power-source callback lifetime.
 - Customer-signed Universal (`arm64` + `x86_64`) archive passed deep signature, SDEF,
   packaged smoke, checksum, and atomic `/Applications/OpenFind.app` installation checks.
@@ -203,6 +205,10 @@ transaction and preserve the user's original power policy.
 - The installed menu-bar item now keeps one persistent center dot inside the OpenFind ring.
   The monochrome template renders as the user-approved white ring/white dot on the current
   menu bar and remains system-adaptive across appearance and highlighted states.
+- The local Amphetamine 5.3.2 bundle confirms six configurable hot-key actions,
+  including `Open Menu`. OpenFind now exposes all six, and the installed Universal app
+  passed a real global-hot-key-to-native-menu screenshot acceptance with temporary
+  preferences restored afterward.
 - A prior test-helper `SIGBUS` was traced to an unretained IOKit power-source callback;
   the current implementation uses a retained, invalidated registration and the repeated
   regression runs above are the acceptance evidence for that fix.

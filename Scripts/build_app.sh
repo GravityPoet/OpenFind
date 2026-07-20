@@ -170,6 +170,7 @@ echo "Copying standard application localizations..."
 cp -R Sources/OpenFind/Resources/en.lproj "$RESOURCES_DIR/"
 cp -R Sources/OpenFind/Resources/zh-Hans.lproj "$RESOURCES_DIR/"
 cp Sources/OpenFind/Resources/OpenFind.sdef "$RESOURCES_DIR/"
+cp Sources/OpenFind/Resources/ThirdPartyNotices.txt "$RESOURCES_DIR/"
 
 SPARKLE_FRAMEWORK="$(find "$ROOT_DIR/.build/artifacts" \
     -path '*/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' \
@@ -304,6 +305,10 @@ if [ ! -f "$RESOURCES_DIR/OpenFind.sdef" ]; then
     echo "Error: AppleScript definition is missing from Contents/Resources." >&2
     exit 1
 fi
+if [ ! -f "$RESOURCES_DIR/ThirdPartyNotices.txt" ]; then
+    echo "Error: third-party notices are missing from Contents/Resources." >&2
+    exit 1
+fi
 if [ "$(plutil -extract NSAppleScriptEnabled raw "$CONTENTS_DIR/Info.plist")" != "true" ] \
     || [ "$(plutil -extract OSAScriptingDefinition raw "$CONTENTS_DIR/Info.plist")" != "OpenFind.sdef" ]; then
     echo "Error: AppleScript bundle metadata is invalid." >&2
@@ -347,6 +352,10 @@ fi
 codesign --verify --deep --strict "$VERIFY_APP"
 if [ ! -f "$VERIFY_APP/Contents/Resources/OpenFind.sdef" ]; then
     echo "Error: archived app is missing its AppleScript definition." >&2
+    exit 1
+fi
+if [ ! -f "$VERIFY_APP/Contents/Resources/ThirdPartyNotices.txt" ]; then
+    echo "Error: archived app is missing its third-party notices." >&2
     exit 1
 fi
 for arch in $ARCHS; do

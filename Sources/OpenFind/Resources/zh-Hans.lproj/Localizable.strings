@@ -402,6 +402,7 @@
 "Hotkey Start Awake Session" = "开始会话";
 "Hotkey End Awake Session" = "结束会话";
 "Hotkey Toggle Awake Session" = "开始 / 结束会话";
+"Hotkey Open Menu" = "打开菜单";
 "Hotkey Toggle Display Sleep" = "切换显示器睡眠";
 "Hotkey Toggle Screen Saver" = "切换屏幕保护程序";
 "Hotkey Toggle Closed Display Sleep" = "切换闭盖睡眠";
