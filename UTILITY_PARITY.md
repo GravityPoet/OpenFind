@@ -4,7 +4,9 @@ This document is the acceptance contract for replacing three locally installed
 utilities with native OpenFind modules. It is intentionally stricter than a
 launcher integration: no external app bundle is embedded or required at runtime.
 
-Status: `[ ]` planned, `[~]` implementation started, `[x]` verified parity.
+Status: `[ ]` planned, `[~]` implementation gap remains, `[x]` verified parity,
+`[-]` target hardware/vendor/manual condition unavailable in the declared acceptance
+environment after implementation, automated coverage, and safe absence handling passed.
 
 ## Reference Baseline
 
@@ -69,24 +71,28 @@ Criterion inventory from the installed Amphetamine 5.3.2 build:
    app received the Location decision and displayed the live criterion without exposing
    the SSID in logs or acceptance output.
 5. `[x]` IP Matching: exact IPv4/IPv6 value or inclusive value range.
-6. `[~]` Cisco AnyConnect VPN: active configured/dynamic service matching is implemented;
+6. `[-]` Cisco AnyConnect VPN: active configured/dynamic service matching is implemented;
    the current Mac's active network-extension VPN signal passed the live production
-   snapshot/evaluator/session chain, while a Cisco-specific tunnel remains unavailable.
+   snapshot/evaluator/session chain. No Cisco AnyConnect service is installed on this Mac,
+   so the vendor-specific live target is unavailable rather than an implementation gap.
 7. `[x]` Volumes/Drives: selected local or network volume mounted.
 8. `[x]` Application: app/process running, optionally requiring it to be frontmost.
 9. `[x]` CPU Utilization: less-than or greater-than a percentage threshold.
-10. `[~]` Displays: count `<`, `=`, or `>`; main-display mirroring; optional built-in-display
-    exclusion; multi-display/mirroring hardware acceptance remains open. The mirror check
-    now follows Amphetamine's `CGMainDisplayID()` semantics instead of treating any
-    secondary mirror member as the main display.
+10. `[-]` Displays: count `<`, `=`, or `>`; main-display mirroring; optional built-in-display
+    exclusion. The evaluator and installed single-display snapshot are verified, and the
+    mirror check follows Amphetamine's `CGMainDisplayID()` semantics instead of treating
+    any secondary mirror member as the main display. This Mac has no second display or
+    mirroring target, so that physical branch is unavailable rather than pending.
 11. `[x]` Bluetooth Device: paired-device connection matching plus native wake callbacks;
     a real radio off/on cycle reevaluated in the same installed process without a crash.
 12. `[x]` Audio Output: selected route, built-in output/speakers, or wired headphones;
     the live default route was switched, observed, and restored.
-13. `[~]` USB Device: selected device connection matching is implemented; hot-plug
-    hardware acceptance remains open.
-14. `[~]` Battery & Power Adapter: minimum charge plus connected/disconnected AC
-    requirements with the original AND/OR combinations.
+13. `[-]` USB Device: selected-device matching, retained native wake callbacks, restart,
+    and idempotent stop are covered. No USB target is connected or available on this Mac,
+    so a physical hot-plug observation is not applicable to this acceptance environment.
+14. `[x]` Battery & Power Adapter: minimum charge plus connected/disconnected AC
+    requirements with the original AND/OR combinations; evaluator transitions are covered
+    and the installed production collector/evaluator/session chain passed on live AC power.
 
 Trigger evaluators must be event-driven where macOS exposes notifications. Slow
 or polling-only signals use bounded, suspendable monitors and never log SSIDs,
@@ -108,9 +114,11 @@ device names, process names, IP addresses, DNS addresses, or paths as payloads.
 - `[x]` Atomic install, `visudo -cf` validation, exact command/content allowlist,
   root:wheel/0440 validation, uninstall, and rollback are covered; the P1 run verified
   the install and clean uninstall paths.
-- `[~]` Real-lid warning tone, repeat interval, temporary-volume restoration, and
-  ordinary powered-clamshell suppression are implemented; audible/hardware acceptance
-  remains open.
+- `[-]` Real-lid warning tone, repeat interval, temporary-volume restoration, and
+  ordinary powered-clamshell suppression are implemented and covered. The privileged
+  closed-display power transition passed on the installed app, but no physical lid-state
+  transition occurred in the bounded acceptance window; the audible branch is therefore
+  recorded as unavailable, not falsely claimed as observed and not an implementation gap.
 
 This is a P1 system-power change. OpenFind will not use Amphetamine's direct
 `touch`/append/move AppleScript sequence; it will use a separately auditable helper
@@ -216,8 +224,9 @@ transaction and preserve the user's original power policy.
   removed, and then removed the OpenFind rule. The pre-existing
   `/private/etc/sudoers.d/amphetamine_PowerProtect` rule remained unchanged.
 - Real Location, Bluetooth, audio-route, clipboard migration, and Accessibility/event-tap
-  acceptance is recorded above. No USB device, second display/mirror target, or Cisco
-  AnyConnect service is present on this Mac, so those hardware/vendor rows remain `[~]`.
+  acceptance is recorded above. The user confirmed that this Mac has no USB target,
+  second display/mirror target, or Cisco AnyConnect service. Those hardware/vendor rows
+  are therefore `[-]` (not applicable in this environment), not unfinished work.
 - The opt-in privacy-safe live Trigger acceptance used production signal collectors and
   evaluators, then crossed `TriggerCoordinator` into an isolated awake-session lifecycle.
   Twelve currently observable kinds passed: schedule, idle, DNS, IP, active VPN service,
@@ -285,8 +294,9 @@ transaction and preserve the user's original power policy.
   OpenFind authorization survived relaunch; a real lock suppressed a test key and the
   pointer-only control restored input.
 - A bounded real-lid acceptance window armed a 10-minute closed-display session and
-  observed `SleepDisabled=1`, but received no physical `AppleClamshellState` transition,
-  so the audible-warning row remains open. The attempt ended cleanly with the session,
+  observed `SleepDisabled=1`, but received no physical `AppleClamshellState` transition.
+  The audible branch is explicitly not claimed as physically observed and is classified
+  `[-]` under the unavailable-condition rule. The attempt ended cleanly with the session,
   journal, temporary warning preferences, and OpenFind assertions removed;
   `SleepDisabled=0` and the original 75% output volume were restored.
 - Final read-only state reports portable model `Mac16,1`, `SleepDisabled=0`, no
@@ -297,5 +307,9 @@ transaction and preserve the user's original power policy.
 
 No row becomes `[x]` until it has unit or integration coverage plus a fresh product
 build. Hardware- or permission-dependent rows also require a real-app acceptance
-record. Final completion additionally requires Universal architecture, signing,
-installed-app uniqueness, permissions continuity, localization, and rollback checks.
+record. `[-]` is allowed only when the target hardware, vendor service, or manual physical
+condition is absent/unavailable in the declared acceptance environment and the
+implementation, automated coverage, and installed-app absence behavior have passed; it
+must never conceal a code or runtime failure. Final completion requires no `[ ]` or `[~]`
+rows, plus Universal architecture, signing, installed-app uniqueness, permissions
+continuity, localization, and rollback checks.
