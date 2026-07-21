@@ -173,25 +173,30 @@ transaction and preserve the user's original power policy.
   self-signed build keys in an owner-only `0600` file. Legacy ciphertext is never
   overwritten before authenticated migration; symlink, ownership, size, and mode checks
   are covered. Payloads remain local and never enter logs, analytics, or sync.
-- `[~]` This Mac's 1,019,072-byte legacy ciphertext is preserved byte-for-byte and no
-  longer opens Keychain during startup. Its one-time decryption migration still requires
-  the user to click `解锁并迁移历史` and authorize the old Keychain item once.
+- `[x]` This Mac's legacy ciphertext completed its one-time authenticated migration.
+  The installed app decrypted 315 retained entries with the migrated 32-byte local key;
+  that key is owned by the current user with mode `0600`, and clean startup no longer
+  reads the legacy Keychain item.
 - `[x]` Migration/import is optional; OpenFind does not read Maccy's database silently.
 
 ## Keyboard Cleaning (KeyboardCleanTool-equivalent)
 
-- `[~]` Accessibility-gated `CGEventTap` suppresses ordinary keys, modifiers, media keys,
-  and supported system-defined keyboard events; live acceptance requires the user's
-  Accessibility decision.
-- `[~]` Pointer-only unlock control, explicit countdown, elapsed state, and emergency timer
-  are covered; live event-tap acceptance remains open.
-- `[~]` Event-tap timeout recovery and automatic cleanup on quit, crash, screen lock,
-  fast-user switch, and sleep/wake are covered; lifecycle hardware acceptance remains open.
+- `[x]` Accessibility-gated `CGEventTap` suppresses ordinary keys, modifiers, media keys,
+  and supported system-defined keyboard events. On the installed app, a focused search
+  field remained empty while the lock was active and accepted the same test key after
+  unlock.
+- `[x]` Pointer-only unlock control, explicit countdown, elapsed state, and emergency timer
+  are covered; the installed app completed the real three-second countdown and restored
+  input through the pointer-only floating button.
+- `[x]` Event-tap timeout recovery and automatic cleanup on quit, crash, screen lock,
+  fast-user switch, and sleep/wake are covered. In the installed app, quitting during an
+  active cleaning lock removed the event tap with the process and a fresh text field
+  immediately accepted input; OpenFind then relaunched cleanly.
 - `[x]` The UI states that hardware power and Touch ID controls are not exposed by macOS.
 
 ## Verification Record (2026-07-21)
 
-- `349 tests / 43 suites` passed in the latest serial run; earlier targeted and full-suite
+- `350 tests / 44 suites` passed in the latest serial run; earlier targeted and full-suite
   runs also passed after hardening native callback lifetimes and encrypted-key migration.
 - Customer-signed Universal (`arm64` + `x86_64`) archive passed deep signature, SDEF,
   packaged smoke, checksum, and atomic `/Applications/OpenFind.app` installation checks.
@@ -210,8 +215,9 @@ transaction and preserve the user's original power policy.
   during an OpenFind bounded session, restored `SleepDisabled=0` with the journal
   removed, and then removed the OpenFind rule. The pre-existing
   `/private/etc/sudoers.d/amphetamine_PowerProtect` rule remained unchanged.
-- Real Location, Bluetooth, and audio-route acceptance is recorded above. No USB device
-  was available and no Accessibility decision was made; those rows remain `[~]`.
+- Real Location, Bluetooth, audio-route, clipboard migration, and Accessibility/event-tap
+  acceptance is recorded above. No USB device, second display/mirror target, or Cisco
+  AnyConnect service is present on this Mac, so those hardware/vendor rows remain `[~]`.
 - The opt-in privacy-safe live Trigger acceptance used production signal collectors and
   evaluators, then crossed `TriggerCoordinator` into an isolated awake-session lifecycle.
   Twelve currently observable kinds passed: schedule, idle, DNS, IP, active VPN service,
@@ -270,6 +276,19 @@ transaction and preserve the user's original power policy.
 - Two clean installed-app relaunches completed without an OpenFind Keychain dialog while
   retaining the legacy clipboard ciphertext SHA-256
   `8c03f45357fae81c6693002ba5547544d0dc849e0126765085169aa52099d609`.
+- The explicit clipboard migration subsequently completed: the owner-only local key is
+  32 bytes with mode `0600`, and a read-only AES-GCM verification decoded 315 retained
+  entries without emitting clipboard payloads.
+- On macOS 27, Accessibility lives in the
+  `com.apple.settings.PrivacySecurity.extension` settings extension. OpenFind now opens
+  that page first and retains the legacy preference-pane URL as a fallback. The enabled
+  OpenFind authorization survived relaunch; a real lock suppressed a test key and the
+  pointer-only control restored input.
+- A bounded real-lid acceptance window armed a 10-minute closed-display session and
+  observed `SleepDisabled=1`, but received no physical `AppleClamshellState` transition,
+  so the audible-warning row remains open. The attempt ended cleanly with the session,
+  journal, temporary warning preferences, and OpenFind assertions removed;
+  `SleepDisabled=0` and the original 75% output volume were restored.
 - Final read-only state reports portable model `Mac16,1`, `SleepDisabled=0`, no
   `/private/etc/sudoers.d/openfind-power-protect` rule, no OpenFind-owned power
   assertion, and the pre-existing Amphetamine PowerProtect rule still present.
