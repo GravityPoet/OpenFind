@@ -38,7 +38,9 @@ The user's explicit product decisions override the reference defaults:
   allowed fallback representation when a disallowed one shares the same pasteboard item.
 - `[x]` Display current retained storage size and support first-copy/last-copy sorting.
 - `[x]` Manage ignored applications with an application picker or bundle identifier,
-  including allow-list semantics.
+  including allow-list semantics. New and existing blacklist profiles receive a one-time
+  default privacy set for Bitwarden, 1Password, and Apple Passwords; a user's later
+  removals remain removed.
 - `[x]` Manage custom ignored pasteboard types and reset the default privacy list.
 - `[x]` Manage validated regular expressions whose matching text must not be retained.
 - `[x]` Pause all capture and ignore exactly the next external copy.
@@ -57,7 +59,9 @@ The user's explicit product decisions override the reference defaults:
   remains pointer-controlled and is not pulled back by programmatic `scrollTo`.
 - `[x]` Text, image, and file preview shows source application, dimensions, first/last
   copy time, copy count, byte size, and full selectable content.
-- `[x]` Toggle preview, open it after a configurable delay, and retain its resized width.
+- `[x]` The first visible frame is the complete two-pane list and preview; no hover task
+  or configurable delay is involved. The preview can still be toggled manually and its
+  resized width is retained.
 - `[x]` Configure popup position/screen for non-shortcut entry points, pinned-item
   position, image-row height, footer, application icons, and special-symbol visibility.
 - `[x]` Render a compact color swatch for valid hexadecimal color entries.
@@ -121,7 +125,7 @@ The user's explicit product decisions override the reference defaults:
   retention expiry/Forever, deduplication, source application metadata, search modes,
   ignore rules, sorting, pin keys/editing, shortcut cycling, pointer selection, and Paste
   Stack ordering/interruption.
-- `[x]` `xcrun --sdk macosx swift test` passed 384 tests in 50 suites on 2026-07-22;
+- `[x]` `xcrun --sdk macosx swift test` passed 387 tests in 50 suites on 2026-07-23;
   the command also completed the debug build.
 - `[x]` Installed `/Applications/OpenFind.app` passed real GUI acceptance for centered
   clipboard-only shortcut presentation, visible/focused search, real IME input, source
@@ -129,6 +133,11 @@ The user's explicit product decisions override the reference defaults:
   Return paste, two-step Paste Stack use in TextEdit, `⌘K`/ellipsis action presentation,
   focus restoration after dismissal, first-shortcut recovery after app deactivation,
   ordered text merging, URL/file action routing, and native Quick Look.
+- `[x]` The first accessibility-visible shortcut frame was centered at `720×500`; it
+  remained `720×500` after 200 ms and 2 seconds, confirming that both panes are present
+  synchronously rather than expanded by a hover timer. The installed profile contains
+  all three password-app defaults, and exact re-search after QA cleanup found no test
+  markers.
 - `[x]` `/Applications/OpenFind.app` and `dist/OpenFind.zip` both contain `x86_64 arm64`,
   pass deep strict signature verification, ZIP integrity and SHA-256 verification. The
   installed process, physical bundle, Spotlight, and LaunchServices all resolve only to

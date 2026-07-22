@@ -133,14 +133,14 @@ struct ClipboardParityModelTests {
         ) == "first\tline second")
     }
 
-    @Test func previewVisibilityIsResetForEveryPresentation() throws {
+    @Test func everyPresentationStartsWithTheFullPreviewVisible() throws {
         let context = try makeContext()
 
         context.store.beginPresentation()
         #expect(context.store.isPanelPresented)
-        #expect(!context.store.isPreviewVisible)
+        #expect(context.store.isPreviewVisible)
         let firstGeneration = context.store.presentationGeneration
-        context.store.isPreviewVisible = true
+        context.store.isPreviewVisible = false
 
         context.store.endPresentation()
         #expect(!context.store.isPanelPresented)
@@ -149,7 +149,7 @@ struct ClipboardParityModelTests {
 
         context.store.beginPresentation()
         #expect(context.store.isPanelPresented)
-        #expect(!context.store.isPreviewVisible)
+        #expect(context.store.isPreviewVisible)
     }
 
     private func makeContext() throws -> ClipboardParityTestContext {

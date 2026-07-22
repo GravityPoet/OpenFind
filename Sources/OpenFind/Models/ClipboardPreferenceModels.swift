@@ -129,6 +129,12 @@ struct ClipboardPreferences: Codable, Equatable, Sendable {
         "net.antelle.keeweb",
     ]
 
+    static let defaultIgnoredBundleIdentifiers: Set<String> = [
+        "com.1password.1password",
+        "com.apple.Passwords",
+        "com.bitwarden.desktop",
+    ]
+
     func normalized() -> Self {
         var value = self
         value.itemLimitBytes = min(16 * 1_024 * 1_024, max(1_024, itemLimitBytes))

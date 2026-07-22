@@ -146,28 +146,8 @@ extension ClipboardHistoryView {
     }
 
     func togglePreview() {
-        previewTask?.cancel()
         let visible = !store.isPreviewVisible
         store.isPreviewVisible = visible
         onPreviewVisibilityChange(visible)
-    }
-
-    func scheduleAutomaticPreview() {
-        previewTask?.cancel()
-        guard store.preferences.openPreviewAutomatically,
-              store.isPanelPresented,
-              !store.isPreviewVisible else { return }
-        let selectedID = store.selectedEntry?.id
-        let generation = store.presentationGeneration
-        let delay = store.preferences.previewDelayMilliseconds
-        previewTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(delay))
-            guard !Task.isCancelled,
-                  store.isPanelPresented,
-                  store.presentationGeneration == generation,
-                  store.selectedEntry?.id == selectedID else { return }
-            store.isPreviewVisible = true
-            onPreviewVisibilityChange(true)
-        }
     }
 }
