@@ -4,6 +4,7 @@ import AppKit
 final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     let store: ClipboardHistoryStore
     let pasteService = ClipboardPasteService()
+    let quickLook = QuickLookController()
     var panel: NSPanel?
     var shortcutCycleState = ClipboardShortcutCycleState()
     var shortcutFlagsMonitor: Any?
@@ -14,6 +15,18 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
 
     init(store: ClipboardHistoryStore) {
         self.store = store
+        super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationDidResignActive),
+            name: NSApplication.didResignActiveNotification,
+            object: NSApp
+        )
+    }
+
+    @objc private func applicationDidResignActive(_ notification: Notification) {
+        guard store.isPanelPresented else { return }
+        close()
     }
 
     func toggle() {

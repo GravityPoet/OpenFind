@@ -46,6 +46,7 @@ final class ClipboardHistoryStore {
     var pasteStack: ClipboardPasteStack?
     var isSearchPresented = false
     var isPreviewVisible = false
+    var isActionPanelPresented = false
     var isPanelPresented = false
     var presentationGeneration = 0
 
@@ -90,12 +91,14 @@ final class ClipboardHistoryStore {
         }
         isPanelPresented = true
         isPreviewVisible = false
+        isActionPanelPresented = false
         presentationGeneration &+= 1
     }
 
     func endPresentation() {
         isPanelPresented = false
         isPreviewVisible = false
+        isActionPanelPresented = false
         presentationGeneration &+= 1
     }
 }

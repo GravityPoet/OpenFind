@@ -5,6 +5,8 @@ struct ClipboardHistoryView: View {
     let onPaste: (ClipboardEntry, Bool) -> Void
     let onStartPasteStack: (Bool) -> Void
     let onPreviewVisibilityChange: (Bool) -> Void
+    let onActionPanelVisibilityChange: (Bool) -> Void
+    let onQuickLook: ([URL]) -> Void
     let onCancelPasteStack: () -> Void
     let onClose: () -> Void
     @FocusState var searchFocused: Bool
@@ -14,7 +16,9 @@ struct ClipboardHistoryView: View {
         VStack(spacing: 0) {
             ClipboardHistoryHeader(
                 store: store,
-                searchFocused: $searchFocused
+                searchFocused: $searchFocused,
+                isActionPanelPresented: $store.isActionPanelPresented,
+                onPerformAction: performPanelAction
             )
 
             if let error = store.lastErrorMessage {
@@ -56,10 +60,12 @@ struct ClipboardHistoryView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .ignoresSafeArea(edges: .top)
-        .background { keyMonitor.frame(width: 0, height: 0) }
+        .background {
+            keyMonitor.frame(width: 0, height: 0)
+        }
         .onAppear {
             store.selectedIndex = min(store.selectedIndex, max(0, store.filteredEntries.count - 1))
-            searchFocused = true
+            requestSearchFocus()
             scheduleAutomaticPreview()
         }
         .onChange(of: store.query) {
@@ -68,17 +74,31 @@ struct ClipboardHistoryView: View {
         }
         .onChange(of: store.selectedIndex) { scheduleAutomaticPreview() }
         .onChange(of: store.isSearchPresented) {
-            Task { @MainActor in
-                await Task.yield()
-                searchFocused = true
-            }
+            requestSearchFocus()
+        }
+        .onChange(of: store.isActionPanelPresented) {
+            onActionPanelVisibilityChange(store.isActionPanelPresented)
+            guard !store.isActionPanelPresented else { return }
+            requestSearchFocus()
         }
         .onChange(of: store.presentationGeneration) {
             previewTask?.cancel()
             guard store.isPanelPresented else { return }
-            searchFocused = true
+            requestSearchFocus()
             scheduleAutomaticPreview()
         }
-        .onDisappear { previewTask?.cancel() }
+        .onDisappear {
+            previewTask?.cancel()
+            store.isActionPanelPresented = false
+        }
+    }
+
+    private func requestSearchFocus() {
+        searchFocused = false
+        Task { @MainActor in
+            await Task.yield()
+            guard store.isPanelPresented, !store.isActionPanelPresented else { return }
+            searchFocused = true
+        }
     }
 }

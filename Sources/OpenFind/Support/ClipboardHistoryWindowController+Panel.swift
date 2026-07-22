@@ -17,7 +17,7 @@ extension ClipboardHistoryWindowController {
 
     func makePanelIfNeeded() -> NSPanel {
         if let panel { return panel }
-        let panel = NSPanel(
+        let panel = ClipboardHistoryPanel(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 500),
             styleMask: [.titled, .resizable, .fullSizeContentView],
             backing: .buffered,
@@ -42,6 +42,13 @@ extension ClipboardHistoryWindowController {
         panel.minSize = NSSize(width: 420, height: 440)
         panel.setFrameAutosaveName("OpenFindClipboardHistory")
         panel.delegate = self
+        panel.onToggleActions = { [weak self] in
+            self?.store.isActionPanelPresented.toggle()
+        }
+        panel.onSaveForReuse = { [weak self] in
+            guard let self, let selected = store.selectedEntry else { return }
+            store.saveForReuse(selected)
+        }
         let hostingView = NSHostingView(rootView: makeHistoryView())
         hostingView.wantsLayer = true
         hostingView.layer?.cornerRadius = 16
@@ -65,6 +72,19 @@ extension ClipboardHistoryWindowController {
                 guard let self, let panel = self.panel else { return }
                 self.resize(panel, showingPreview: visible, animated: true)
             },
+            onActionPanelVisibilityChange: { [weak self] visible in
+                guard !visible else { return }
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .milliseconds(80))
+                    guard let self,
+                          NSApp.isActive,
+                          !store.isActionPanelPresented,
+                          let panel = self.panel,
+                          panel.isVisible else { return }
+                    panel.makeKeyAndOrderFront(nil)
+                }
+            },
+            onQuickLook: { [weak self] urls in self?.quickLook.toggle(items: urls) },
             onCancelPasteStack: { [weak self] in self?.cancelPasteStack() },
             onClose: { [weak self] in self?.close() }
         )
@@ -121,6 +141,7 @@ extension ClipboardHistoryWindowController {
     }
 
     func windowDidResignKey(_ notification: Notification) {
+        if store.isActionPanelPresented { return }
         close()
     }
 }

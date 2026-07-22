@@ -96,7 +96,10 @@ struct OpenFindApp: App {
             )
         }
         .commands {
-            AppCommands(viewModel: appDelegate.viewModel)
+            AppCommands(
+                viewModel: appDelegate.viewModel,
+                clipboardStore: appDelegate.clipboardStore
+            )
         }
     }
 }
