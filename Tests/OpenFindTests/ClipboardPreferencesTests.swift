@@ -24,7 +24,8 @@ struct ClipboardPreferencesTests {
 
         #expect(loaded.retentionPeriod == .days15)
         #expect(loaded.itemLimitBytes == 1_024)
-        #expect(loaded.ignoredBundleIdentifiers == ["com.example.Editor"])
+        #expect(loaded.ignoredBundleIdentifiers ==
+            ClipboardPreferences.defaultIgnoredBundleIdentifiers.union(["com.example.Editor"]))
         #expect(loaded.ignoredTextPatterns == ["^secret$"])
         #expect(loaded.clipboardCheckInterval == 5)
         #expect(loaded.previewDelayMilliseconds == 200)
@@ -45,7 +46,8 @@ struct ClipboardPreferencesTests {
 
         #expect(loaded.retentionPeriod == .forever)
         #expect(loaded.itemLimitBytes == 4 * 1_024 * 1_024)
-        #expect(loaded.ignoredBundleIdentifiers == ["com.example.Legacy"])
+        #expect(loaded.ignoredBundleIdentifiers ==
+            ClipboardPreferences.defaultIgnoredBundleIdentifiers.union(["com.example.Legacy"]))
         #expect(loaded.pasteWithoutFormatting)
         #expect(loaded.searchMode == .fuzzy)
     }
@@ -65,6 +67,56 @@ struct ClipboardPreferencesTests {
         #expect(loaded.retentionPeriod == .forever)
         #expect(loaded.searchMode == .exact)
         #expect(loaded.pinShortcut == ClipboardPreferences.defaultPinShortcut)
+        #expect(loaded.ignoredBundleIdentifiers ==
+            ClipboardPreferences.defaultIgnoredBundleIdentifiers)
+    }
+
+    @Test func passwordManagerDefaultsSeedOnceAndRespectRemoval() throws {
+        let suite = "OpenFindTests.ClipboardDefaultIgnoredApps.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        var loaded = ClipboardPreferencesPersistence.load(from: defaults)
+        #expect(loaded.ignoredBundleIdentifiers ==
+            ClipboardPreferences.defaultIgnoredBundleIdentifiers)
+
+        loaded.ignoredBundleIdentifiers.remove("com.bitwarden.desktop")
+        ClipboardPreferencesPersistence.save(loaded, to: defaults)
+        let reloaded = ClipboardPreferencesPersistence.load(from: defaults)
+
+        #expect(!reloaded.ignoredBundleIdentifiers.contains("com.bitwarden.desktop"))
+        #expect(reloaded.ignoredBundleIdentifiers.contains("com.1password.1password"))
+        #expect(reloaded.ignoredBundleIdentifiers.contains("com.apple.Passwords"))
+    }
+
+    @Test func defaultIgnoreMigrationDoesNotInvertAllowListSemantics() throws {
+        let suite = "OpenFindTests.ClipboardDefaultIgnoredAppsAllowList.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var preferences = ClipboardPreferences()
+        preferences.ignoreAllAppsExceptListed = true
+        preferences.ignoredBundleIdentifiers = ["com.example.Allowed"]
+        ClipboardPreferencesPersistence.save(preferences, to: defaults)
+
+        let loaded = ClipboardPreferencesPersistence.load(from: defaults)
+
+        #expect(loaded.ignoreAllAppsExceptListed)
+        #expect(loaded.ignoredBundleIdentifiers == ["com.example.Allowed"])
+    }
+
+    @Test func defaultPasswordManagersAreRejectedBeforeStorage() throws {
+        let context = try makeContext()
+        let item = NSPasteboardItem()
+        item.setString("sensitive", forType: .string)
+        context.pasteboard.clearContents()
+        #expect(context.pasteboard.writeObjects([item]))
+
+        for identifier in ClipboardPreferences.defaultIgnoredBundleIdentifiers {
+            #expect(!context.store.captureCurrentPasteboard(
+                sourceBundleIdentifier: identifier
+            ))
+        }
+        #expect(context.store.entries.isEmpty)
     }
 
     @Test func capturePoliciesCoverTypesPatternsAllowListsAndOneShotPause() throws {

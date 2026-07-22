@@ -10,7 +10,6 @@ struct ClipboardHistoryView: View {
     let onCancelPasteStack: () -> Void
     let onClose: () -> Void
     @FocusState var searchFocused: Bool
-    @State var previewTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -66,13 +65,11 @@ struct ClipboardHistoryView: View {
         .onAppear {
             store.selectedIndex = min(store.selectedIndex, max(0, store.filteredEntries.count - 1))
             requestSearchFocus()
-            scheduleAutomaticPreview()
         }
         .onChange(of: store.query) {
             store.selectedIndex = 0
             store.clearMultiSelection()
         }
-        .onChange(of: store.selectedIndex) { scheduleAutomaticPreview() }
         .onChange(of: store.isSearchPresented) {
             requestSearchFocus()
         }
@@ -82,13 +79,10 @@ struct ClipboardHistoryView: View {
             requestSearchFocus()
         }
         .onChange(of: store.presentationGeneration) {
-            previewTask?.cancel()
             guard store.isPanelPresented else { return }
             requestSearchFocus()
-            scheduleAutomaticPreview()
         }
         .onDisappear {
-            previewTask?.cancel()
             store.isActionPanelPresented = false
         }
     }

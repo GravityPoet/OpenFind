@@ -20,22 +20,6 @@ struct ClipboardAppearanceSettings: View {
             }
         }
 
-        Toggle(
-            L("Clipboard Open Preview Automatically"),
-            isOn: preference(\.openPreviewAutomatically)
-        )
-        Stepper(
-            value: preference(\.previewDelayMilliseconds),
-            in: 200...5_000,
-            step: 100
-        ) {
-            LabeledContent(L("Clipboard Preview Delay")) {
-                Text("\(store.preferences.previewDelayMilliseconds) ms")
-                    .monospacedDigit()
-            }
-        }
-        .disabled(!store.preferences.openPreviewAutomatically)
-
         Stepper(value: preference(\.imageRowHeight), in: 16...120, step: 4) {
             LabeledContent(L("Clipboard Image Row Height")) {
                 Text("\(store.preferences.imageRowHeight) pt")

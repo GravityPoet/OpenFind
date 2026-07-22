@@ -90,7 +90,7 @@ final class ClipboardHistoryStore {
             persist()
         }
         isPanelPresented = true
-        isPreviewVisible = false
+        isPreviewVisible = true
         isActionPanelPresented = false
         presentationGeneration &+= 1
     }

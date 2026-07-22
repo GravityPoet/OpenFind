@@ -36,7 +36,16 @@ struct ClipboardIgnoredApplicationsView: View {
                     } else {
                         Image(systemName: "questionmark.app")
                             .frame(width: 22, height: 22)
-                        Text(identifier)
+                        if let applicationName = Self.knownApplicationNames[identifier] {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(applicationName)
+                                Text(identifier)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text(identifier)
+                        }
                     }
                 }
                 .tag(identifier)
@@ -83,6 +92,12 @@ struct ClipboardIgnoredApplicationsView: View {
     private var applications: [String] {
         store.preferences.ignoredBundleIdentifiers.sorted()
     }
+
+    private static let knownApplicationNames = [
+        "com.1password.1password": "1Password",
+        "com.apple.Passwords": "Passwords",
+        "com.bitwarden.desktop": "Bitwarden",
+    ]
 
     private func addManualIdentifier() {
         let identifier = manualIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
