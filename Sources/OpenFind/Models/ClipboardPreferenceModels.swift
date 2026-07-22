@@ -129,11 +129,45 @@ struct ClipboardPreferences: Codable, Equatable, Sendable {
         "net.antelle.keeweb",
     ]
 
-    static let defaultIgnoredBundleIdentifiers: Set<String> = [
+    static let defaultIgnoredBundleIdentifiersV1: Set<String> = [
         "com.1password.1password",
         "com.apple.Passwords",
         "com.bitwarden.desktop",
     ]
+
+    static let defaultIgnoredApplicationNames: [String: String] = [
+        "com.1password.1password": "1Password",
+        "com.agilebits.onepassword7": "1Password 7",
+        "com.app77.pwsafemac": "pwSafe",
+        "com.apple.Passwords": "Passwords",
+        "com.apple.keychainaccess": "Keychain Access",
+        "com.bitwarden.desktop": "Bitwarden",
+        "com.callpod.keepermac.lite": "Keeper",
+        "com.dashlane.dashlanephonefinal": "Dashlane",
+        "com.keepassium.intune": "KeePassium for Intune",
+        "com.keepassium.ios": "KeePassium",
+        "com.keepassium.ios.pro": "KeePassium Pro",
+        "com.lastpass.lastpassforsafari": "LastPass for Safari",
+        "com.markmcguill.strongbox": "Strongbox",
+        "com.markmcguill.strongbox.graphene": "Strongbox Zero",
+        "com.markmcguill.strongbox.mac": "Strongbox",
+        "com.markmcguill.strongbox.mac.pro": "Strongbox Pro",
+        "com.markmcguill.strongbox.pro": "Strongbox Pro",
+        "com.mseven.msecuremac": "mSecure",
+        "com.nordpass.safari.app.password.manager": "NordPass",
+        "com.outercorner.Secrets": "Secrets",
+        "com.pcloud.pcloudPass": "pCloud Pass",
+        "com.safeincloud.Safe-In-Cloud.OSX": "SafeInCloud",
+        "com.sibersystems.RoboFormMac": "RoboForm",
+        "in.sinew.Enpass-Desktop": "Enpass",
+        "me.proton.pass.catalyst": "Proton Pass",
+        "net.zetetic.Strip.mac": "Codebook",
+        "org.keepassxc.keepassxc": "KeePassXC",
+    ]
+
+    static let defaultIgnoredBundleIdentifiers = Set(defaultIgnoredApplicationNames.keys)
+    static let defaultIgnoredBundleIdentifiersV2 =
+        defaultIgnoredBundleIdentifiers.subtracting(defaultIgnoredBundleIdentifiersV1)
 
     func normalized() -> Self {
         var value = self

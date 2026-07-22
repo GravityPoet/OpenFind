@@ -89,6 +89,28 @@ struct ClipboardPreferencesTests {
         #expect(reloaded.ignoredBundleIdentifiers.contains("com.apple.Passwords"))
     }
 
+    @Test func expandedPasswordManagerMigrationPreservesEarlierRemoval() throws {
+        let suite = "OpenFindTests.ClipboardDefaultIgnoredAppsV2.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var preferences = ClipboardPreferences()
+        preferences.ignoredBundleIdentifiers =
+            ClipboardPreferences.defaultIgnoredBundleIdentifiersV1
+                .subtracting(["com.bitwarden.desktop"])
+        ClipboardPreferencesPersistence.save(preferences, to: defaults)
+        defaults.set(1, forKey: "OpenFind.clipboardDefaultIgnoredAppsSeedVersionV1")
+
+        let loaded = ClipboardPreferencesPersistence.load(from: defaults)
+
+        #expect(!loaded.ignoredBundleIdentifiers.contains("com.bitwarden.desktop"))
+        #expect(loaded.ignoredBundleIdentifiers.contains("org.keepassxc.keepassxc"))
+        #expect(loaded.ignoredBundleIdentifiers.contains("in.sinew.Enpass-Desktop"))
+        #expect(loaded.ignoredBundleIdentifiers.contains("com.apple.keychainaccess"))
+        #expect(loaded.ignoredBundleIdentifiers ==
+            ClipboardPreferences.defaultIgnoredBundleIdentifiers
+                .subtracting(["com.bitwarden.desktop"]))
+    }
+
     @Test func defaultIgnoreMigrationDoesNotInvertAllowListSemantics() throws {
         let suite = "OpenFindTests.ClipboardDefaultIgnoredAppsAllowList.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))

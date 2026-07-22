@@ -135,9 +135,9 @@ The user's explicit product decisions override the reference defaults:
   ordered text merging, URL/file action routing, and native Quick Look.
 - `[x]` The first accessibility-visible shortcut frame was centered at `720×500`; it
   remained `720×500` after 200 ms and 2 seconds, confirming that both panes are present
-  synchronously rather than expanded by a hover timer. The installed profile contains
-  all three password-app defaults, and exact re-search after QA cleanup found no test
-  markers.
+  synchronously rather than expanded by a hover timer. The default privacy catalog covers
+  common password managers and Apple's password utilities through versioned, removal-safe
+  migrations; exact re-search after QA cleanup found no test markers.
 - `[x]` `/Applications/OpenFind.app` and `dist/OpenFind.zip` both contain `x86_64 arm64`,
   pass deep strict signature verification, ZIP integrity and SHA-256 verification. The
   installed process, physical bundle, Spotlight, and LaunchServices all resolve only to

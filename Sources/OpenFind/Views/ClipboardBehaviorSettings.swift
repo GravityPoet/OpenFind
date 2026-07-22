@@ -22,15 +22,20 @@ struct ClipboardBehaviorSettings: View {
             }
         }
 
-        Picker(L("Clipboard Check Interval"), selection: Binding(
-            get: { store.clipboardCheckInterval },
-            set: { controller.setClipboardCheckInterval($0) }
-        )) {
-            Text("100 ms").tag(0.1)
-            Text("250 ms").tag(0.25)
-            Text("500 ms").tag(0.5)
-            Text("1 s").tag(1.0)
-            Text("2 s").tag(2.0)
+        VStack(alignment: .leading, spacing: 4) {
+            Picker(L("Clipboard Check Interval"), selection: Binding(
+                get: { store.clipboardCheckInterval },
+                set: { controller.setClipboardCheckInterval($0) }
+            )) {
+                Text("100 ms").tag(0.1)
+                Text("250 ms").tag(0.25)
+                Text(L("Clipboard Check Interval Recommended")).tag(0.5)
+                Text("1 s").tag(1.0)
+                Text("2 s").tag(2.0)
+            }
+            Text(L("Clipboard Check Interval Help"))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
 
         Toggle(
