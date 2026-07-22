@@ -3,17 +3,16 @@ import SwiftUI
 struct ClipboardHistoryHeader: View {
     @Bindable var store: ClipboardHistoryStore
     @FocusState.Binding var searchFocused: Bool
+    @Binding var isActionPanelPresented: Bool
+    let onPerformAction: (ClipboardPanelAction) -> Void
 
     var body: some View {
         OpenFindGlassContainer {
             HStack(spacing: 8) {
                 searchControls
 
-                Menu {
-                    Button(L("Clear Unpinned Clipboard"), role: .destructive) {
-                        store.clearUnpinned()
-                    }
-                    .disabled(store.entries.allSatisfy(\.isPinned))
+                Button {
+                    isActionPanelPresented.toggle()
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 13, weight: .semibold))
@@ -21,13 +20,38 @@ struct ClipboardHistoryHeader: View {
                         .frame(width: 30, height: 30)
                         .openFindGlassCapsule()
                 }
-                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
                 .fixedSize()
                 .help(L("Clipboard History Actions"))
+                .accessibilityLabel(Text(L("Clipboard Actions")))
+                .accessibilityIdentifier("clipboard.actions")
+                .popover(isPresented: $isActionPanelPresented, arrowEdge: .top) {
+                    ClipboardActionPanel(
+                        itemActions: actionContext.itemActions,
+                        historyActions: ClipboardPanelActionContext.historyActions,
+                        onPerform: onPerformAction,
+                        onDismiss: { isActionPanelPresented = false }
+                    )
+                }
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
+    }
+
+    private var actionContext: ClipboardPanelActionContext {
+        let entry = store.selectedEntry
+        let selectedEntries = store.multiSelectionCount > 1
+            ? store.selectedEntriesInOrder
+            : entry.map { [$0] } ?? []
+        return ClipboardPanelActionContext(
+            entry: entry,
+            selectedEntries: selectedEntries,
+            canCopyPlainText: entry.map(store.canCopyPlainText) ?? false,
+            canMergePlainText: store.canMergePlainText(selectedEntries),
+            hasOpenableURL: entry?.webURL != nil,
+            hasFiles: !(entry?.fileURLs.isEmpty ?? true)
+        )
     }
 
     @ViewBuilder

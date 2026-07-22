@@ -95,18 +95,40 @@ The user's explicit product decisions override the reference defaults:
   clipboard to the next item without racing the target application's paste.
 - `[x]` Menu-bar modifier actions pause capture or ignore only the next copy.
 
+## Alfred-Derived Extensions
+
+- `[x]` `⌘K` and the compact ellipsis button open the same keyboard-navigable,
+  type-aware action popover without displacing the always-visible search field.
+- `[x]` Text and rich-text entries offer paste/copy variants; URLs add Open Link;
+  file entries add Open, Reveal in Finder, and native Quick Look. Unrelated actions
+  are omitted instead of disabled clutter.
+- `[x]` `⌘S` idempotently saves the selected entry for reuse through OpenFind's
+  existing encrypted pinned-item model, retaining stable shortcuts, aliases, and
+  editable text rather than introducing a duplicate snippet database.
+- `[x]` Explicit multi-selection can start a Paste Stack or newline-merge plain-text
+  entries in the user's selection order. OpenFind does not globally intercept a
+  second `⌘C`.
+- `[x]` Clear-last-5-minutes and clear-last-15-minutes remove only unpinned entries;
+  saved items survive both actions.
+- `[-]` Alfred branding, purple selection, opaque list accessibility, synthetic “All
+  Snippets” rows, and proprietary implementation details are intentionally excluded.
+  The evidence and adopt/keep/reject rationale live in
+  `ALFRED_CLIPBOARD_BENCHMARK.md`.
+
 ## Verification
 
 - `[x]` Automated coverage includes capture and migration, malformed preferences,
   retention expiry/Forever, deduplication, source application metadata, search modes,
   ignore rules, sorting, pin keys/editing, shortcut cycling, pointer selection, and Paste
   Stack ordering/interruption.
-- `[x]` `xcrun --sdk macosx swift test` passed 378 tests in 49 suites on 2026-07-22;
+- `[x]` `xcrun --sdk macosx swift test` passed 384 tests in 50 suites on 2026-07-22;
   the command also completed the debug build.
 - `[x]` Installed `/Applications/OpenFind.app` passed real GUI acceptance for centered
   clipboard-only shortcut presentation, visible/focused search, real IME input, source
   app identity, hover selection/preview, wheel scrolling without snap-back, click paste,
-  Return paste, and two-step Paste Stack use in TextEdit.
+  Return paste, two-step Paste Stack use in TextEdit, `⌘K`/ellipsis action presentation,
+  focus restoration after dismissal, first-shortcut recovery after app deactivation,
+  ordered text merging, URL/file action routing, and native Quick Look.
 - `[x]` `/Applications/OpenFind.app` and `dist/OpenFind.zip` both contain `x86_64 arm64`,
   pass deep strict signature verification, ZIP integrity and SHA-256 verification. The
   installed process, physical bundle, Spotlight, and LaunchServices all resolve only to

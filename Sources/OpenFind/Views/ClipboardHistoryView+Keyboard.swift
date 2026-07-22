@@ -4,6 +4,7 @@ extension ClipboardHistoryView {
     var keyMonitor: ClipboardHistoryKeyMonitor {
         ClipboardHistoryKeyMonitor(
             isSearchPresented: store.isSearchPresented,
+            isActionPanelPresented: store.isActionPanelPresented,
             pinShortcut: store.preferences.pinShortcut,
             deleteShortcut: store.preferences.deleteShortcut,
             previewShortcut: store.preferences.previewShortcut,
@@ -19,6 +20,8 @@ extension ClipboardHistoryView {
             onPaste: { pasteSelected(plainTextOnly: $0) },
             onCopyPlainText: { copySelectedPlainText() },
             onTogglePin: { toggleSelectedPin() },
+            onSaveForReuse: { saveSelectedForReuse() },
+            onToggleActions: { store.isActionPanelPresented.toggle() },
             onTogglePreview: { togglePreview() },
             onDelete: { deleteSelected() },
             onClear: { all in all ? store.clearAll() : store.clearUnpinned() },
@@ -30,7 +33,9 @@ extension ClipboardHistoryView {
     }
 
     func handleEscape() {
-        if store.multiSelectionCount > 0 {
+        if store.isActionPanelPresented {
+            store.isActionPanelPresented = false
+        } else if store.multiSelectionCount > 0 {
             store.clearMultiSelection()
         } else if !store.query.isEmpty {
             store.query = ""

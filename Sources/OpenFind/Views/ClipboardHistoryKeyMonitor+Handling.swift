@@ -4,10 +4,28 @@ import Carbon
 extension ClipboardHistoryKeyMonitor.Coordinator {
     func handle(_ event: NSEvent) -> NSEvent? {
         guard let handler, hostView?.window?.isVisible == true else { return event }
-        if let inputClient = NSApp.keyWindow?.firstResponder as? NSTextInputClient,
-           inputClient.hasMarkedText() { return event }
-
         let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if handler.isActionPanelPresented {
+            if Int(event.keyCode) == kVK_ANSI_K, flags == .command {
+                handler.onToggleActions()
+                return nil
+            }
+            if Int(event.keyCode) == kVK_Escape, flags.isEmpty {
+                handler.onToggleActions()
+                return nil
+            }
+            return event
+        }
+        if Int(event.keyCode) == kVK_ANSI_K, flags == .command {
+            handler.onToggleActions()
+            return nil
+        }
+        if Int(event.keyCode) == kVK_ANSI_S, flags == .command {
+            handler.onSaveForReuse()
+            return nil
+        }
+        if let inputClient = hostView?.window?.firstResponder as? NSTextInputClient,
+           inputClient.hasMarkedText() { return event }
         if Int(event.keyCode) == kVK_ANSI_F, flags == .command {
             handler.onBeginSearch("")
             return nil

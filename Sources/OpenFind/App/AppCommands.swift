@@ -3,6 +3,7 @@ import SwiftUI
 
 struct AppCommands: Commands {
     let viewModel: SearchViewModel
+    let clipboardStore: ClipboardHistoryStore
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
@@ -67,6 +68,21 @@ struct AppCommands: Commands {
                     applyExample("content:\"Q4 budget\"", target: .both)
                 }
             }
+        }
+
+        CommandMenu(L("Clipboard")) {
+            Button(L("Clipboard Actions")) {
+                clipboardStore.isActionPanelPresented.toggle()
+            }
+            .keyboardShortcut("k", modifiers: .command)
+            .disabled(!clipboardStore.isPanelPresented)
+
+            Button(L("Save for Reuse")) {
+                guard let selected = clipboardStore.selectedEntry else { return }
+                clipboardStore.saveForReuse(selected)
+            }
+            .keyboardShortcut("s", modifiers: .command)
+            .disabled(!clipboardStore.isPanelPresented || clipboardStore.selectedEntry == nil)
         }
     }
 

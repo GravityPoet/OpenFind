@@ -42,6 +42,20 @@ extension ClipboardEntry {
         }
     }
 
+    var webURL: URL? {
+        guard kind == .url else { return nil }
+        if let data = retainedPasteboardItems.lazy.compactMap({ $0["public.url"] }).first,
+           let url = URL(dataRepresentation: data, relativeTo: nil),
+           !url.isFileURL {
+            return url
+        }
+        let candidate = fullPreviewText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: candidate), !url.isFileURL, url.scheme != nil else {
+            return nil
+        }
+        return url
+    }
+
     private var flattenedRepresentations: [(String, Data)] {
         retainedPasteboardItems.flatMap { item in
             item.map { ($0.key, $0.value) }

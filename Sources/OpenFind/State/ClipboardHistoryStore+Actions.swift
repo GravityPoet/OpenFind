@@ -10,13 +10,7 @@ extension ClipboardHistoryStore {
             guard let text = plainText(for: entry) else {
                 throw ClipboardHistoryError.unsupportedContent
             }
-            let item = NSPasteboardItem()
-            item.setString(text, forType: .string)
-            item.setString("", forType: .init(Self.internalPasteboardType))
-            pasteboard.clearContents()
-            guard pasteboard.writeObjects([item]) else {
-                throw ClipboardHistoryError.pasteboardWriteFailed
-            }
+            try writePlainText(text)
             return
         }
         let items = entry.retainedPasteboardItems.enumerated().map { index, representations in
@@ -37,6 +31,18 @@ extension ClipboardHistoryStore {
 
     func canCopyPlainText(_ entry: ClipboardEntry) -> Bool {
         plainText(for: entry) != nil
+    }
+
+    func canMergePlainText(_ selectedEntries: [ClipboardEntry]) -> Bool {
+        selectedEntries.count > 1 && selectedEntries.allSatisfy { plainText(for: $0) != nil }
+    }
+
+    func copyMergedPlainText(_ selectedEntries: [ClipboardEntry]) throws {
+        guard canMergePlainText(selectedEntries) else {
+            throw ClipboardHistoryError.unsupportedContent
+        }
+        let text = selectedEntries.compactMap(plainText).joined(separator: "\n")
+        try writePlainText(text)
     }
 
     func prepareForTermination() {
@@ -86,6 +92,30 @@ extension ClipboardHistoryStore {
         persist()
     }
 
+    @discardableResult
+    func saveForReuse(_ entry: ClipboardEntry) -> Bool {
+        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return false }
+        guard !entries[index].isPinned else { return true }
+        entries[index].isPinned = true
+        entries[index].pinKey = ClipboardPinKey.available(
+            in: entries,
+            excluding: entry.id
+        ).first
+        restoreSelection(id: entry.id)
+        persist()
+        return true
+    }
+
+    func clearRecent(minutes: Int, referenceDate: Date = Date()) {
+        guard minutes > 0 else { return }
+        let cutoff = referenceDate.addingTimeInterval(-TimeInterval(minutes * 60))
+        let selectedID = selectedEntry?.id
+        entries.removeAll { !$0.isPinned && $0.createdAt >= cutoff }
+        removeInvalidSelections()
+        restoreSelection(id: selectedID)
+        persist()
+    }
+
     func clearUnpinned() {
         entries.removeAll { !$0.isPinned }
         selectedIndex = 0
@@ -115,7 +145,7 @@ extension ClipboardHistoryStore {
         }
     }
 
-    private func plainText(for entry: ClipboardEntry) -> String? {
+    func plainText(for entry: ClipboardEntry) -> String? {
         if let data = entry.representations[NSPasteboard.PasteboardType.string.rawValue]
             ?? entry.representations["public.utf8-plain-text"],
            let text = String(data: data, encoding: .utf8) {
@@ -127,5 +157,15 @@ extension ClipboardHistoryStore {
         }
         if entry.kind == .url { return entry.previewText }
         return nil
+    }
+
+    private func writePlainText(_ text: String) throws {
+        let item = NSPasteboardItem()
+        item.setString(text, forType: .string)
+        item.setString("", forType: .init(Self.internalPasteboardType))
+        pasteboard.clearContents()
+        guard pasteboard.writeObjects([item]) else {
+            throw ClipboardHistoryError.pasteboardWriteFailed
+        }
     }
 }
