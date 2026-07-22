@@ -56,26 +56,8 @@ final class ClipboardPasteService {
     }
 
     func pasteIntoCapturedApplication() async throws {
-        guard AccessibilityPermission.isTrusted else {
-            throw ClipboardPasteError.permissionRequired
-        }
-        guard let targetApplication else {
-            throw ClipboardPasteError.noTargetApplication
-        }
-        guard !targetApplication.isTerminated else {
-            self.targetApplication = nil
-            throw ClipboardPasteError.targetTerminated
-        }
-        guard targetApplication.activate(options: [.activateAllWindows]) else {
-            throw ClipboardPasteError.activationFailed
-        }
+        let targetPID = try await activateCapturedApplicationProcess()
 
-        // Let AppKit finish activation before posting the event to the target
-        // process. Cancellation avoids sending a delayed event during teardown.
-        try await Task.sleep(for: .milliseconds(120))
-        try Task.checkCancellation()
-
-        let targetPID = targetApplication.processIdentifier
         guard let keyDown = CGEvent(
             keyboardEventSource: nil,
             virtualKey: CGKeyCode(kVK_ANSI_V),
@@ -91,6 +73,46 @@ final class ClipboardPasteService {
         keyUp.flags = .maskCommand
         keyDown.postToPid(targetPID)
         keyUp.postToPid(targetPID)
+    }
+
+    func activateCapturedApplication() async throws {
+        _ = try await activateCapturedApplicationProcess()
+    }
+
+    private func activateCapturedApplicationProcess() async throws -> pid_t {
+        guard AccessibilityPermission.isTrusted else {
+            throw ClipboardPasteError.permissionRequired
+        }
+        guard let targetApplication else {
+            throw ClipboardPasteError.noTargetApplication
+        }
+        guard !targetApplication.isTerminated else {
+            self.targetApplication = nil
+            throw ClipboardPasteError.targetTerminated
+        }
+        let targetPID = targetApplication.processIdentifier
+        guard targetApplication.activate(options: [.activateAllWindows]) else {
+            throw ClipboardPasteError.activationFailed
+        }
+
+        // activate(options:) only submits an activation request. In particular,
+        // switching Spaces can take longer than a fixed delay, and posting V
+        // before the target is frontmost leaves the event queued until after a
+        // Paste Stack has already advanced its pasteboard payload.
+        for _ in 0..<50 {
+            if targetApplication.isActive,
+               workspace.frontmostApplication?.processIdentifier == targetPID {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        guard targetApplication.isActive,
+              workspace.frontmostApplication?.processIdentifier == targetPID else {
+            throw ClipboardPasteError.activationFailed
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        try Task.checkCancellation()
         self.targetApplication = nil
+        return targetPID
     }
 }

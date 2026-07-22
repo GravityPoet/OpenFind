@@ -1,7 +1,7 @@
 import AppKit
 import Carbon
 
-struct GlobalShortcut: Equatable, Sendable {
+struct GlobalShortcut: Codable, Equatable, Hashable, Sendable {
     let keyCode: UInt32
     let modifiers: UInt32
     let keyLabel: String
@@ -35,6 +35,27 @@ struct GlobalShortcut: Equatable, Sendable {
         if modifiers & UInt32(shiftKey) != 0 { text += "⇧" }
         if modifiers & UInt32(cmdKey) != 0 { text += "⌘" }
         return text + keyLabel
+    }
+
+    var eventModifierFlags: NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if modifiers & UInt32(controlKey) != 0 { flags.insert(.control) }
+        if modifiers & UInt32(optionKey) != 0 { flags.insert(.option) }
+        if modifiers & UInt32(shiftKey) != 0 { flags.insert(.shift) }
+        if modifiers & UInt32(cmdKey) != 0 { flags.insert(.command) }
+        return flags
+    }
+
+    @MainActor
+    func matches(_ event: NSEvent) -> Bool {
+        guard UInt32(event.keyCode) == keyCode else { return false }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        var carbonModifiers: UInt32 = 0
+        if flags.contains(.command) { carbonModifiers |= UInt32(cmdKey) }
+        if flags.contains(.control) { carbonModifiers |= UInt32(controlKey) }
+        if flags.contains(.option) { carbonModifiers |= UInt32(optionKey) }
+        if flags.contains(.shift) { carbonModifiers |= UInt32(shiftKey) }
+        return carbonModifiers == modifiers
     }
 
     @MainActor

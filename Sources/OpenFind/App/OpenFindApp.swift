@@ -27,15 +27,10 @@ struct OpenFindApp: App {
 
             Divider()
 
-            Button {
-                appDelegate.clipboard.showWindow()
-            } label: {
-                Label(L("Clipboard History"), systemImage: "doc.on.clipboard")
-            }
-            if case .conflict = appDelegate.clipboard.registrationState {
-                Text(L("Clipboard Shortcut Conflicts"))
-                    .foregroundStyle(.orange)
-            }
+            ClipboardMenuSection(
+                store: appDelegate.clipboardStore,
+                controller: appDelegate.clipboard
+            )
 
             Button {
                 appDelegate.keyboardLock.toggle()
@@ -66,7 +61,16 @@ struct OpenFindApp: App {
             )
         }
         .menuBarExtraAccess(isPresented: $isMenuPresented) { statusItem in
-            appDelegate.menuBarPresentation.attach(statusItem)
+            appDelegate.menuBarPresentation.attach(statusItem) { action in
+                switch action {
+                case .toggleCapture:
+                    appDelegate.clipboardStore.setCapturePaused(
+                        !appDelegate.clipboardStore.preferences.capturePaused
+                    )
+                case .ignoreNextCapture:
+                    appDelegate.clipboardStore.ignoreNextCapture()
+                }
+            }
         }
         .menuBarExtraStyle(.menu)
 

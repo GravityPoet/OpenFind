@@ -190,6 +190,7 @@ for arch in $ARCHS; do
     lipo "$INSTALL_APP/Contents/MacOS/$EXECUTABLE_NAME" -verify_arch "$arch"
 done
 "$LSREGISTER" -f "$INSTALL_APP" >/dev/null 2>&1 || true
+/usr/bin/mdimport -i "$INSTALL_APP" >/dev/null 2>&1 || true
 
 open "$INSTALL_APP"
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
@@ -202,11 +203,6 @@ if ! pgrep -f "$PROCESS_PATTERN" >/dev/null; then
     echo "Error: OpenFind did not start from /Applications." >&2
     exit 1
 fi
-
-unregister_app_bundle "$DISPLACED_APP"
-remove_known_tree "$DISPLACED_APP"
-unregister_app_bundle "$SOURCE_APP"
-remove_known_tree "$TEMP_ROOT"
 
 physical_paths="$(
     for root in "/Applications" "$ROOT_DIR" "/private/tmp" "$HOME/Library/Application Support/Codex/Backups/OpenFind"; do
@@ -304,6 +300,8 @@ fi
 
 unregister_app_bundle "$DISPLACED_APP"
 remove_known_tree "$DISPLACED_APP"
+unregister_app_bundle "$SOURCE_APP"
+remove_known_tree "$TEMP_ROOT"
 REPLACEMENT_STARTED=0
 trap - EXIT INT TERM
 printf 'INSTALLED_APP=%s\n' "$INSTALL_APP"

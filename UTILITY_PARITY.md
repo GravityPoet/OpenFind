@@ -172,11 +172,18 @@ transaction and preserve the user's original power policy.
 
 ## Clipboard (Maccy-equivalent)
 
-- `[x]` Local `NSPasteboard` history for text, rich text, URLs, files, and images.
-- `[x]` Search, keyboard navigation, preview, copy, optional automatic paste, delete,
-  clear, pin, ordering, duplicate handling, and bounded retention.
-- `[x]` Ignore rules for transient/concealed/password-manager data and selected apps.
-- `[x]` Configurable size/history limits, paste-without-formatting, and menu-bar access.
+- `[x]` Clipboard parity is verified against Maccy commit
+  `59e781732f8501d2652ef68823226b00a30c48a0`, with the user's explicit interaction
+  decisions: a centered clipboard-only panel with an immediately focused search field,
+  no visible title, hover-following selection/preview, and plain click/Return auto-paste.
+  The authoritative row-by-row acceptance record is
+  [`CLIPBOARD_PARITY.md`](CLIPBOARD_PARITY.md).
+- `[x]` Text, rich text, URLs, multiple files, and images retain native representations;
+  source application icon/name, first/latest copy metadata, configurable privacy rules,
+  four search modes, configurable display/actions, stable pins, repeated-shortcut cycling,
+  direct paste, and Maccy-style Paste Stack are implemented and covered.
+- `[x]` Retention is time based at 3, 7, 15, or 30 days, plus Forever. Pinned entries are
+  excluded from age cleanup; hard storage bounds remain as a safety limit.
 - `[x]` AES-GCM history persistence keeps Apple-team build keys in Keychain and local
   self-signed build keys in an owner-only `0600` file. Legacy ciphertext is never
   overwritten before authenticated migration; symlink, ownership, size, and mode checks
@@ -202,12 +209,17 @@ transaction and preserve the user's original power policy.
   immediately accepted input; OpenFind then relaunched cleanly.
 - `[x]` The UI states that hardware power and Touch ID controls are not exposed by macOS.
 
-## Verification Record (2026-07-21)
+## Verification Record (2026-07-22)
 
-- `350 tests / 44 suites` passed in the latest serial run; earlier targeted and full-suite
-  runs also passed after hardening native callback lifetimes and encrypted-key migration.
+- `378 tests / 49 suites` passed in the latest full run, including clipboard retention,
+  pointer selection, search, preferences, source metadata, shortcut cycling, and Paste
+  Stack regressions.
 - Customer-signed Universal (`arm64` + `x86_64`) archive passed deep signature, SDEF,
   packaged smoke, checksum, and atomic `/Applications/OpenFind.app` installation checks.
+- The installed clipboard panel passed centered shortcut-only presentation, focused
+  search and real IME input, source-application rendering, hover-following selection and
+  preview, wheel scrolling without snap-back, direct click/Return paste, and a real
+  two-entry Paste Stack in TextEdit.
 - Physical bundle, Spotlight, LaunchServices, and Dock checks resolve only to
   `/Applications/OpenFind.app`; standard AppleScript returns `OpenFind|1.1.0`, and the
   real AppleScript `quit` event exits the installed process within the bounded window.

@@ -44,6 +44,129 @@ struct ClipboardHistoryStoreTests {
         #expect(store.entries.first?.isPinned == true)
     }
 
+    @Test func repeatedCopiesPreserveOriginMetadataAndRemainSearchable() throws {
+        let suite = "OpenFindTests.ClipboardMetadata.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+        let content = Data("same value".utf8)
+        let firstDate = Date(timeIntervalSince1970: 10)
+        let lastDate = Date(timeIntervalSince1970: 20)
+
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": content],
+            previewText: "same value",
+            kind: .text,
+            createdAt: firstDate,
+            sourceBundleIdentifier: "com.apple.TextEdit",
+            sourceApplicationName: "TextEdit"
+        ))
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": content],
+            previewText: "same value",
+            kind: .text,
+            createdAt: lastDate,
+            sourceBundleIdentifier: "com.apple.Safari",
+            sourceApplicationName: "Safari"
+        ))
+
+        let entry = try #require(store.entries.first)
+        #expect(store.entries.count == 1)
+        #expect(entry.initialCopiedAt == firstDate)
+        #expect(entry.createdAt == lastDate)
+        #expect(entry.numberOfCopies == 2)
+        #expect(entry.sourceApplicationName == "Safari")
+        store.query = "safari"
+        #expect(store.filteredEntries.map(\.id) == [entry.id])
+    }
+
+    @Test func pinningKeepsTheSameEntrySelectedAfterItMoves() throws {
+        let suite = "OpenFindTests.ClipboardSelection.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+        for index in 1...2 {
+            #expect(store.ingest(
+                representations: ["public.utf8-plain-text": Data("\(index)".utf8)],
+                previewText: "item \(index)",
+                kind: .text,
+                createdAt: Date(timeIntervalSince1970: TimeInterval(index))
+            ))
+        }
+        let olderEntry = try #require(store.entries.first(where: { $0.previewText == "item 1" }))
+        store.select(olderEntry)
+        #expect(store.selectedIndex == 1)
+
+        store.togglePinned(olderEntry)
+
+        #expect(store.selectedIndex == 0)
+        #expect(store.selectedEntry?.id == olderEntry.id)
+    }
+
+    @Test func filesAndURLsAreClassifiedBeforeTheirPlainTextFallbacks() throws {
+        let suite = "OpenFindTests.ClipboardClassification.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pasteboard = NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(),
+            pasteboard: pasteboard
+        )
+
+        let fileURL = URL(fileURLWithPath: "/tmp/example.txt")
+        let fileItem = NSPasteboardItem()
+        fileItem.setString("example.txt", forType: .string)
+        fileItem.setData(fileURL.dataRepresentation, forType: .init("public.file-url"))
+        pasteboard.clearContents()
+        #expect(pasteboard.writeObjects([fileItem]))
+        #expect(store.captureCurrentPasteboard())
+        #expect(store.entries.first?.kind == .file)
+
+        let webURL = try #require(URL(string: "https://openfind.example/path"))
+        let urlItem = NSPasteboardItem()
+        urlItem.setString(webURL.absoluteString, forType: .string)
+        urlItem.setData(webURL.dataRepresentation, forType: .init("public.url"))
+        pasteboard.clearContents()
+        #expect(pasteboard.writeObjects([urlItem]))
+        #expect(store.captureCurrentPasteboard())
+        #expect(store.entries.first?.kind == .url)
+    }
+
+    @Test func legacyEntriesDecodeWithoutNewInteractionMetadata() throws {
+        struct LegacyEntry: Encodable {
+            let id: UUID
+            let createdAt: Date
+            let previewText: String
+            let kind: ClipboardEntryKind
+            let representations: [String: Data]
+            let isPinned: Bool
+        }
+        let createdAt = Date(timeIntervalSince1970: 42)
+        let encoded = try JSONEncoder().encode(LegacyEntry(
+            id: UUID(),
+            createdAt: createdAt,
+            previewText: "legacy",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("legacy".utf8)],
+            isPinned: false
+        ))
+
+        let decoded = try JSONDecoder().decode(ClipboardEntry.self, from: encoded)
+
+        #expect(decoded.initialCopiedAt == createdAt)
+        #expect(decoded.numberOfCopies == 1)
+        #expect(decoded.sourceApplicationName == nil)
+    }
+
     @Test func persistenceCanBeDisabledAndClearsStoredHistory() throws {
         let suite = "OpenFindTests.Clipboard.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -301,7 +424,7 @@ struct ClipboardHistoryStoreTests {
         #expect(store.entries.isEmpty)
     }
 
-    @Test func configurableHistoryLimitTrimsOldestUnpinnedEntries() throws {
+    @Test func retentionPeriodExpiresOldUnpinnedEntriesAndPreservesPinnedItems() throws {
         let suite = "OpenFindTests.Clipboard.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -310,19 +433,59 @@ struct ClipboardHistoryStoreTests {
             persistence: MemoryClipboardPersistence(),
             pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
         )
-        store.setHistoryLimit(10)
-        for index in 0..<12 {
-            #expect(store.ingest(
-                representations: ["public.utf8-plain-text": Data("\(index)".utf8)],
-                previewText: "item \(index)",
-                kind: .text,
-                createdAt: Date(timeIntervalSince1970: TimeInterval(index))
-            ))
-        }
+        let day: TimeInterval = 24 * 60 * 60
+        let now = Date(timeIntervalSince1970: 10 * day)
+        store.setRetentionPeriod(.days3, referenceDate: now)
 
-        #expect(store.entries.count == 10)
-        #expect(store.entries.first?.previewText == "item 11")
-        #expect(store.entries.last?.previewText == "item 2")
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("pinned".utf8)],
+            previewText: "old pinned",
+            kind: .text,
+            createdAt: now.addingTimeInterval(-4 * day)
+        ))
+        store.togglePinned(try #require(store.entries.first))
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("expired".utf8)],
+            previewText: "expired",
+            kind: .text,
+            createdAt: now.addingTimeInterval(-3 * day - 1)
+        ))
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("boundary".utf8)],
+            previewText: "boundary",
+            kind: .text,
+            createdAt: now.addingTimeInterval(-3 * day)
+        ))
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("recent".utf8)],
+            previewText: "recent",
+            kind: .text,
+            createdAt: now
+        ))
+
+        #expect(Set(store.entries.map(\.previewText)) == ["old pinned", "boundary", "recent"])
+        #expect(store.entries.first(where: { $0.previewText == "old pinned" })?.isPinned == true)
+    }
+
+    @Test func foreverRetentionDisablesAgeBasedCleanup() throws {
+        let suite = "OpenFindTests.Clipboard.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+        store.setRetentionPeriod(.forever)
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("ancient".utf8)],
+            previewText: "ancient",
+            kind: .text,
+            createdAt: Date(timeIntervalSince1970: 1)
+        ))
+
+        #expect(!store.trimToLimits(referenceDate: Date(timeIntervalSince1970: 10_000_000)))
+        #expect(store.entries.map(\.previewText) == ["ancient"])
     }
 
     @Test func plainTextCopyDropsRichRepresentations() throws {
@@ -419,7 +582,6 @@ struct ClipboardHistoryStoreTests {
             pasteboard: pasteboard
         )
 
-        store.setPasteAutomatically(false)
         store.setPasteWithoutFormatting(true)
         store.setClearHistoryOnQuit(true)
         store.setClearSystemClipboardOnQuit(true)
@@ -430,7 +592,6 @@ struct ClipboardHistoryStoreTests {
             persistence: persistence,
             pasteboard: pasteboard
         )
-        #expect(!reloaded.pasteAutomatically)
         #expect(reloaded.pasteWithoutFormatting)
         #expect(reloaded.clearHistoryOnQuit)
         #expect(reloaded.clearSystemClipboardOnQuit)

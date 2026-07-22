@@ -1,11 +1,16 @@
 import AppKit
-import SwiftUI
 
 @MainActor
 final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
-    private let store: ClipboardHistoryStore
-    private let pasteService = ClipboardPasteService()
-    private var panel: NSPanel?
+    let store: ClipboardHistoryStore
+    let pasteService = ClipboardPasteService()
+    var panel: NSPanel?
+    var shortcutCycleState = ClipboardShortcutCycleState()
+    var shortcutFlagsMonitor: Any?
+    var shortcutModifierFlags: NSEvent.ModifierFlags = []
+    var pasteStackKeyMonitor: Any?
+    var pasteStackPasteKeyIsDown = false
+    var pasteStackAdvanceTask: Task<Void, Never>?
 
     init(store: ClipboardHistoryStore) {
         self.store = store
@@ -20,11 +25,25 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        shortcutCycleState.reset()
+        removeShortcutFlagsMonitor()
+        present()
+    }
+
+    func present(
+        positionOverride: ClipboardPopupPosition? = nil,
+        hideMainWindow: Bool = false
+    ) {
         pasteService.captureTargetApplication()
+        store.beginPresentation()
+        store.query = ""
+        store.selectedIndex = 0
+        store.clearMultiSelection()
+        store.isSearchPresented = true
         let panel = makePanelIfNeeded()
-        NSApp.unhide(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        position(panel)
+        activateForClipboardPanel(hideMainWindow: hideMainWindow)
+        resize(panel, showingPreview: store.isPreviewVisible, animated: false)
+        position(panel, override: positionOverride)
         panel.makeKeyAndOrderFront(nil)
     }
 
@@ -43,9 +62,6 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
                 try await pasteService.pasteIntoCapturedApplication()
                 close()
             } catch {
-                // The item remains copied even if automatic paste is
-                // unavailable; expose a safe explanation and keep the panel
-                // open so the user can use ordinary Command-V.
                 store.reportError(error)
             }
         }
@@ -53,52 +69,13 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
 
     func close() {
         panel?.orderOut(nil)
+        store.endPresentation()
+        shortcutCycleState.reset()
+        removeShortcutFlagsMonitor()
     }
 
-    private func makePanelIfNeeded() -> NSPanel {
-        if let panel { return panel }
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 430),
-            styleMask: [.titled, .closable, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
-        panel.isFloatingPanel = true
-        panel.level = .floating
-        panel.hidesOnDeactivate = true
-        panel.isReleasedWhenClosed = false
-        panel.delegate = self
-        panel.contentView = NSHostingView(
-            rootView: ClipboardHistoryView(
-                store: store,
-                onPaste: { [weak self] entry, plainTextOnly in
-                    self?.paste(entry, plainTextOnly: plainTextOnly)
-                }
-            ) { [weak self] in
-                self?.close()
-            }
-        )
-        self.panel = panel
-        return panel
-    }
-
-    private func position(_ panel: NSPanel) {
-        guard let screen = NSScreen.main else {
-            panel.center()
-            return
-        }
-        let visible = screen.visibleFrame
-        let origin = NSPoint(
-            x: visible.midX - panel.frame.width / 2,
-            y: visible.midY - panel.frame.height / 2
-        )
-        panel.setFrameOrigin(origin)
-    }
-
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
-        return false
+    func pasteSelected() {
+        guard let entry = store.selectedEntry else { return }
+        paste(entry)
     }
 }
