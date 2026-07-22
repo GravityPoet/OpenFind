@@ -34,6 +34,36 @@ extension View {
     }
 
     @ViewBuilder
+    func openFindInteractiveGlassRoundedRectangle(cornerRadius: CGFloat) -> some View {
+        if #available(macOS 26.0, *) {
+            glassEffect(
+                .regular.interactive(),
+                in: .rect(cornerRadius: cornerRadius)
+            )
+        } else {
+            background(
+                .regularMaterial,
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+        }
+    }
+
+    @ViewBuilder
+    func openFindSelectedGlassRoundedRectangle(cornerRadius: CGFloat) -> some View {
+        if #available(macOS 26.0, *) {
+            glassEffect(
+                .regular.tint(Color.accentColor).interactive(),
+                in: .rect(cornerRadius: cornerRadius)
+            )
+        } else {
+            background(
+                Color.accentColor.opacity(0.86),
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+        }
+    }
+
+    @ViewBuilder
     func openFindGlassRectangle() -> some View {
         if #available(macOS 26.0, *) {
             glassEffect(in: .rect)

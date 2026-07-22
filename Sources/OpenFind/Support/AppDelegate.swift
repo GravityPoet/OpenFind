@@ -227,6 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         if window.isVisible && NSApp.isActive {
             quickLook.close()
+            window.orderOut(nil)
             NSApp.hide(nil)
             return
         }
@@ -237,6 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender === mainWindow else { return true }
         quickLook.close()
+        sender.orderOut(nil)
         NSApp.hide(nil)
         return false
     }

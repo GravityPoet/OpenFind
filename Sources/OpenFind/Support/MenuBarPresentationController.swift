@@ -5,9 +5,16 @@ import OSLog
 final class MenuBarPresentationController {
     private let logger = Logger(subsystem: "com.openfind.app", category: "MenuBarPresentation")
     private weak var statusItem: NSStatusItem?
+    private var clickMonitor: Any?
+    private var onClipboardModifierAction: ((ClipboardMenuBarModifierAction) -> Void)?
 
-    func attach(_ statusItem: NSStatusItem) {
+    func attach(
+        _ statusItem: NSStatusItem,
+        onClipboardModifierAction: @escaping (ClipboardMenuBarModifierAction) -> Void
+    ) {
         self.statusItem = statusItem
+        self.onClipboardModifierAction = onClipboardModifierAction
+        installClickMonitorIfNeeded()
         logger.notice("Menu bar status item attached")
     }
 
@@ -25,5 +32,19 @@ final class MenuBarPresentationController {
         guard button.state == .off else { return true }
         button.performClick(nil)
         return true
+    }
+
+    private func installClickMonitorIfNeeded() {
+        guard clickMonitor == nil else { return }
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) {
+            [weak self] event in
+            guard let self,
+                  event.window === statusItem?.button?.window,
+                  let action = ClipboardMenuBarModifierAction(
+                      modifierFlags: event.modifierFlags
+                  ) else { return event }
+            onClipboardModifierAction?(action)
+            return nil
+        }
     }
 }

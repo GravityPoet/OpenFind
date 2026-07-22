@@ -34,8 +34,14 @@ final class ClipboardController {
     ) {
         self.registry = registry
         self.store = store
-        monitor = ClipboardMonitor(store: store)
-        windowController = ClipboardHistoryWindowController(store: store)
+        let windowController = ClipboardHistoryWindowController(store: store)
+        self.windowController = windowController
+        monitor = ClipboardMonitor(
+            store: store,
+            onExternalChange: { [weak windowController] in
+                windowController?.cancelPasteStack()
+            }
+        )
         self.defaults = defaults
         shortcut = Self.loadShortcut(from: defaults)
         isShortcutEnabled = defaults.object(forKey: Self.shortcutEnabledKey) as? Bool ?? true
@@ -43,18 +49,19 @@ final class ClipboardController {
 
     func start() {
         hasStarted = true
-        monitor.start()
+        monitor.start(interval: store.clipboardCheckInterval)
         registry.start()
         registrationState = registry.bind(
             id: Self.hotKeyID,
             shortcut: shortcut,
             enabled: isShortcutEnabled,
-            action: { [weak self] in self?.toggleWindow() }
+            action: { [weak self] in self?.handleShortcutInvocation() }
         )
     }
 
     func stop() {
         monitor.stop()
+        windowController.cancelPasteStack()
         windowController.close()
         registry.unbind(id: Self.hotKeyID)
         hasStarted = false
@@ -68,7 +75,7 @@ final class ClipboardController {
             id: Self.hotKeyID,
             shortcut: shortcut,
             enabled: isShortcutEnabled && hasStarted,
-            action: { [weak self] in self?.toggleWindow() }
+            action: { [weak self] in self?.handleShortcutInvocation() }
         )
         guard state != .conflict, !state.isFailure else {
             registrationState = state
@@ -93,7 +100,7 @@ final class ClipboardController {
             id: Self.hotKeyID,
             shortcut: shortcut,
             enabled: enabled && hasStarted,
-            action: { [weak self] in self?.toggleWindow() }
+            action: { [weak self] in self?.handleShortcutInvocation() }
         )
     }
 
@@ -101,8 +108,19 @@ final class ClipboardController {
         windowController.toggle()
     }
 
+    func handleShortcutInvocation() {
+        windowController.handleShortcutInvocation(shortcut: shortcut)
+    }
+
     func showWindow() {
         windowController.show()
+    }
+
+    func setClipboardCheckInterval(_ interval: TimeInterval) {
+        store.setClipboardCheckInterval(interval)
+        if hasStarted {
+            monitor.start(interval: store.clipboardCheckInterval)
+        }
     }
 
     private static func loadShortcut(from defaults: UserDefaults) -> GlobalShortcut {
