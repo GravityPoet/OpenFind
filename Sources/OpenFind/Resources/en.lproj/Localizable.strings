@@ -527,7 +527,9 @@
 "Clipboard Search Fuzzy" = "Fuzzy";
 "Clipboard Search Regex" = "Regular expression";
 "Clipboard Search Mixed" = "Mixed fallback";
-"Clipboard Check Interval" = "Clipboard check interval";
+"Clipboard Check Interval" = "Check for new clipboard content";
+"Clipboard Check Interval Recommended" = "500 ms (Recommended)";
+"Clipboard Check Interval Help" = "OpenFind checks the system clipboard every 0.5 seconds by default. Lower values respond faster but check more often; most people do not need to change this.";
 "Pause Clipboard Capture" = "Pause clipboard capture";
 "Ignore Next Clipboard Copy" = "Ignore next copy";
 "Waiting for Next Clipboard Copy" = "Waiting for the next copy";

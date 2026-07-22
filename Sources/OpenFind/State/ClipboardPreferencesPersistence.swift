@@ -11,7 +11,7 @@ enum ClipboardPreferencesPersistence {
     private static let fuzzySearchKey = "OpenFind.clipboardFuzzySearchV1"
     private static let defaultIgnoredAppsSeedVersionKey =
         "OpenFind.clipboardDefaultIgnoredAppsSeedVersionV1"
-    private static let currentDefaultIgnoredAppsSeedVersion = 1
+    private static let currentDefaultIgnoredAppsSeedVersion = 2
 
     static func load(from defaults: UserDefaults) -> ClipboardPreferences {
         let preferences: ClipboardPreferences
@@ -57,8 +57,8 @@ enum ClipboardPreferencesPersistence {
         _ preferences: ClipboardPreferences,
         in defaults: UserDefaults
     ) -> ClipboardPreferences {
-        guard defaults.integer(forKey: defaultIgnoredAppsSeedVersionKey)
-                < currentDefaultIgnoredAppsSeedVersion else {
+        let previousVersion = defaults.integer(forKey: defaultIgnoredAppsSeedVersionKey)
+        guard previousVersion < currentDefaultIgnoredAppsSeedVersion else {
             return preferences
         }
 
@@ -66,9 +66,18 @@ enum ClipboardPreferencesPersistence {
         // In allow-list mode these identifiers would mean “allowed”, the opposite
         // of the privacy default, so leave that explicit user configuration intact.
         if !seeded.ignoreAllAppsExceptListed {
-            seeded.ignoredBundleIdentifiers.formUnion(
-                ClipboardPreferences.defaultIgnoredBundleIdentifiers
-            )
+            if previousVersion < 1 {
+                seeded.ignoredBundleIdentifiers.formUnion(
+                    ClipboardPreferences.defaultIgnoredBundleIdentifiersV1
+                )
+            }
+            if previousVersion < 2 {
+                // Seed only the new catalog delta. An application removed by the
+                // user after an earlier seed must stay removed on later upgrades.
+                seeded.ignoredBundleIdentifiers.formUnion(
+                    ClipboardPreferences.defaultIgnoredBundleIdentifiersV2
+                )
+            }
         }
         seeded = seeded.normalized()
         guard let data = try? JSONEncoder().encode(seeded) else { return preferences }

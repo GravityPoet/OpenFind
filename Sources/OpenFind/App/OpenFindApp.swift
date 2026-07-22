@@ -47,9 +47,7 @@ struct OpenFindApp: App {
 
             Divider()
 
-            SettingsLink {
-                Text(L("Settings"))
-            }
+            OpenFindSettingsMenuItem()
 
             Button(L("Quit OpenFind")) {
                 NSApp.terminate(nil)
@@ -100,6 +98,18 @@ struct OpenFindApp: App {
                 viewModel: appDelegate.viewModel,
                 clipboardStore: appDelegate.clipboardStore
             )
+        }
+    }
+}
+
+private struct OpenFindSettingsMenuItem: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Button(L("Settings")) {
+            FileActions.openSettings {
+                openSettings()
+            }
         }
     }
 }

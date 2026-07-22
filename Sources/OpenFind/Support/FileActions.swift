@@ -104,8 +104,17 @@ enum FileActions {
     }
 
     @MainActor
-    static func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
+    static func openSettings(showSettings: () -> Void = {
         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }) {
+        NSApp.unhide(nil)
+        showSettings()
+        // MenuBarExtra dismisses its menu after this action returns. Activate on
+        // the next main-loop turn so the Settings scene cannot remain behind the
+        // application that was frontmost when the menu was opened.
+        DispatchQueue.main.async {
+            NSApp.unhide(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }

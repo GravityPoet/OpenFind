@@ -527,7 +527,9 @@
 "Clipboard Search Fuzzy" = "模糊匹配";
 "Clipboard Search Regex" = "正则表达式";
 "Clipboard Search Mixed" = "混合回退";
-"Clipboard Check Interval" = "剪贴板检查间隔";
+"Clipboard Check Interval" = "检测新复制内容的频率";
+"Clipboard Check Interval Recommended" = "500 毫秒（推荐）";
+"Clipboard Check Interval Help" = "OpenFind 默认每 0.5 秒检查一次系统剪贴板。数值越小响应越快，后台检查也越频繁；一般无需修改。";
 "Pause Clipboard Capture" = "暂停记录剪贴板";
 "Ignore Next Clipboard Copy" = "忽略下一次复制";
 "Waiting for Next Clipboard Copy" = "正在等待下一次复制";
