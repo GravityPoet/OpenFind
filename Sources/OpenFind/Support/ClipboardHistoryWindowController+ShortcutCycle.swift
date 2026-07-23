@@ -7,7 +7,7 @@ extension ClipboardHistoryWindowController {
         case .show:
             shortcutModifierFlags = shortcut.eventModifierFlags
             installShortcutFlagsMonitor()
-            present(positionOverride: .center, hideMainWindow: true)
+            present(positionOverride: .center, hideApplicationWindows: true)
         case .close:
             close()
         case .moveNext:

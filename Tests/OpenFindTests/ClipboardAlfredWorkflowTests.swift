@@ -147,6 +147,27 @@ struct ClipboardAlfredWorkflowTests {
         #expect(mixedSelection.itemActions == [.pasteSelection, .delete])
     }
 
+    @Test func shortcutActivationHidesMainAndSettingsWindows() throws {
+        let context = try makeContext()
+        let controller = ClipboardHistoryWindowController(store: context.store)
+        let mainWindow = testWindow(identifier: "OpenFind.main")
+        let settingsWindow = testWindow(identifier: "OpenFind.settings")
+        mainWindow.orderFront(nil)
+        settingsWindow.orderFront(nil)
+        defer {
+            mainWindow.orderOut(nil)
+            settingsWindow.orderOut(nil)
+        }
+
+        #expect(mainWindow.isVisible)
+        #expect(settingsWindow.isVisible)
+
+        controller.activateForClipboardPanel(hideApplicationWindows: true)
+
+        #expect(!mainWindow.isVisible)
+        #expect(!settingsWindow.isVisible)
+    }
+
     @Test func commandActionsPrecedeTheIMECompositionGuard() throws {
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
@@ -201,6 +222,17 @@ struct ClipboardAlfredWorkflowTests {
         #expect(coordinator.handle(commandS) == nil)
         #expect(actionPanelToggleCount == 1)
         #expect(saveCount == 1)
+    }
+
+    private func testWindow(identifier: String) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+            styleMask: .titled,
+            backing: .buffered,
+            defer: false
+        )
+        window.identifier = NSUserInterfaceItemIdentifier(identifier)
+        return window
     }
 
     @Test func panelKeyEquivalentsProvideAResponderChainFallback() throws {
