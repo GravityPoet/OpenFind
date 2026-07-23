@@ -5,9 +5,11 @@ import Testing
 @MainActor
 @Suite("Launch At Login Controller Tests")
 struct LaunchAtLoginControllerTests {
-    @Test func registrationAndUnregistrationFollowTheServiceState() {
+    @Test func registrationAndUnregistrationFollowTheServiceState() throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
         let service = FakeLaunchAtLoginService()
-        let controller = LaunchAtLoginController(service: service)
+        let controller = LaunchAtLoginController(service: service, defaults: defaults)
 
         controller.setEnabled(true)
         #expect(controller.status == .enabled)
@@ -20,13 +22,60 @@ struct LaunchAtLoginControllerTests {
         #expect(service.unregisterCount == 1)
     }
 
-    @Test func approvalStateRemainsEnabledAndCanOpenSystemSettings() {
+    @Test func approvalStateRemainsEnabledAndCanOpenSystemSettings() throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
         let service = FakeLaunchAtLoginService(status: .requiresApproval)
-        let controller = LaunchAtLoginController(service: service)
+        let controller = LaunchAtLoginController(service: service, defaults: defaults)
 
         #expect(controller.isEnabled)
         controller.openSystemSettings()
         #expect(service.openSettingsCount == 1)
+    }
+
+    @Test func firstLaunchEnablesLoginItemOnceAndPreservesLaterOptOut() throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = FakeLaunchAtLoginService()
+        let controller = LaunchAtLoginController(service: service, defaults: defaults)
+
+        controller.enableByDefaultIfNeeded()
+
+        #expect(service.registerCount == 1)
+        #expect(controller.status == .enabled)
+        #expect(
+            defaults.integer(forKey: LaunchAtLoginController.defaultEnrollmentVersionKey)
+                == LaunchAtLoginController.defaultEnrollmentVersion
+        )
+
+        controller.setEnabled(false)
+        #expect(controller.status == .disabled)
+
+        let nextLaunch = LaunchAtLoginController(service: service, defaults: defaults)
+        nextLaunch.enableByDefaultIfNeeded()
+
+        #expect(nextLaunch.status == .disabled)
+        #expect(service.registerCount == 1)
+    }
+
+    @Test func unavailableDefaultEnrollmentRetriesWhenServiceRecovers() throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = FakeLaunchAtLoginService(status: .unavailable)
+        let controller = LaunchAtLoginController(service: service, defaults: defaults)
+
+        controller.enableByDefaultIfNeeded()
+
+        #expect(service.registerCount == 0)
+        #expect(
+            defaults.integer(forKey: LaunchAtLoginController.defaultEnrollmentVersionKey) == 0
+        )
+
+        service.status = .disabled
+        controller.enableByDefaultIfNeeded()
+
+        #expect(service.registerCount == 1)
+        #expect(controller.status == .enabled)
     }
 
     @Test func unavailableNativeServiceUsesTheUserLaunchAgentFallback() throws {
@@ -125,6 +174,11 @@ struct LaunchAtLoginControllerTests {
         do { try service.unregister() } catch { unregisterFailed = true }
         #expect(unregisterFailed)
         #expect(try Data(contentsOf: configurationURL) == foreignData)
+    }
+
+    private func makeDefaults() throws -> (UserDefaults, String) {
+        let suite = "OpenFindTests.LaunchAtLogin.\(UUID().uuidString)"
+        return (try #require(UserDefaults(suiteName: suite)), suite)
     }
 }
 

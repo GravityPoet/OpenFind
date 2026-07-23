@@ -101,6 +101,10 @@ bash Scripts/install_local_app.sh
 ```
 *使用全局快捷键 **`⌘⇧Space`** 即可在任意位置唤起或隐藏 OpenFind！*
 
+首次打开已安装的 OpenFind 时，应用会默认注册为 macOS 登录项；以后登录
+Mac 时会直接驻留在菜单栏，不主动弹出主窗口。用户随时可以在 OpenFind
+设置中关闭“登录时启动 OpenFind”，关闭后不会被后续启动强制重新开启。
+
 必须通过 `Scripts/install_local_app.sh` 安装完整应用包，不要只替换
 `OpenFind.app/Contents/MacOS/OpenFind`。主程序、内嵌 Sparkle、运行时路径、
 App Intents 元数据和代码签名是一个完整验收单元；局部替换会导致 macOS

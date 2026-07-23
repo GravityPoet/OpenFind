@@ -200,12 +200,21 @@ final class MainAppLaunchAtLoginService: LaunchAtLoginServicing {
 @MainActor
 @Observable
 final class LaunchAtLoginController {
+    static let defaultEnrollmentVersion = 1
+    static let defaultEnrollmentVersionKey =
+        "OpenFind.launchAtLoginDefaultEnrollmentVersion"
+
     @ObservationIgnored private let service: any LaunchAtLoginServicing
+    @ObservationIgnored private let defaults: UserDefaults
     private(set) var status: LaunchAtLoginStatus
     private(set) var lastErrorMessage: String?
 
-    init(service: any LaunchAtLoginServicing = MainAppLaunchAtLoginService()) {
+    init(
+        service: any LaunchAtLoginServicing = MainAppLaunchAtLoginService(),
+        defaults: UserDefaults = .standard
+    ) {
         self.service = service
+        self.defaults = defaults
         status = service.status
     }
 
@@ -213,7 +222,35 @@ final class LaunchAtLoginController {
         status == .enabled || status == .requiresApproval
     }
 
+    /// Enrolls new installations once, while preserving every later user
+    /// choice. A transient registration failure deliberately leaves the
+    /// migration pending so the next launch can retry.
+    func enableByDefaultIfNeeded() {
+        refresh()
+        guard defaults.integer(forKey: Self.defaultEnrollmentVersionKey)
+                < Self.defaultEnrollmentVersion else { return }
+        do {
+            if status == .disabled {
+                try service.register()
+                refresh()
+            }
+            guard isEnabled else { return }
+            defaults.set(
+                Self.defaultEnrollmentVersion,
+                forKey: Self.defaultEnrollmentVersionKey
+            )
+            lastErrorMessage = nil
+        } catch {
+            refresh()
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
     func setEnabled(_ enabled: Bool) {
+        defaults.set(
+            Self.defaultEnrollmentVersion,
+            forKey: Self.defaultEnrollmentVersionKey
+        )
         do {
             if enabled {
                 if service.status == .disabled { try service.register() }
