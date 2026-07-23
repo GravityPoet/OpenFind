@@ -144,10 +144,11 @@ SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 
 ---
 
-## ⚖️ 许可与商业化
+## ⚖️ 许可与商业授权
 
-基于 **GNU Affero General Public License v3.0** 协议开源（仅限 `AGPL-3.0-only`）。详见 [LICENSE](LICENSE).
+本项目开源发布版本基于 **GNU Affero General Public License v3.0** 协议开源（仅限 `AGPL-3.0-only`）。详见 [LICENSE](LICENSE)。
 
-* **商业授权**: 允许商业闭源集成与专有分发。详见 [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)。
-* **贡献者协议 (CLA)**: 提交 PR 须签署 CLA。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-* **商标声明**: 详见 [TRADEMARKS.md](TRADEMARKS.md)。
+* **AGPL 开源使用**：个人与开源社区可免费使用，但任何基于本项目的再分发或网络服务均须按 AGPL-3.0 协议保持开源并开源对应源码。
+* **商业闭源授权**：**默认许可不包含闭源授权**。企业或组织若希望在闭源产品中嵌入、重新分发或免除 AGPL 开源义务，**必须单独向项目所有者申请并签署独立的商业授权协议**。详见 [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)。
+* **贡献者协议 (CLA)**：为了维护双重许可的合法性，所有外部 PR 提交前均须签署 CLA。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+* **商标声明**：详见 [TRADEMARKS.md](TRADEMARKS.md)。

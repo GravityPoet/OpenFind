@@ -144,10 +144,11 @@ SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 
 ---
 
-## ⚖️ License & Commercial Terms
+## ⚖️ License & Commercial Licensing
 
-Licensed under the **GNU Affero General Public License v3.0** (`AGPL-3.0-only`). See [LICENSE](LICENSE).
+OpenFind is publicly licensed under the **GNU Affero General Public License v3.0** (`AGPL-3.0-only`). See [LICENSE](LICENSE).
 
-* **Commercial Licensing**: Available for commercial embedding or proprietary distribution. See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
-* **Contributor License Agreement**: Requires accepted CLA for pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md).
+* **AGPL Compliance**: Free to use for personal and open-source projects. Any modified redistribution or hosted network service (SaaS) must be open-sourced under the AGPL-3.0 terms.
+* **Commercial Licensing**: **No proprietary or closed-source rights are granted by default**. Organizations that want to embed, redistribute, or use OpenFind in proprietary/closed-source products without AGPL restrictions **must request and acquire a separate written Commercial License from the project owner**. See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
+* **Contributor Agreement**: Requires an accepted Contributor License Agreement (CLA) for PRs. See [CONTRIBUTING.md](CONTRIBUTING.md).
 * **Trademarks**: See [TRADEMARKS.md](TRADEMARKS.md).
