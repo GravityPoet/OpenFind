@@ -1,6 +1,7 @@
 import Carbon
 import Foundation
 import Observation
+import OSLog
 
 @MainActor
 @Observable
@@ -22,12 +23,19 @@ final class GlobalHotKeyRegistry {
     }
 
     private static let signature: OSType = 0x4F464E44 // OFND
+    private let logger = Logger(subsystem: "com.openfind.app", category: "GlobalHotKey")
+    private let retryDelay: Duration
     private var eventHandler: EventHandlerRef?
     private var entries: [String: Entry] = [:]
     private var actionIDs: [UInt32: String] = [:]
     private var nextCarbonID: UInt32 = 1
+    private var retryTask: Task<Void, Never>?
     private(set) var isStarted = false
     private(set) var installationStatus: OSStatus?
+
+    init(retryDelay: Duration = .seconds(1)) {
+        self.retryDelay = retryDelay
+    }
 
     func start() {
         guard !isStarted else { return }
@@ -48,15 +56,22 @@ final class GlobalHotKeyRegistry {
             for id in entries.keys where entries[id]?.enabled == true {
                 entries[id]?.state = .failed(status)
             }
+            logger.error(
+                "Hot-key event handler installation failed with OSStatus \(status, privacy: .public)"
+            )
+            scheduleRetryIfNeeded()
             return
         }
         isStarted = true
         for id in entries.keys.sorted() {
             registerEntry(id: id)
         }
+        scheduleRetryIfNeeded()
     }
 
     func stop() {
+        retryTask?.cancel()
+        retryTask = nil
         for id in entries.keys { unregisterEntry(id: id) }
         if let eventHandler {
             RemoveEventHandler(eventHandler)
@@ -74,15 +89,17 @@ final class GlobalHotKeyRegistry {
         action: @escaping @MainActor () -> Void
     ) -> State {
         guard shortcut.isValid else { return .failed(OSStatus(paramErr)) }
-        if enabled, !isStarted, let installationStatus, installationStatus != noErr {
-            return .failed(installationStatus)
-        }
         if let existing = entries[id],
            existing.shortcut == shortcut,
            existing.enabled == enabled {
-            entries[id]?.state = enabled && isStarted
-                ? (existing.hotKey == nil ? registerEntry(id: id) : .registered)
-                : .disabled
+            if enabled && isStarted {
+                entries[id]?.state = existing.hotKey == nil ? registerEntry(id: id) : .registered
+            } else if enabled, let installationStatus, installationStatus != noErr {
+                entries[id]?.state = .failed(installationStatus)
+            } else {
+                entries[id]?.state = .disabled
+            }
+            scheduleRetryIfNeeded()
             return entries[id]?.state ?? .disabled
         }
 
@@ -106,6 +123,7 @@ final class GlobalHotKeyRegistry {
                     state: .disabled
                 )
                 actionIDs.removeValue(forKey: carbonID)
+                cancelRetryIfIdle()
                 return .disabled
             }
             // Register the replacement before releasing the old binding. If the
@@ -136,17 +154,46 @@ final class GlobalHotKeyRegistry {
             hotKey: nil,
             state: .disabled
         )
-        if enabled && isStarted { return registerEntry(id: id) }
+        if enabled && isStarted {
+            let state = registerEntry(id: id)
+            scheduleRetryIfNeeded()
+            return state
+        }
+        if enabled, let installationStatus, installationStatus != noErr {
+            entries[id]?.state = .failed(installationStatus)
+            scheduleRetryIfNeeded()
+            return .failed(installationStatus)
+        }
+        cancelRetryIfIdle()
         return .disabled
     }
 
     func unbind(id: String) {
         unregisterEntry(id: id)
         entries.removeValue(forKey: id)
+        cancelRetryIfIdle()
     }
 
     func state(for id: String) -> State {
         entries[id]?.state ?? .disabled
+    }
+
+    /// Re-attempts enabled bindings that were unavailable at launch. Carbon
+    /// does not notify clients when another process releases a shortcut, so a
+    /// failed one-shot registration otherwise remains broken until restart.
+    func retryFailedRegistrations() {
+        retryTask?.cancel()
+        retryTask = nil
+        guard hasPendingRegistration else { return }
+        guard isStarted else {
+            start()
+            return
+        }
+        for id in entries.keys.sorted()
+            where entries[id]?.enabled == true && entries[id]?.hotKey == nil {
+            registerEntry(id: id)
+        }
+        scheduleRetryIfNeeded()
     }
 
     private var lastRegistrationStatus: OSStatus = noErr
@@ -157,6 +204,7 @@ final class GlobalHotKeyRegistry {
             entries[id]?.state = .disabled
             return .disabled
         }
+        let previousState = entry.state
         guard !entries.contains(where: { key, other in
             key != id && other.enabled && other.shortcut == entry.shortcut
         }) else {
@@ -165,14 +213,24 @@ final class GlobalHotKeyRegistry {
             return .conflict
         }
         guard let hotKey = register(shortcut: entry.shortcut, carbonID: entry.carbonID) else {
-            entry.state = .failed(lastRegistrationStatus)
+            entry.state = lastRegistrationStatus == eventHotKeyExistsErr
+                ? .conflict
+                : .failed(lastRegistrationStatus)
             entries[id] = entry
+            if previousState != entry.state {
+                logger.error(
+                    "Global shortcut \(id, privacy: .public) registration failed with OSStatus \(self.lastRegistrationStatus, privacy: .public)"
+                )
+            }
             return entry.state
         }
         entry.hotKey = hotKey
         entry.state = .registered
         entries[id] = entry
         actionIDs[entry.carbonID] = id
+        if previousState == .conflict || previousState.isFailure {
+            logger.notice("Global shortcut \(id, privacy: .public) registration recovered")
+        }
         return .registered
     }
 
@@ -199,6 +257,34 @@ final class GlobalHotKeyRegistry {
         return reference
     }
 
+    private var hasPendingRegistration: Bool {
+        entries.values.contains { $0.enabled && $0.hotKey == nil }
+    }
+
+    private func scheduleRetryIfNeeded() {
+        guard hasPendingRegistration else {
+            cancelRetryIfIdle()
+            return
+        }
+        guard retryTask == nil else { return }
+        let delay = retryDelay
+        retryTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.retryFailedRegistrations()
+        }
+    }
+
+    private func cancelRetryIfIdle() {
+        guard !hasPendingRegistration else { return }
+        retryTask?.cancel()
+        retryTask = nil
+    }
+
     private func allocateCarbonID() -> UInt32 {
         defer { nextCarbonID &+= 1 }
         return nextCarbonID
@@ -207,6 +293,13 @@ final class GlobalHotKeyRegistry {
     fileprivate func dispatch(carbonID: UInt32) {
         guard let id = actionIDs[carbonID] else { return }
         entries[id]?.action()
+    }
+}
+
+private extension GlobalHotKeyRegistry.State {
+    var isFailure: Bool {
+        if case .failed = self { return true }
+        return false
     }
 }
 

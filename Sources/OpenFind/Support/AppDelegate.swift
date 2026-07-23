@@ -42,6 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var updaterController: SPUStandardUpdaterController?
     private var terminationReplyPending = false
     private var closedDisplayRecoveryTask: Task<Void, Never>?
+    private var backgroundHibernateTask: Task<Void, Never>?
+    private var isBackgroundResident = false
 
     override init() {
         let hotKeyRegistry = GlobalHotKeyRegistry()
@@ -89,6 +91,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceDidWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
         configureUpdaterIfAvailable()
         showMainWindow()
         startRuntimeServices(includeTriggerScheduler: false)
@@ -118,6 +126,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        backgroundHibernateTask?.cancel()
+        backgroundHibernateTask = nil
         clipboardStore.prepareForTermination()
         stopRuntimeServices()
         if Self.shared === self { Self.shared = nil }
@@ -130,6 +141,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         lifecycleLogger.notice("Termination cleanup started")
         terminationReplyPending = true
+        backgroundHibernateTask?.cancel()
+        backgroundHibernateTask = nil
         stopRuntimeServices()
         Task { @MainActor [weak self, weak sender] in
             guard let self else {
@@ -193,6 +206,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        hotKeyRegistry.retryFailedRegistrations()
+    }
+
+    func applicationDidResignActive(_ notification: Notification) {
+        guard !hasVisiblePrimaryWindow else { return }
+        enterBackgroundMode()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
@@ -203,6 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func showSettingsWindow(_ sender: Any?) {
         let window = makeSettingsWindowIfNeeded()
+        enterForegroundMode()
         NSApp.unhide(nil)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(sender)
@@ -238,7 +261,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if window.isVisible && NSApp.isActive {
             quickLook.close()
             window.orderOut(nil)
-            NSApp.hide(nil)
+            if !hasVisiblePrimaryWindow {
+                enterBackgroundMode()
+            }
             return
         }
 
@@ -246,10 +271,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard sender === mainWindow else { return true }
-        quickLook.close()
+        guard sender === mainWindow || sender === settingsWindow else { return true }
+        if sender === mainWindow { quickLook.close() }
         sender.orderOut(nil)
-        NSApp.hide(nil)
+        if !hasVisiblePrimaryWindow {
+            enterBackgroundMode()
+        }
         return false
     }
 
@@ -270,10 +297,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func showMainWindow(_ window: NSWindow? = nil) {
         let window = window ?? makeMainWindowIfNeeded()
 
+        enterForegroundMode()
         NSApp.unhide(nil)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         NotificationCenter.default.post(name: .openFindFocusSearch, object: nil)
+    }
+
+    private var hasVisiblePrimaryWindow: Bool {
+        [mainWindow, settingsWindow].compactMap { $0 }.contains { $0.isVisible }
+    }
+
+    private func enterForegroundMode() {
+        let wasBackgroundResident = isBackgroundResident
+        isBackgroundResident = false
+        backgroundHibernateTask?.cancel()
+        backgroundHibernateTask = nil
+        if wasBackgroundResident {
+            viewModel.resumeFromBackground()
+        }
+    }
+
+    private func enterBackgroundMode() {
+        guard !hasVisiblePrimaryWindow else { return }
+        guard !isBackgroundResident else { return }
+        isBackgroundResident = true
+        // OpenFind is an LSUIElement utility and remains an accessory process,
+        // like Maccy and Alfred. Reusing the same pre-rendered panel avoids
+        // invalidating AppKit text-input and WindowServer state between the
+        // primary window and the global clipboard shortcut.
+        clipboard.prepareWindowForBackgroundResidence()
+        backgroundHibernateTask?.cancel()
+        backgroundHibernateTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+            } catch {
+                return
+            }
+            guard let self, self.isBackgroundResident, !Task.isCancelled else { return }
+            await self.viewModel.hibernateForBackground()
+            guard !Task.isCancelled else { return }
+            self.backgroundHibernateTask = nil
+            ProcessMemoryReclaimer.schedule()
+        }
+    }
+
+    @objc private func workspaceDidWake(_ notification: Notification) {
+        hotKeyRegistry.retryFailedRegistrations()
     }
 
     private func makeMainWindowIfNeeded() -> NSWindow {

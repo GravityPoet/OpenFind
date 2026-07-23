@@ -110,6 +110,7 @@ struct ClipboardPreferences: Codable, Equatable, Sendable {
     var showSpecialSymbols = true
     var showHexColorSwatch = true
     var showRecentCopyInMenuBar = false
+    var imageTextRecognitionEnabled = true
     var snippetExpansionEnabled = false
     var quickMergeEnabled = false
     var quickMergeSeparator = ClipboardQuickMergeSeparator.newline

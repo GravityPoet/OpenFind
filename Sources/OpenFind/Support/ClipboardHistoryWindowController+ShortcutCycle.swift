@@ -2,7 +2,7 @@ import AppKit
 
 extension ClipboardHistoryWindowController {
     func handleShortcutInvocation(shortcut: GlobalShortcut) {
-        let action = shortcutCycleState.press(panelIsVisible: panel?.isVisible == true)
+        let action = shortcutCycleState.press(panelIsVisible: store.isPanelPresented)
         switch action {
         case .show:
             shortcutModifierFlags = shortcut.eventModifierFlags

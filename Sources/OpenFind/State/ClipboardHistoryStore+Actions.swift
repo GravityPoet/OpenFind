@@ -80,14 +80,19 @@ extension ClipboardHistoryStore {
     }
 
     func prepareForTermination() {
-        if clearHistoryOnQuit { clearAll() }
+        if clearHistoryOnQuit { clearAll(recordsUndo: false) }
         if clearSystemClipboardOnQuit { pasteboard.clearContents() }
     }
 
     func delete(_ entry: ClipboardEntry) {
+        guard let entryIndex = entries.firstIndex(where: { $0.id == entry.id }) else { return }
         let selectedID = selectedEntry?.id
         let deletedSelectedEntry = selectedID == entry.id
-        entries.removeAll { $0.id == entry.id }
+        recordDeletionUndo(
+            [ClipboardDeletionUndo.RemovedEntry(index: entryIndex, entry: entries[entryIndex])],
+            selectedEntryID: selectedID
+        )
+        entries.remove(at: entryIndex)
         removeInvalidSelections()
         if !deletedSelectedEntry,
            let selectedID,
@@ -105,6 +110,13 @@ extension ClipboardHistoryStore {
             if let selectedEntry { delete(selectedEntry) }
             return
         }
+        let removed = entries.enumerated().compactMap { index, entry in
+            ids.contains(entry.id)
+                ? ClipboardDeletionUndo.RemovedEntry(index: index, entry: entry)
+                : nil
+        }
+        guard !removed.isEmpty else { return }
+        recordDeletionUndo(removed, selectedEntryID: selectedEntry?.id)
         entries.removeAll { ids.contains($0.id) }
         clearMultiSelection()
         selectedIndex = min(selectedIndex, max(0, filteredEntries.count - 1))
@@ -147,25 +159,79 @@ extension ClipboardHistoryStore {
         guard minutes > 0 else { return }
         let cutoff = referenceDate.addingTimeInterval(-TimeInterval(minutes * 60))
         let selectedID = selectedEntry?.id
-        entries.removeAll { !$0.isPinned && $0.createdAt >= cutoff }
+        let removed = entries.enumerated().compactMap { index, entry in
+            !entry.isPinned && entry.createdAt >= cutoff
+                ? ClipboardDeletionUndo.RemovedEntry(index: index, entry: entry)
+                : nil
+        }
+        guard !removed.isEmpty else { return }
+        recordDeletionUndo(removed, selectedEntryID: selectedID)
+        let ids = Set(removed.map(\.entry.id))
+        entries.removeAll { ids.contains($0.id) }
         removeInvalidSelections()
         restoreSelection(id: selectedID)
         persist()
     }
 
     func clearUnpinned() {
-        entries.removeAll { !$0.isPinned }
+        let removed = entries.enumerated().compactMap { index, entry in
+            !entry.isPinned
+                ? ClipboardDeletionUndo.RemovedEntry(index: index, entry: entry)
+                : nil
+        }
+        guard !removed.isEmpty else { return }
+        recordDeletionUndo(removed, selectedEntryID: selectedEntry?.id)
+        let ids = Set(removed.map(\.entry.id))
+        entries.removeAll { ids.contains($0.id) }
         selectedIndex = 0
         removeInvalidSelections()
         persist()
     }
 
-    func clearAll() {
+    func clearAll(recordsUndo: Bool = true) {
+        guard !entries.isEmpty else { return }
+        if recordsUndo {
+            let removed = entries.enumerated().map {
+                ClipboardDeletionUndo.RemovedEntry(index: $0.offset, entry: $0.element)
+            }
+            recordDeletionUndo(removed, selectedEntryID: selectedEntry?.id)
+        } else {
+            deletionUndo = nil
+        }
         entries.removeAll()
         selectedIndex = 0
         clearMultiSelection()
         cancelPasteStack()
         persist()
+    }
+
+    @discardableResult
+    func undoLastDeletion() -> Bool {
+        guard let undo = deletionUndo else { return false }
+        deletionUndo = nil
+
+        let removedIDs = Set(undo.removedEntries.map(\.entry.id))
+        let newEntries = entries.filter {
+            !undo.survivingEntryIDs.contains($0.id) && !removedIDs.contains($0.id)
+        }
+        var restored = entries.filter { undo.survivingEntryIDs.contains($0.id) }
+        let existingIDs = Set(entries.map(\.id))
+        for removed in undo.removedEntries.sorted(by: { $0.index < $1.index })
+            where !existingIDs.contains(removed.entry.id) {
+            restored.insert(removed.entry, at: min(removed.index, restored.count))
+        }
+        entries = newEntries + restored
+        clearMultiSelection()
+        restoreSelection(
+            id: undo.selectedEntryID ?? undo.removedEntries.first?.entry.id
+        )
+        persist()
+        enqueueMissingImageTextRecognition()
+        return true
+    }
+
+    func dismissDeletionUndo() {
+        deletionUndo = nil
     }
 
     func clearError() {
@@ -193,6 +259,12 @@ extension ClipboardHistoryStore {
             return text
         }
         if entry.kind == .url { return entry.previewText }
+        if preferences.imageTextRecognitionEnabled,
+           entry.kind == .image,
+           let text = entry.recognizedText,
+           !text.isEmpty {
+            return text
+        }
         return nil
     }
 
@@ -204,5 +276,20 @@ extension ClipboardHistoryStore {
         guard pasteboard.writeObjects([item]) else {
             throw ClipboardHistoryError.pasteboardWriteFailed
         }
+    }
+
+    private func recordDeletionUndo(
+        _ removedEntries: [ClipboardDeletionUndo.RemovedEntry],
+        selectedEntryID: UUID?
+    ) {
+        guard !removedEntries.isEmpty else { return }
+        let removedIDs = Set(removedEntries.map(\.entry.id))
+        deletionUndo = ClipboardDeletionUndo(
+            removedEntries: removedEntries,
+            survivingEntryIDs: Set(entries.lazy.filter {
+                !removedIDs.contains($0.id)
+            }.map(\.id)),
+            selectedEntryID: selectedEntryID
+        )
     }
 }

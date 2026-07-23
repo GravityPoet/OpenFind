@@ -2640,6 +2640,38 @@ struct SearchIndexTests {
         #expect(events[0].matchesQuery.contains("example.txt"))
     }
 
+    @Test func hibernateDropsLiveIndexAndReloadsDurableSnapshot() async throws {
+        let root = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let expected = root.appendingPathComponent("reload-after-hibernate.txt")
+        try writeFile(at: expected, content: "durable")
+        let cacheURL = createCacheURL()
+        defer {
+            try? FileManager.default.removeItem(at: cacheURL)
+            try? FileManager.default.removeItem(at: SearchIndexPersistence.deltaURL(for: cacheURL))
+            try? FileManager.default.removeItem(at: SearchIndexPersistence.nameIndexURL(for: cacheURL))
+        }
+        let store = SearchIndexStore(persistenceURL: cacheURL)
+
+        let initialStats = await store.refresh(
+            scopes: [root],
+            hasFullDiskAccess: true
+        )
+        #expect(initialStats.indexedItems > 0)
+        await store.flushPersistence()
+
+        #expect(await store.hibernate())
+        #expect((await store.stats()).indexedItems == 0)
+
+        let reloaded = await store.snapshot(
+            for: [root],
+            hasFullDiskAccess: true
+        )
+        let reloadedPaths = Set(reloaded.nodes.indices.map(reloaded.path(for:)))
+        #expect(reloadedPaths.contains(expected.path))
+        await store.cancelActiveWorkForTermination()
+    }
+
     @Test func eventLogKeepsOpenFindCacheEvents() async throws {
         let store = SearchIndexStore(persistenceURL: createCacheURL())
         let path = "\(NSHomeDirectory())/Library/Application Support/OpenFind/search-index-v18.bin"

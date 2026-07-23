@@ -41,6 +41,14 @@ struct ClipboardEntryMetadata: View {
             Spacer(minLength: 12)
 
             VStack(alignment: .trailing, spacing: 3) {
+                if let recognizedText = entry.recognizedText, !recognizedText.isEmpty {
+                    Text(String(
+                        format: L("Clipboard Recognized Text Count"),
+                        recognizedText.count
+                    ))
+                    .lineLimit(1)
+                }
+
                 if let statistics = entry.textStatistics {
                     Text(String(
                         format: L("Clipboard Text Statistics"),

@@ -166,6 +166,7 @@ struct ClipboardHistoryStoreTests {
         #expect(decoded.initialCopiedAt == createdAt)
         #expect(decoded.numberOfCopies == 1)
         #expect(decoded.sourceApplicationName == nil)
+        #expect(decoded.recognizedText == nil)
     }
 
     @Test func persistenceCanBeDisabledAndClearsStoredHistory() throws {
@@ -815,6 +816,202 @@ struct ClipboardHistoryStoreTests {
         #expect(store.entries.isEmpty)
         #expect(pasteboard.string(forType: .string) == nil)
     }
+
+    @Test func structuredFiltersComposeWithTextSearchAndKeepOnlyTextHighlighted() throws {
+        let suite = "OpenFindTests.ClipboardStructuredSearch.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = Date()
+        let matching = ClipboardEntry(
+            createdAt: now,
+            previewText: "Image",
+            kind: .image,
+            representations: ["public.png": Data([1])],
+            sourceBundleIdentifier: "com.google.Chrome",
+            sourceApplicationName: "Google Chrome",
+            recognizedText: "Invoice total 42"
+        )
+        let wrongApplication = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-1),
+            previewText: "Image",
+            kind: .image,
+            representations: ["public.png": Data([2])],
+            sourceBundleIdentifier: "com.apple.Safari",
+            sourceApplicationName: "Safari",
+            recognizedText: "Invoice total 99"
+        )
+        let savedSnippet = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-2),
+            previewText: "Reusable reply",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("Reusable reply".utf8)],
+            isPinned: true,
+            snippetCollection: "Work Replies",
+            snippetKeyword: "reply",
+            snippetExpansionEnabled: true
+        )
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(
+                savedEntries: [matching, wrongApplication, savedSnippet]
+            ),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+
+        store.query = #"invoice app:"Google Chrome" type:image"#
+
+        #expect(store.filteredEntries.map(\.id) == [matching.id])
+        #expect(store.highlightQuery == "invoice")
+        #expect(store.hasStructuredSearchFilters)
+
+        store.query = #"is:snippet collection:"Work Replies""#
+        #expect(store.filteredEntries.map(\.id) == [savedSnippet.id])
+
+        store.query = #"invoice app:"Google Chrome""#
+        store.removeSearchFilters()
+        #expect(store.query == "invoice")
+        #expect(
+            ClipboardStructuredQuery.token(field: .application, value: "Google Chrome")
+                == #"app:"Google Chrome""#
+        )
+    }
+
+    @Test func imageTextRecognitionRunsInBackgroundAndMakesImagesSearchableAndCopyable()
+        async throws {
+        let suite = "OpenFindTests.ClipboardImageTextRecognition.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pasteboard = NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        let image = ClipboardEntry(
+            previewText: "Image",
+            kind: .image,
+            representations: ["public.png": Data([1, 2, 3])]
+        )
+        let persistence = MemoryClipboardPersistence(savedEntries: [image])
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: persistence,
+            pasteboard: pasteboard,
+            imageTextRecognizer: StubClipboardImageTextRecognizer(
+                recognizedText: "Invoice total 42"
+            ),
+            imageTextRecognitionStartDelay: .zero
+        )
+
+        await store.waitForPendingImageTextRecognition()
+
+        let recognized = try #require(store.entries.first)
+        #expect(recognized.recognizedText == "Invoice total 42")
+        store.query = "total 42"
+        #expect(store.filteredEntries.map(\.id) == [image.id])
+        #expect(store.canCopyPlainText(recognized))
+        try store.copy(recognized, plainTextOnly: true)
+        #expect(pasteboard.string(forType: .string) == "Invoice total 42")
+        #expect(persistence.savedEntries.first?.recognizedText == "Invoice total 42")
+    }
+
+    @Test func recognizedSensitiveImageTextIsRejectedBeforeItRemainsInHistory()
+        async throws {
+        let suite = "OpenFindTests.ClipboardImageTextPrivacy.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var preferences = ClipboardPreferences()
+        preferences.ignoredTextPatterns = [#"^PASSWORD \d+$"#]
+        ClipboardPreferencesPersistence.save(preferences, to: defaults)
+        let persistence = MemoryClipboardPersistence(savedEntries: [ClipboardEntry(
+            previewText: "Image",
+            kind: .image,
+            representations: ["public.png": Data([9])]
+        )])
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: persistence,
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())")),
+            imageTextRecognizer: StubClipboardImageTextRecognizer(
+                recognizedText: "PASSWORD 123456"
+            ),
+            imageTextRecognitionStartDelay: .zero
+        )
+
+        await store.waitForPendingImageTextRecognition()
+
+        #expect(store.entries.isEmpty)
+        #expect(persistence.savedEntries.isEmpty)
+    }
+
+    @Test func imageTextRecognitionWaitsUntilClipboardPanelIsDismissed() async throws {
+        let suite = "OpenFindTests.ClipboardImageTextPresentation.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recognizer = CountingClipboardImageTextRecognizer(recognizedText: "Deferred OCR")
+        let image = ClipboardEntry(
+            previewText: "Image",
+            kind: .image,
+            representations: ["public.png": Data([4, 5, 6])]
+        )
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(savedEntries: [image]),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())")),
+            imageTextRecognizer: recognizer,
+            imageTextRecognitionStartDelay: .milliseconds(20)
+        )
+
+        store.beginPresentation()
+        try await Task.sleep(for: .milliseconds(120))
+        let callsWhilePresented = await recognizer.callCount
+        #expect(callsWhilePresented == 0)
+
+        store.endPresentation()
+        await store.waitForPendingImageTextRecognition()
+
+        let callsAfterDismissal = await recognizer.callCount
+        #expect(callsAfterDismissal == 1)
+        #expect(store.entries.first?.recognizedText == "Deferred OCR")
+    }
+
+    @Test func deletionAndClearCanBeUndoneWithoutDiscardingNewCaptures() throws {
+        let suite = "OpenFindTests.ClipboardDeletionUndo.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+        for (index, value) in ["oldest", "middle", "newest"].enumerated() {
+            #expect(store.ingest(
+                representations: ["public.utf8-plain-text": Data(value.utf8)],
+                previewText: value,
+                kind: .text,
+                createdAt: Date(timeIntervalSince1970: TimeInterval(index + 1))
+            ))
+        }
+        let middle = try #require(store.entries.first { $0.previewText == "middle" })
+        store.select(middle)
+
+        store.delete(middle)
+
+        #expect(store.canUndoDeletion)
+        #expect(store.undoDeletionCount == 1)
+        #expect(store.undoLastDeletion())
+        #expect(store.entries.map(\.previewText) == ["newest", "middle", "oldest"])
+        #expect(store.selectedEntry?.id == middle.id)
+
+        store.clearAll()
+        #expect(store.undoDeletionCount == 3)
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("captured later".utf8)],
+            previewText: "captured later",
+            kind: .text,
+            createdAt: Date(timeIntervalSince1970: 4)
+        ))
+        #expect(store.undoLastDeletion())
+        #expect(store.entries.map(\.previewText) == [
+            "captured later", "newest", "middle", "oldest",
+        ])
+        #expect(!store.canUndoDeletion)
+    }
 }
 
 private final class MemoryClipboardPersistence: ClipboardHistoryPersisting {
@@ -846,6 +1043,28 @@ private final class MemoryClipboardPersistence: ClipboardHistoryPersisting {
     func remove() throws {
         savedEntries = []
         removeCount += 1
+    }
+}
+
+private struct StubClipboardImageTextRecognizer: ClipboardImageTextRecognizing {
+    let recognizedText: String?
+
+    func recognizeText(in _: Data) async -> String? {
+        recognizedText
+    }
+}
+
+private actor CountingClipboardImageTextRecognizer: ClipboardImageTextRecognizing {
+    let recognizedText: String?
+    private(set) var callCount = 0
+
+    init(recognizedText: String?) {
+        self.recognizedText = recognizedText
+    }
+
+    func recognizeText(in _: Data) async -> String? {
+        callCount += 1
+        return recognizedText
     }
 }
 

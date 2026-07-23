@@ -158,7 +158,7 @@ extension ClipboardEntry {
         return Color(red: red, green: green, blue: blue, opacity: alpha)
     }
 
-    private var imageData: Data? {
+    var imageData: Data? {
         data(forFirstType: ["public.png", "public.tiff", "public.jpeg", "public.heic"])
     }
 }

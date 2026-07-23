@@ -12,7 +12,7 @@ extension ClipboardPreferences {
         case openPreviewAutomatically, previewDelayMilliseconds, previewWidth
         case imageRowHeight, highlightStyle, showFooter
         case showApplicationIcons, showSpecialSymbols, showHexColorSwatch
-        case showRecentCopyInMenuBar, snippetExpansionEnabled
+        case showRecentCopyInMenuBar, imageTextRecognitionEnabled, snippetExpansionEnabled
         case quickMergeEnabled, quickMergeSeparator, quickMergeCustomSeparator
         case pinShortcut, deleteShortcut, previewShortcut
     }
@@ -129,6 +129,10 @@ extension ClipboardPreferences {
             Bool.self,
             forKey: .showRecentCopyInMenuBar
         ) ?? value.showRecentCopyInMenuBar
+        value.imageTextRecognitionEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .imageTextRecognitionEnabled
+        ) ?? value.imageTextRecognitionEnabled
         value.snippetExpansionEnabled = try container.decodeIfPresent(
             Bool.self,
             forKey: .snippetExpansionEnabled
@@ -192,6 +196,7 @@ extension ClipboardPreferences {
         try container.encode(showSpecialSymbols, forKey: .showSpecialSymbols)
         try container.encode(showHexColorSwatch, forKey: .showHexColorSwatch)
         try container.encode(showRecentCopyInMenuBar, forKey: .showRecentCopyInMenuBar)
+        try container.encode(imageTextRecognitionEnabled, forKey: .imageTextRecognitionEnabled)
         try container.encode(snippetExpansionEnabled, forKey: .snippetExpansionEnabled)
         try container.encode(quickMergeEnabled, forKey: .quickMergeEnabled)
         try container.encode(quickMergeSeparator, forKey: .quickMergeSeparator)

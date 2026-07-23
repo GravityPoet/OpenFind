@@ -46,7 +46,7 @@ extension ClipboardHistoryWindowController {
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.isFloatingPanel = true
         panel.level = .floating
-        panel.hidesOnDeactivate = true
+        panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true
         panel.animationBehavior = .none
@@ -60,6 +60,9 @@ extension ClipboardHistoryWindowController {
         panel.onSaveForReuse = { [weak self] in
             guard let self, let selected = store.selectedEntry else { return }
             store.saveForReuse(selected)
+        }
+        panel.onUndo = { [weak self] in
+            self?.store.undoLastDeletion()
         }
         let hostingView = NSHostingView(rootView: makeHistoryView())
         hostingView.wantsLayer = true
@@ -91,8 +94,9 @@ extension ClipboardHistoryWindowController {
                     guard let self,
                           !store.isActionPanelPresented,
                           let panel = self.panel,
-                          panel.isVisible else { return }
-                    panel.makeKeyAndOrderFront(nil)
+                          store.isPanelPresented else { return }
+                    panel.orderFrontRegardless()
+                    panel.makeKey()
                 }
             },
             onQuickLook: { [weak self] entry in
@@ -154,12 +158,13 @@ extension ClipboardHistoryWindowController {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
+        close()
         return false
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        if store.isActionPanelPresented { return }
+        guard store.isPanelPresented, !store.isActionPanelPresented else { return }
         close()
     }
+
 }

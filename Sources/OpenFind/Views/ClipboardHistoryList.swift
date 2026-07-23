@@ -13,6 +13,7 @@ struct ClipboardHistoryList: View {
 
     var body: some View {
         let visibleEntries = store.filteredEntries
+        let highlightQuery = store.highlightQuery
         ScrollViewReader { proxy in
             Group {
                 if visibleEntries.isEmpty {
@@ -31,7 +32,7 @@ struct ClipboardHistoryList: View {
                                     selectionOrder: store.selectionOrder(for: entry),
                                     isSelected: index == store.selectedIndex
                                         || store.selectionOrder(for: entry) != nil,
-                                    query: store.query,
+                                    query: highlightQuery,
                                     preferences: store.preferences,
                                     canUsePlainText: store.canCopyPlainText(entry),
                                     onUse: {

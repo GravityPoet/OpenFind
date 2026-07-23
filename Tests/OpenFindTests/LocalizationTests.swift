@@ -42,6 +42,7 @@ struct LocalizationTests {
         let declared = try #require(info["CFBundleLocalizations"] as? [String])
 
         #expect(Set(declared) == Set(AppLocalization.supportedIdentifiers))
+        #expect(info["LSUIElement"] as? Bool == true)
         #expect(info["NSAppleScriptEnabled"] as? Bool == true)
         #expect(info["OSAScriptingDefinition"] as? String == "OpenFind.sdef")
         #expect(info["NSLocationUsageDescription"] as? String != nil)

@@ -38,8 +38,9 @@ extension ClipboardHistoryStore {
     }
 
     private func rebuildClipboardProjection(revision: UInt64) {
-        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let sorted = sortedEntries
+        let structuredQuery = ClipboardStructuredQuery.parse(query)
+        let search = structuredQuery.text
+        let sorted = sortedEntries.filter(structuredQuery.matches)
         let filtered: [ClipboardEntry]
         if search.isEmpty {
             filtered = sorted
@@ -64,6 +65,7 @@ extension ClipboardHistoryStore {
             }
         }
         cachedFilteredEntries = filtered
+        cachedHighlightQuery = search
         cachedVisibleIndexByID = Dictionary(
             uniqueKeysWithValues: filtered.enumerated().map { ($0.element.id, $0.offset) }
         )
@@ -124,6 +126,7 @@ extension ClipboardHistoryStore {
             entry.customTitle == nil ? nil : entry.previewText,
             entry.sourceApplicationName,
             entry.sourceBundleIdentifier,
+            preferences.imageTextRecognitionEnabled ? entry.recognizedText : nil,
             entry.snippetKeyword,
             entry.snippetCollection,
         ]
@@ -196,5 +199,20 @@ extension ClipboardHistoryStore {
             if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
             return lhs.0.createdAt > rhs.0.createdAt
         }.map(\.0)
+    }
+
+    func appendSearchFilter(
+        field: ClipboardStructuredQuery.Field,
+        value: String
+    ) {
+        guard let token = ClipboardStructuredQuery.token(field: field, value: value) else {
+            return
+        }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        query = trimmed.isEmpty ? token : "\(trimmed) \(token)"
+    }
+
+    func removeSearchFilters() {
+        query = ClipboardStructuredQuery.parse(query).text
     }
 }

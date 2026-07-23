@@ -8,6 +8,7 @@ enum ClipboardQuickAction {
 }
 
 struct ClipboardHistoryKeyMonitor: NSViewRepresentable {
+    let isPanelPresented: Bool
     let isSearchPresented: Bool
     let isActionPanelPresented: Bool
     let pinShortcut: GlobalShortcut
@@ -26,6 +27,7 @@ struct ClipboardHistoryKeyMonitor: NSViewRepresentable {
     let onTogglePreview: () -> Void
     let onDelete: () -> Void
     let onClear: (Bool) -> Void
+    let onUndo: () -> Void
     let onEscape: () -> Void
     let onBeginSearch: (String) -> Void
     let onQuickAction: (Int, ClipboardQuickAction) -> Void

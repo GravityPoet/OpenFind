@@ -20,6 +20,28 @@ struct ClipboardHistoryRow: View {
     @State private var isHovered = false
 
     var body: some View {
+        interactiveRow
+            .contextMenu {
+                rowContextMenu
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(entry.displayTitle)
+            .accessibilityValue(Text(sourceHelp))
+            .accessibilityHint(Text(L("Press Return to Paste Clipboard Item")))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityAction {
+                onUse()
+            }
+            .accessibilityAction(named: Text(entry.isPinned ? L("Unpin") : L("Pin"))) {
+                onPin()
+            }
+            .accessibilityAction(named: Text(L("Delete"))) {
+                onDelete()
+            }
+    }
+
+    private var interactiveRow: some View {
         HStack(spacing: 8) {
             if let selectionOrder {
                 Text(selectionOrder.formatted())
@@ -100,18 +122,6 @@ struct ClipboardHistoryRow: View {
             if hovering { onHoverSelection() }
         }
         .help(sourceHelp)
-        .contextMenu {
-            Button(L("Copy"), action: onCopy)
-            Button(L("Paste"), action: onPaste)
-            Button(L("Paste Plain Text"), action: onPastePlainText)
-                .disabled(!canUsePlainText)
-            Divider()
-            Button(entry.isPinned ? L("Unpin") : L("Pin"), action: onPin)
-            Button(L("Delete"), role: .destructive, action: onDelete)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(entry.displayTitle)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -138,6 +148,17 @@ struct ClipboardHistoryRow: View {
         previewImage == nil ? 30 : CGFloat(preferences.imageRowHeight + 8)
     }
 
+    @ViewBuilder
+    private var rowContextMenu: some View {
+        Button(L("Copy"), action: onCopy)
+        Button(L("Paste"), action: onPaste)
+        Button(L("Paste Plain Text"), action: onPastePlainText)
+            .disabled(!canUsePlainText)
+        Divider()
+        Button(entry.isPinned ? L("Unpin") : L("Pin"), action: onPin)
+        Button(L("Delete"), role: .destructive, action: onDelete)
+    }
+
     private var sourceHelp: String {
         guard let source = entry.sourceApplicationName ?? entry.sourceBundleIdentifier else {
             return entry.kind.localizedTitle
@@ -150,20 +171,31 @@ struct ClipboardHistoryRow: View {
 private struct ClipboardHistoryRowSurface: ViewModifier {
     let isSelected: Bool
     let isHovered: Bool
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if isSelected {
             content
-                .openFindSelectedGlassRoundedRectangle(cornerRadius: 8)
+                .background(
+                    Color.accentColor.opacity(
+                        colorSchemeContrast == .increased ? 0.96 : 0.88
+                    ),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
                 .overlay {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.7)
+                        .strokeBorder(
+                            Color.white.opacity(colorSchemeContrast == .increased ? 0.72 : 0.22),
+                            lineWidth: colorSchemeContrast == .increased ? 1.2 : 0.7
+                        )
                 }
         } else {
             content.background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHovered ? Color.primary.opacity(0.055) : .clear)
+                    .fill(isHovered
+                        ? Color.primary.opacity(colorSchemeContrast == .increased ? 0.12 : 0.055)
+                        : .clear)
             }
         }
     }
