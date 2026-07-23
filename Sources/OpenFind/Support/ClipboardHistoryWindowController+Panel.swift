@@ -2,17 +2,22 @@ import AppKit
 import SwiftUI
 
 extension ClipboardHistoryWindowController {
-    func activateForClipboardPanel(hideMainWindow: Bool) {
-        let mainWindows = NSApp.windows.filter {
-            $0.identifier?.rawValue == "OpenFind.main"
+    func activateForClipboardPanel(hideApplicationWindows: Bool) {
+        let applicationWindows = NSApp.windows.filter {
+            guard let identifier = $0.identifier?.rawValue else { return false }
+            return identifier == "OpenFind.main" || identifier == "OpenFind.settings"
         }
-        let shouldKeepMainWindowHidden = hideMainWindow
+        let shouldKeepApplicationWindowsHidden = hideApplicationWindows
             || NSApp.isHidden
-            || mainWindows.allSatisfy { !$0.isVisible }
-        if shouldKeepMainWindowHidden { mainWindows.forEach { $0.orderOut(nil) } }
+            || applicationWindows.allSatisfy { !$0.isVisible }
+        if shouldKeepApplicationWindowsHidden {
+            applicationWindows.forEach { $0.orderOut(nil) }
+        }
         if NSApp.isHidden { NSApp.unhide(nil) }
         NSApp.activate(ignoringOtherApps: true)
-        if shouldKeepMainWindowHidden { mainWindows.forEach { $0.orderOut(nil) } }
+        if shouldKeepApplicationWindowsHidden {
+            applicationWindows.forEach { $0.orderOut(nil) }
+        }
     }
 
     func makePanelIfNeeded() -> NSPanel {

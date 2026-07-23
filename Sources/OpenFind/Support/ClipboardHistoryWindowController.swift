@@ -45,7 +45,7 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
 
     func present(
         positionOverride: ClipboardPopupPosition? = nil,
-        hideMainWindow: Bool = false
+        hideApplicationWindows: Bool = false
     ) {
         pasteService.captureTargetApplication()
         store.beginPresentation()
@@ -54,7 +54,7 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         store.clearMultiSelection()
         store.isSearchPresented = true
         let panel = makePanelIfNeeded()
-        activateForClipboardPanel(hideMainWindow: hideMainWindow)
+        activateForClipboardPanel(hideApplicationWindows: hideApplicationWindows)
         resize(panel, showingPreview: store.isPreviewVisible, animated: false)
         position(panel, override: positionOverride)
         panel.makeKeyAndOrderFront(nil)
