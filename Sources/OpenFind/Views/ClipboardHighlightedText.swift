@@ -27,12 +27,18 @@ enum ClipboardHighlightedText {
             let attributedRange = lower..<upper
             switch preferences.highlightStyle {
             case .bold:
-                attributed[attributedRange].font = .system(size: 13.5, weight: .semibold)
+                attributed[attributedRange].font = .system(
+                    size: ClipboardTypography.rowPointSize,
+                    weight: .bold
+                )
             case .color:
                 attributed[attributedRange].backgroundColor = .yellow.opacity(0.82)
                 attributed[attributedRange].foregroundColor = .black
             case .italic:
-                attributed[attributedRange].font = .system(size: 13.5).italic()
+                attributed[attributedRange].font = .system(
+                    size: ClipboardTypography.rowPointSize,
+                    weight: .medium
+                ).italic()
             case .underline:
                 attributed[attributedRange].underlineStyle = .single
             }

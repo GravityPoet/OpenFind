@@ -71,3 +71,14 @@ extension ClipboardHighlightStyle {
         }
     }
 }
+
+extension ClipboardQuickMergeSeparator {
+    var localizedTitle: String {
+        switch self {
+        case .newline: L("Quick Merge Separator Newline")
+        case .space: L("Quick Merge Separator Space")
+        case .none: L("Quick Merge Separator None")
+        case .custom: L("Quick Merge Separator Custom")
+        }
+    }
+}

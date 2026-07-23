@@ -12,7 +12,9 @@ extension ClipboardPreferences {
         case openPreviewAutomatically, previewDelayMilliseconds, previewWidth
         case imageRowHeight, highlightStyle, showFooter
         case showApplicationIcons, showSpecialSymbols, showHexColorSwatch
-        case showRecentCopyInMenuBar, pinShortcut, deleteShortcut, previewShortcut
+        case showRecentCopyInMenuBar, snippetExpansionEnabled
+        case quickMergeEnabled, quickMergeSeparator, quickMergeCustomSeparator
+        case pinShortcut, deleteShortcut, previewShortcut
     }
 
     init(from decoder: Decoder) throws {
@@ -127,6 +129,22 @@ extension ClipboardPreferences {
             Bool.self,
             forKey: .showRecentCopyInMenuBar
         ) ?? value.showRecentCopyInMenuBar
+        value.snippetExpansionEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .snippetExpansionEnabled
+        ) ?? value.snippetExpansionEnabled
+        value.quickMergeEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .quickMergeEnabled
+        ) ?? value.quickMergeEnabled
+        value.quickMergeSeparator = try container.decodeIfPresent(
+            ClipboardQuickMergeSeparator.self,
+            forKey: .quickMergeSeparator
+        ) ?? value.quickMergeSeparator
+        value.quickMergeCustomSeparator = try container.decodeIfPresent(
+            String.self,
+            forKey: .quickMergeCustomSeparator
+        ) ?? value.quickMergeCustomSeparator
         value.pinShortcut = try container.decodeIfPresent(GlobalShortcut.self, forKey: .pinShortcut)
             ?? value.pinShortcut
         value.deleteShortcut = try container.decodeIfPresent(
@@ -174,6 +192,10 @@ extension ClipboardPreferences {
         try container.encode(showSpecialSymbols, forKey: .showSpecialSymbols)
         try container.encode(showHexColorSwatch, forKey: .showHexColorSwatch)
         try container.encode(showRecentCopyInMenuBar, forKey: .showRecentCopyInMenuBar)
+        try container.encode(snippetExpansionEnabled, forKey: .snippetExpansionEnabled)
+        try container.encode(quickMergeEnabled, forKey: .quickMergeEnabled)
+        try container.encode(quickMergeSeparator, forKey: .quickMergeSeparator)
+        try container.encode(quickMergeCustomSeparator, forKey: .quickMergeCustomSeparator)
         try container.encode(pinShortcut, forKey: .pinShortcut)
         try container.encode(deleteShortcut, forKey: .deleteShortcut)
         try container.encode(previewShortcut, forKey: .previewShortcut)

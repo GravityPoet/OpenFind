@@ -75,33 +75,86 @@ final class SystemClipboardHistoryKeychain: ClipboardHistoryKeychainAccessing {
 
 final class EncryptedClipboardHistoryPersistence: ClipboardHistoryPersisting {
     static let ciphertextKey = "OpenFind.clipboardEncryptedHistoryV2"
-    private static let maximumEncodedSize = 80 * 1_024 * 1_024
+    private static let maximumLegacyEncodedSize = 80 * 1_024 * 1_024
     private static let keyByteCount = 32
     private let defaults: UserDefaults
     private let keyFileURL: URL
+    private let database: EncryptedClipboardHistoryDatabase
     private let keychain: any ClipboardHistoryKeychainAccessing
     private let usesStableKeychainIdentity: Bool
+    private var savedEntriesByID: [UUID: ClipboardEntry] = [:]
 
     init(
         defaults: UserDefaults = .standard,
         keyFileURL: URL = EncryptedClipboardHistoryPersistence.defaultKeyFileURL,
+        databaseURL: URL? = nil,
         keychain: any ClipboardHistoryKeychainAccessing = SystemClipboardHistoryKeychain(),
         signingTeamIdentifier: String? = CodeSigningIdentity.teamIdentifier(at: Bundle.main.bundleURL)
     ) {
         self.defaults = defaults
         self.keyFileURL = keyFileURL
+        database = EncryptedClipboardHistoryDatabase(
+            url: databaseURL ?? keyFileURL.deletingLastPathComponent()
+                .appendingPathComponent("clipboard-history-v3.sqlite3")
+        )
         self.keychain = keychain
         usesStableKeychainIdentity = signingTeamIdentifier?.isEmpty == false
     }
 
     var requiresExplicitMigration: Bool {
-        !usesStableKeychainIdentity
+        !database.exists
+            && !usesStableKeychainIdentity
             && defaults.data(forKey: Self.ciphertextKey) != nil
             && !localKeyPathExists
     }
 
     func load() throws -> [ClipboardEntry] {
-        guard let encrypted = defaults.data(forKey: Self.ciphertextKey) else { return [] }
+        if database.exists {
+            return try loadDatabase()
+        }
+        guard let encrypted = defaults.data(forKey: Self.ciphertextKey) else {
+            savedEntriesByID = [:]
+            return []
+        }
+        return try migrateLegacyHistory(encrypted)
+    }
+
+    func save(_ entries: [ClipboardEntry]) throws {
+        guard !requiresExplicitMigration else {
+            // Never replace legacy ciphertext with a newly generated key while
+            // its original Keychain key is still waiting to be migrated.
+            throw ClipboardHistoryError.persistenceUnavailable
+        }
+        if !database.exists, defaults.data(forKey: Self.ciphertextKey) != nil {
+            _ = try load()
+        }
+        let keyData = try keyDataForUse()
+        try saveToDatabase(entries, keyData: keyData)
+        defaults.removeObject(forKey: Self.ciphertextKey)
+    }
+
+    func remove() throws {
+        try database.remove()
+        defaults.removeObject(forKey: Self.ciphertextKey)
+        if localKeyPathExists {
+            // unlink removes a regular file or the link itself, but refuses a
+            // directory. Never recursively delete a path an attacker swapped
+            // in place of the key file.
+            guard Darwin.unlink(keyFileURL.path) == 0 else {
+                throw ClipboardHistoryError.persistenceUnavailable
+            }
+        }
+        // A self-signed build intentionally leaves an unused legacy Keychain
+        // item behind. Deleting it can itself trigger the authorization dialog
+        // this migration is designed to eliminate, while all ciphertext above
+        // has already been removed.
+        if usesStableKeychainIdentity {
+            try keychain.remove()
+        }
+        savedEntriesByID = [:]
+    }
+
+    private func migrateLegacyHistory(_ encrypted: Data) throws -> [ClipboardEntry] {
         let isMigration = requiresExplicitMigration
         do {
             let keyData: Data
@@ -118,7 +171,7 @@ final class EncryptedClipboardHistoryPersistence: ClipboardHistoryPersisting {
             }
             let box = try AES.GCM.SealedBox(combined: encrypted)
             let data = try AES.GCM.open(box, using: SymmetricKey(data: keyData))
-            guard data.count <= Self.maximumEncodedSize else {
+            guard data.count <= Self.maximumLegacyEncodedSize else {
                 throw ClipboardHistoryError.persistenceCorrupt
             }
             let entries = try JSONDecoder().decode([ClipboardEntry].self, from: data)
@@ -127,6 +180,8 @@ final class EncryptedClipboardHistoryPersistence: ClipboardHistoryPersisting {
                 // authenticated and decoded successfully.
                 try writeLocalKey(keyData)
             }
+            try saveToDatabase(entries, keyData: keyData)
+            defaults.removeObject(forKey: Self.ciphertextKey)
             return entries
         } catch let error as ClipboardHistoryError {
             throw error
@@ -135,51 +190,123 @@ final class EncryptedClipboardHistoryPersistence: ClipboardHistoryPersisting {
         }
     }
 
-    func save(_ entries: [ClipboardEntry]) throws {
-        guard !requiresExplicitMigration else {
-            // Never replace legacy ciphertext with a newly generated key while
-            // its original Keychain key is still waiting to be migrated.
+    private func loadDatabase() throws -> [ClipboardEntry] {
+        do {
+            let keyData = try keyDataForUse()
+            let snapshot = try database.load()
+            guard let manifest = snapshot.manifest else {
+                guard snapshot.records.isEmpty else {
+                    throw ClipboardHistoryError.persistenceCorrupt
+                }
+                savedEntriesByID = [:]
+                return []
+            }
+            let orderData = try open(
+                manifest,
+                keyData: keyData,
+                context: "manifest-v1"
+            )
+            let order = try JSONDecoder().decode([UUID].self, from: orderData)
+            guard Set(order).count == order.count,
+                  Set(order) == Set(snapshot.records.keys) else {
+                throw ClipboardHistoryError.persistenceCorrupt
+            }
+            var entries: [ClipboardEntry] = []
+            entries.reserveCapacity(order.count)
+            for id in order {
+                guard let encrypted = snapshot.records[id] else {
+                    throw ClipboardHistoryError.persistenceCorrupt
+                }
+                let data = try open(
+                    encrypted,
+                    keyData: keyData,
+                    context: "entry:\(id.uuidString)"
+                )
+                let entry = try JSONDecoder().decode(ClipboardEntry.self, from: data)
+                guard entry.id == id else {
+                    throw ClipboardHistoryError.persistenceCorrupt
+                }
+                entries.append(entry)
+            }
+            savedEntriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+            return entries
+        } catch let error as ClipboardHistoryError {
+            throw error
+        } catch {
+            throw ClipboardHistoryError.persistenceCorrupt
+        }
+    }
+
+    private func saveToDatabase(
+        _ entries: [ClipboardEntry],
+        keyData: Data
+    ) throws {
+        do {
+            let currentByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+            var changedRecords: [UUID: Data] = [:]
+            for entry in entries where savedEntriesByID[entry.id] != entry {
+                let encoded = try JSONEncoder().encode(entry)
+                changedRecords[entry.id] = try seal(
+                    encoded,
+                    keyData: keyData,
+                    context: "entry:\(entry.id.uuidString)"
+                )
+            }
+            let order = entries.map(\.id)
+            let manifestData = try JSONEncoder().encode(order)
+            let manifest = try seal(
+                manifestData,
+                keyData: keyData,
+                context: "manifest-v1"
+            )
+            try database.save(
+                changedRecords: changedRecords,
+                retainingIDs: Set(order),
+                manifest: manifest
+            )
+            savedEntriesByID = currentByID
+        } catch let error as ClipboardHistoryError {
+            throw error
+        } catch {
             throw ClipboardHistoryError.persistenceUnavailable
         }
-        let data = try JSONEncoder().encode(entries)
-        guard data.count <= Self.maximumEncodedSize else {
-            throw ClipboardHistoryError.contentTooLarge
-        }
-        let box = try AES.GCM.seal(data, using: SymmetricKey(data: keyDataForUse()))
+    }
+
+    private func seal(_ data: Data, keyData: Data, context: String) throws -> Data {
+        let box = try AES.GCM.seal(
+            data,
+            using: SymmetricKey(data: keyData),
+            authenticating: Data(context.utf8)
+        )
         guard let combined = box.combined else {
             throw ClipboardHistoryError.persistenceUnavailable
         }
-        defaults.set(combined, forKey: Self.ciphertextKey)
+        return combined
     }
 
-    func remove() throws {
-        defaults.removeObject(forKey: Self.ciphertextKey)
-        if localKeyPathExists {
-            // unlink removes a regular file or the link itself, but refuses a
-            // directory. Never recursively delete a path an attacker swapped
-            // in place of the key file.
-            guard Darwin.unlink(keyFileURL.path) == 0 else {
-                throw ClipboardHistoryError.persistenceUnavailable
-            }
-        }
-        // A self-signed build intentionally leaves an unused legacy Keychain
-        // item behind. Deleting it can itself trigger the authorization dialog
-        // this migration is designed to eliminate, while the ciphertext above
-        // has already been removed.
-        if usesStableKeychainIdentity {
-            try keychain.remove()
-        }
+    private func open(_ data: Data, keyData: Data, context: String) throws -> Data {
+        let box = try AES.GCM.SealedBox(combined: data)
+        return try AES.GCM.open(
+            box,
+            using: SymmetricKey(data: keyData),
+            authenticating: Data(context.utf8)
+        )
     }
 
     private func keyDataForUse() throws -> Data {
         if let local = try readValidatedLocalKey() { return local }
         if usesStableKeychainIdentity {
             if let existing = try keychain.read() { return existing }
+            guard !database.exists,
+                  defaults.data(forKey: Self.ciphertextKey) == nil else {
+                throw ClipboardHistoryError.persistenceUnavailable
+            }
             let generated = try randomKeyData()
             try keychain.store(generated)
             return try keychain.read() ?? generated
         }
-        guard defaults.data(forKey: Self.ciphertextKey) == nil else {
+        guard !database.exists,
+              defaults.data(forKey: Self.ciphertextKey) == nil else {
             throw ClipboardHistoryError.persistenceUnavailable
         }
         let generated = try randomKeyData()

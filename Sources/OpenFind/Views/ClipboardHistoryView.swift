@@ -6,7 +6,7 @@ struct ClipboardHistoryView: View {
     let onStartPasteStack: (Bool) -> Void
     let onPreviewVisibilityChange: (Bool) -> Void
     let onActionPanelVisibilityChange: (Bool) -> Void
-    let onQuickLook: ([URL]) -> Void
+    let onQuickLook: (ClipboardEntry) -> Void
     let onCancelPasteStack: () -> Void
     let onClose: () -> Void
     @FocusState var searchFocused: Bool
@@ -17,7 +17,8 @@ struct ClipboardHistoryView: View {
                 store: store,
                 searchFocused: $searchFocused,
                 isActionPanelPresented: $store.isActionPanelPresented,
-                onPerformAction: performPanelAction
+                onPerformAction: performPanelAction,
+                onPerformContentAction: performContentAction
             )
 
             if let error = store.lastErrorMessage {

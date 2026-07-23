@@ -19,7 +19,7 @@ extension ClipboardHistoryStore {
     }
 
     func toggleMultiSelection(_ entry: ClipboardEntry) {
-        guard let visibleIndex = filteredEntries.firstIndex(where: { $0.id == entry.id }) else {
+        guard let visibleIndex = visibleIndex(for: entry) else {
             return
         }
         selectedIndex = visibleIndex
@@ -34,9 +34,9 @@ extension ClipboardHistoryStore {
 
     func selectRange(to entry: ClipboardEntry) {
         let visible = filteredEntries
-        guard let target = visible.firstIndex(where: { $0.id == entry.id }) else { return }
+        guard let target = visibleIndex(for: entry) else { return }
         let anchorID = selectionAnchorID ?? selectedEntry?.id ?? entry.id
-        guard let anchor = visible.firstIndex(where: { $0.id == anchorID }) else {
+        guard let anchor = visibleIndex(for: anchorID) else {
             toggleMultiSelection(entry)
             return
         }

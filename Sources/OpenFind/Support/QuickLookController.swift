@@ -2,8 +2,16 @@ import Foundation
 @preconcurrency import QuickLookUI
 
 @MainActor
-final class QuickLookController: NSObject, @MainActor QLPreviewPanelDataSource {
+final class QuickLookController: NSObject, @MainActor QLPreviewPanelDataSource,
+    @MainActor QLPreviewPanelDelegate {
     private var items: [URL] = []
+    private let clipboardMaterializer: ClipboardQuickLookMaterializer
+    private var clipboardMaterialization: ClipboardQuickLookMaterialization?
+
+    init(clipboardMaterializer: ClipboardQuickLookMaterializer = .init()) {
+        self.clipboardMaterializer = clipboardMaterializer
+        super.init()
+    }
 
     var isVisible: Bool {
         QLPreviewPanel.sharedPreviewPanelExists() && QLPreviewPanel.shared()?.isVisible == true
@@ -11,19 +19,34 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDataSource {
 
     func toggle(items: [URL]) {
         if isVisible {
-            QLPreviewPanel.shared()?.close()
+            close()
             return
         }
         guard !items.isEmpty else { return }
-        show(items: items)
+        cleanupClipboardMaterialization()
+        _ = show(items: items)
+    }
+
+    func toggle(entry: ClipboardEntry) throws {
+        if isVisible {
+            close()
+            return
+        }
+        let materialization = try clipboardMaterializer.materialize(entry)
+        cleanupClipboardMaterialization()
+        clipboardMaterialization = materialization
+        if !show(items: materialization.urls) {
+            cleanupClipboardMaterialization()
+        }
     }
 
     func update(items: [URL]) {
         guard isVisible else { return }
         guard !items.isEmpty else {
-            QLPreviewPanel.shared()?.close()
+            close()
             return
         }
+        cleanupClipboardMaterialization()
         self.items = items
         guard let panel = QLPreviewPanel.shared() else { return }
         panel.reloadData()
@@ -31,8 +54,14 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDataSource {
     }
 
     func close() {
-        guard QLPreviewPanel.sharedPreviewPanelExists() else { return }
-        QLPreviewPanel.shared()?.close()
+        if QLPreviewPanel.sharedPreviewPanelExists() {
+            QLPreviewPanel.shared()?.close()
+        }
+        cleanupClipboardMaterialization()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        cleanupClipboardMaterialization()
     }
 
     func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
@@ -44,12 +73,23 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDataSource {
         return items[index] as NSURL
     }
 
-    private func show(items: [URL]) {
+    @discardableResult
+    private func show(items: [URL]) -> Bool {
         self.items = items
-        guard let panel = QLPreviewPanel.shared() else { return }
+        guard let panel = QLPreviewPanel.shared() else {
+            self.items = []
+            return false
+        }
         panel.dataSource = self
+        panel.delegate = self
         panel.reloadData()
         panel.currentPreviewItemIndex = 0
         panel.makeKeyAndOrderFront(nil)
+        return true
+    }
+
+    private func cleanupClipboardMaterialization() {
+        clipboardMaterializer.cleanup(clipboardMaterialization)
+        clipboardMaterialization = nil
     }
 }

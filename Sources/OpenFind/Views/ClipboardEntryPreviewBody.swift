@@ -3,17 +3,18 @@ import SwiftUI
 
 struct ClipboardEntryPreviewBody: View {
     let entry: ClipboardEntry
+    let previewImage: NSImage?
 
     var body: some View {
-        if let image = entry.previewImage {
-            ScrollView([.horizontal, .vertical]) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 520, maxHeight: 420)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .padding(18)
-            }
+        if let image = previewImage {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .antialiased(true)
+                .scaledToFit()
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .padding(18)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         } else if entry.kind == .file, !entry.fileURLs.isEmpty {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
@@ -42,10 +43,8 @@ struct ClipboardEntryPreviewBody: View {
         } else {
             ScrollView {
                 Text(entry.fullPreviewText)
-                    .font(.system(
-                        size: 14,
-                        design: .default
-                    ))
+                    .font(ClipboardTypography.preview)
+                    .foregroundStyle(ClipboardTypography.primaryText)
                     .lineSpacing(4)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)

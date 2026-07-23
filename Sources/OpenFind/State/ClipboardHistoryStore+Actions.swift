@@ -2,16 +2,27 @@ import AppKit
 import Foundation
 
 extension ClipboardHistoryStore {
-    func copy(_ entry: ClipboardEntry, plainTextOnly: Bool = false) throws {
+    @discardableResult
+    func copy(_ entry: ClipboardEntry, plainTextOnly: Bool = false) throws -> Int {
         guard entries.contains(where: { $0.id == entry.id }) else {
             throw ClipboardHistoryError.entryNotFound
+        }
+        if entry.isPinned,
+           entry.snippetExpansionEnabled != nil,
+           let template = plainText(for: entry) {
+            let rendered = ClipboardSnippetRenderer.render(
+                template,
+                clipboardText: { [pasteboard] in pasteboard.string(forType: .string) }
+            )
+            try writePlainText(rendered.text)
+            return rendered.cursorOffsetFromEnd
         }
         if plainTextOnly {
             guard let text = plainText(for: entry) else {
                 throw ClipboardHistoryError.unsupportedContent
             }
             try writePlainText(text)
-            return
+            return 0
         }
         let items = entry.retainedPasteboardItems.enumerated().map { index, representations in
             let item = NSPasteboardItem()
@@ -27,6 +38,7 @@ extension ClipboardHistoryStore {
         guard !items.isEmpty, pasteboard.writeObjects(items) else {
             throw ClipboardHistoryError.pasteboardWriteFailed
         }
+        return 0
     }
 
     func canCopyPlainText(_ entry: ClipboardEntry) -> Bool {
@@ -35,6 +47,28 @@ extension ClipboardHistoryStore {
 
     func canMergePlainText(_ selectedEntries: [ClipboardEntry]) -> Bool {
         selectedEntries.count > 1 && selectedEntries.allSatisfy { plainText(for: $0) != nil }
+    }
+
+    func availableContentActions(
+        for entry: ClipboardEntry
+    ) -> [ClipboardContentActionDescriptor] {
+        guard let text = plainText(for: entry) else { return [] }
+        return contentActionRegistry.actions(for: text)
+    }
+
+    func performContentAction(
+        _ action: ClipboardContentActionDescriptor,
+        on entry: ClipboardEntry
+    ) throws {
+        guard entries.contains(where: { $0.id == entry.id }),
+              let text = plainText(for: entry) else {
+            throw ClipboardHistoryError.entryNotFound
+        }
+        let transformed = try contentActionRegistry.transform(
+            actionID: action.id,
+            text: text
+        )
+        try writePlainText(transformed)
     }
 
     func copyMergedPlainText(_ selectedEntries: [ClipboardEntry]) throws {
@@ -57,7 +91,7 @@ extension ClipboardHistoryStore {
         removeInvalidSelections()
         if !deletedSelectedEntry,
            let selectedID,
-           let newIndex = filteredEntries.firstIndex(where: { $0.id == selectedID }) {
+           let newIndex = visibleIndex(for: selectedID) {
             selectedIndex = newIndex
         } else {
             selectedIndex = min(selectedIndex, max(0, filteredEntries.count - 1))
@@ -87,6 +121,9 @@ extension ClipboardHistoryStore {
             ).first
         } else {
             entries[index].pinKey = nil
+            entries[index].snippetCollection = nil
+            entries[index].snippetKeyword = nil
+            entries[index].snippetExpansionEnabled = nil
         }
         restoreSelection(id: entry.id)
         persist()
@@ -159,7 +196,7 @@ extension ClipboardHistoryStore {
         return nil
     }
 
-    private func writePlainText(_ text: String) throws {
+    func writePlainText(_ text: String) throws {
         let item = NSPasteboardItem()
         item.setString(text, forType: .string)
         item.setString("", forType: .init(Self.internalPasteboardType))

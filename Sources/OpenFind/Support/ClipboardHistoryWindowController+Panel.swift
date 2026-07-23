@@ -3,20 +3,27 @@ import SwiftUI
 
 extension ClipboardHistoryWindowController {
     func activateForClipboardPanel(hideApplicationWindows: Bool) {
-        let applicationWindows = NSApp.windows.filter {
-            guard let identifier = $0.identifier?.rawValue else { return false }
-            return identifier == "OpenFind.main" || identifier == "OpenFind.settings"
+        guard hideApplicationWindows else {
+            if NSApp.isHidden { NSApp.unhide(nil) }
+            NSApp.activate(ignoringOtherApps: true)
+            return
         }
-        let shouldKeepApplicationWindowsHidden = hideApplicationWindows
-            || NSApp.isHidden
-            || applicationWindows.allSatisfy { !$0.isVisible }
-        if shouldKeepApplicationWindowsHidden {
-            applicationWindows.forEach { $0.orderOut(nil) }
-        }
-        if NSApp.isHidden { NSApp.unhide(nil) }
-        NSApp.activate(ignoringOtherApps: true)
-        if shouldKeepApplicationWindowsHidden {
-            applicationWindows.forEach { $0.orderOut(nil) }
+
+        // Clipboard history is a transient non-activating palette. Hiding only
+        // the two known window identifiers is insufficient for native
+        // full-screen/SwiftUI companion windows and can bring the entire
+        // OpenFind UI forward behind the palette. Keep every other OpenFind
+        // window out and unhide without stealing the target application's
+        // activation.
+        orderOutApplicationWindows(except: panel)
+        if NSApp.isHidden { NSApp.unhideWithoutActivation() }
+        orderOutApplicationWindows(except: panel)
+    }
+
+    func orderOutApplicationWindows(except panel: NSPanel?) {
+        NSApp.windows.filter { $0 !== panel }.forEach { window in
+            window.animationBehavior = .none
+            window.orderOut(nil)
         }
     }
 
@@ -24,7 +31,7 @@ extension ClipboardHistoryWindowController {
         if let panel { return panel }
         let panel = ClipboardHistoryPanel(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 500),
-            styleMask: [.titled, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .resizable, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -42,7 +49,7 @@ extension ClipboardHistoryWindowController {
         panel.hidesOnDeactivate = true
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true
-        panel.animationBehavior = .utilityWindow
+        panel.animationBehavior = .none
         panel.collectionBehavior = [.transient, .moveToActiveSpace, .fullScreenAuxiliary]
         panel.minSize = NSSize(width: 420, height: 440)
         panel.setFrameAutosaveName("OpenFindClipboardHistory")
@@ -82,14 +89,20 @@ extension ClipboardHistoryWindowController {
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(for: .milliseconds(80))
                     guard let self,
-                          NSApp.isActive,
                           !store.isActionPanelPresented,
                           let panel = self.panel,
                           panel.isVisible else { return }
                     panel.makeKeyAndOrderFront(nil)
                 }
             },
-            onQuickLook: { [weak self] urls in self?.quickLook.toggle(items: urls) },
+            onQuickLook: { [weak self] entry in
+                guard let self else { return }
+                do {
+                    try quickLook.toggle(entry: entry)
+                } catch {
+                    store.reportError(error)
+                }
+            },
             onCancelPasteStack: { [weak self] in self?.cancelPasteStack() },
             onClose: { [weak self] in self?.close() }
         )

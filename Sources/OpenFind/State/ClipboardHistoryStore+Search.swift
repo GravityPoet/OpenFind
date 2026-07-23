@@ -2,24 +2,91 @@ import Foundation
 
 extension ClipboardHistoryStore {
     var filteredEntries: [ClipboardEntry] {
+        let revision = clipboardProjectionRevision
+        if cachedClipboardProjectionRevision != revision {
+            rebuildClipboardProjection(revision: revision)
+        }
+        return cachedFilteredEntries
+    }
+
+    func visibleIndex(for entry: ClipboardEntry) -> Int? {
+        visibleIndex(for: entry.id)
+    }
+
+    func visibleIndex(for id: UUID) -> Int? {
+        _ = filteredEntries
+        return cachedVisibleIndexByID[id]
+    }
+
+    func quickIndex(for entry: ClipboardEntry) -> Int? {
+        _ = filteredEntries
+        return cachedQuickIndexByID[entry.id]
+    }
+
+    func quickEntry(at index: Int) -> ClipboardEntry? {
+        _ = filteredEntries
+        guard cachedQuickEntryIDs.indices.contains(index),
+              let visibleIndex = cachedVisibleIndexByID[cachedQuickEntryIDs[index]],
+              cachedFilteredEntries.indices.contains(visibleIndex) else { return nil }
+        return cachedFilteredEntries[visibleIndex]
+    }
+
+    func pinnedEntry(for key: String) -> ClipboardEntry? {
+        filteredEntries.first {
+            $0.isPinned && ClipboardPinKey.normalize($0.pinKey) == key
+        }
+    }
+
+    private func rebuildClipboardProjection(revision: UInt64) {
         let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let sorted = sortedEntries
-        guard !search.isEmpty else { return sorted }
-        switch preferences.searchMode {
-        case .exact:
-            return exactMatches(search, within: sorted)
-        case .fuzzy:
-            return fuzzyMatches(search, within: sorted)
-        case .regularExpression:
-            return regularExpressionMatches(search, within: sorted)
-        case .mixed:
-            let exact = exactMatches(search, within: sorted)
-            if !exact.isEmpty { return exact }
-            let regularExpression = regularExpressionMatches(search, within: sorted)
-            return regularExpression.isEmpty
-                ? fuzzyMatches(search, within: sorted)
-                : regularExpression
+        let filtered: [ClipboardEntry]
+        if search.isEmpty {
+            filtered = sorted
+        } else {
+            switch preferences.searchMode {
+            case .exact:
+                filtered = exactMatches(search, within: sorted)
+            case .fuzzy:
+                filtered = fuzzyMatches(search, within: sorted)
+            case .regularExpression:
+                filtered = regularExpressionMatches(search, within: sorted)
+            case .mixed:
+                let exact = exactMatches(search, within: sorted)
+                if !exact.isEmpty {
+                    filtered = exact
+                } else {
+                    let regularExpression = regularExpressionMatches(search, within: sorted)
+                    filtered = regularExpression.isEmpty
+                        ? fuzzyMatches(search, within: sorted)
+                        : regularExpression
+                }
+            }
         }
+        cachedFilteredEntries = filtered
+        cachedVisibleIndexByID = Dictionary(
+            uniqueKeysWithValues: filtered.enumerated().map { ($0.element.id, $0.offset) }
+        )
+        cachedEntryByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        cachedSnippetKeywords = entries.compactMap { entry in
+            guard entry.expandsFromKeyword,
+                  let keyword = entry.snippetKeyword?.localizedLowercase else { return nil }
+            return (keyword, entry.id)
+        }.sorted {
+            if $0.keyword.count != $1.keyword.count {
+                return $0.keyword.count > $1.keyword.count
+            }
+            return $0.keyword < $1.keyword
+        }
+        let quickEntries = filtered.lazy.filter { !$0.isPinned }.prefix(9)
+        cachedQuickEntryIDs = quickEntries.map(\.id)
+        cachedQuickIndexByID = Dictionary(
+            uniqueKeysWithValues: cachedQuickEntryIDs.enumerated().map {
+                ($0.element, $0.offset + 1)
+            }
+        )
+        cachedClipboardProjectionRevision = revision
+        clipboardProjectionBuildCount &+= 1
     }
 
     var selectedEntry: ClipboardEntry? {
@@ -29,7 +96,7 @@ extension ClipboardHistoryStore {
     }
 
     func select(_ entry: ClipboardEntry, preservingMultiSelection: Bool = false) {
-        guard let index = filteredEntries.firstIndex(where: { $0.id == entry.id }) else { return }
+        guard let index = visibleIndex(for: entry) else { return }
         if !preservingMultiSelection { clearMultiSelection() }
         selectedIndex = index
     }
@@ -44,8 +111,7 @@ extension ClipboardHistoryStore {
     }
 
     func restoreSelection(id: UUID?) {
-        guard let id,
-              let index = filteredEntries.firstIndex(where: { $0.id == id }) else {
+        guard let id, let index = visibleIndex(for: id) else {
             selectedIndex = min(selectedIndex, max(0, filteredEntries.count - 1))
             return
         }
@@ -58,6 +124,8 @@ extension ClipboardHistoryStore {
             entry.customTitle == nil ? nil : entry.previewText,
             entry.sourceApplicationName,
             entry.sourceBundleIdentifier,
+            entry.snippetKeyword,
+            entry.snippetCollection,
         ]
             .compactMap { $0 }
             .joined(separator: "\n")

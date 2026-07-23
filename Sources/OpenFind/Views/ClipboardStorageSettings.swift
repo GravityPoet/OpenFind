@@ -22,6 +22,9 @@ struct ClipboardStorageSettings: View {
                 Text(period.localizedTitle).tag(period)
             }
         }
+        Text(L("Clipboard Retention Help"))
+            .font(.footnote)
+            .foregroundStyle(.secondary)
 
         Picker(L("Clipboard Item Size Limit"), selection: Binding(
             get: { store.itemLimitBytes / (1_024 * 1_024) },
@@ -60,7 +63,7 @@ struct ClipboardStorageSettings: View {
             showingPinnedItems = true
         } label: {
             HStack {
-                Text(L("Manage Pinned Clipboard Items"))
+                Text(L("Manage Reusable Snippets"))
                 Spacer()
                 Text(store.entries.filter(\.isPinned).count.formatted())
                     .foregroundStyle(.secondary)

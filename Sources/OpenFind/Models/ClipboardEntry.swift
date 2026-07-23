@@ -23,6 +23,9 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
     var sourceBundleIdentifier: String?
     var sourceApplicationName: String?
     var copyCount: Int?
+    var snippetCollection: String?
+    var snippetKeyword: String?
+    var snippetExpansionEnabled: Bool?
 
     init(
         id: UUID = UUID(),
@@ -37,7 +40,10 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         firstCopiedAt: Date? = nil,
         sourceBundleIdentifier: String? = nil,
         sourceApplicationName: String? = nil,
-        copyCount: Int? = nil
+        copyCount: Int? = nil,
+        snippetCollection: String? = nil,
+        snippetKeyword: String? = nil,
+        snippetExpansionEnabled: Bool? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -52,11 +58,18 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         self.sourceBundleIdentifier = sourceBundleIdentifier
         self.sourceApplicationName = sourceApplicationName
         self.copyCount = copyCount
+        self.snippetCollection = snippetCollection
+        self.snippetKeyword = snippetKeyword
+        self.snippetExpansionEnabled = snippetExpansionEnabled
     }
 
     var initialCopiedAt: Date { firstCopiedAt ?? createdAt }
 
     var numberOfCopies: Int { max(1, copyCount ?? 1) }
+
+    var expandsFromKeyword: Bool {
+        isPinned && snippetExpansionEnabled == true && snippetKeyword?.isEmpty == false
+    }
 
     var retainedPasteboardItems: [[String: Data]] {
         guard let pasteboardItems, !pasteboardItems.isEmpty else {

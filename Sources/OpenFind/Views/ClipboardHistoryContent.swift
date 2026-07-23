@@ -25,7 +25,7 @@ struct ClipboardHistoryContent: View {
                     historyList
                         .frame(minWidth: 310, idealWidth: 350, maxWidth: 410)
 
-                    ClipboardEntryPreview(entry: store.selectedEntry)
+                    ClipboardEntryPreview(store: store)
                         .frame(
                             minWidth: 300,
                             idealWidth: store.preferences.previewWidth,

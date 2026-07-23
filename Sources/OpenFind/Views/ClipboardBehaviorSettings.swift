@@ -14,6 +14,81 @@ struct ClipboardBehaviorSettings: View {
             )
         )
 
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(
+                L("Enable Snippet Auto Expansion"),
+                isOn: Binding(
+                    get: { store.preferences.snippetExpansionEnabled },
+                    set: { controller.setSnippetExpansionEnabled($0) }
+                )
+            )
+            Text(L("Snippet Auto Expansion Privacy Help"))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            if store.preferences.snippetExpansionEnabled {
+                if controller.snippetExpansion.isRunning {
+                    Label(L("Snippet Auto Expansion Ready"), systemImage: "checkmark.circle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.green)
+                } else {
+                    HStack {
+                        Label(
+                            controller.snippetExpansion.lastErrorMessage
+                                ?? L("Snippet Expansion Permission Required"),
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        Spacer()
+                        Button(L("Open Accessibility Settings")) {
+                            AccessibilityPermission.openSettings()
+                        }
+                    }
+                }
+            }
+        }
+
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(
+                L("Enable Clipboard Quick Merge"),
+                isOn: Binding(
+                    get: { store.preferences.quickMergeEnabled },
+                    set: { controller.setQuickMergeEnabled($0) }
+                )
+            )
+            if store.preferences.quickMergeEnabled {
+                Picker(L("Quick Merge Separator"), selection: Binding(
+                    get: { store.preferences.quickMergeSeparator },
+                    set: { store.setQuickMergeSeparator($0) }
+                )) {
+                    ForEach(ClipboardQuickMergeSeparator.allCases) { separator in
+                        Text(separator.localizedTitle).tag(separator)
+                    }
+                }
+                if store.preferences.quickMergeSeparator == .custom {
+                    TextField(
+                        L("Quick Merge Custom Separator"),
+                        text: Binding(
+                            get: { store.preferences.quickMergeCustomSeparator },
+                            set: { store.setQuickMergeCustomSeparator($0) }
+                        )
+                    )
+                }
+                if controller.quickMerge.isRunning {
+                    Label(L("Quick Merge Ready"), systemImage: "checkmark.circle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.green)
+                } else if let error = controller.quickMerge.lastErrorMessage {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+            }
+            Text(L("Clipboard Quick Merge Help"))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+
         Picker(L("Clipboard Search Mode"), selection: Binding(
             get: { store.searchMode },
             set: { store.setSearchMode($0) }

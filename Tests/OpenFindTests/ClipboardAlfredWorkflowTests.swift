@@ -84,7 +84,8 @@ struct ClipboardAlfredWorkflowTests {
             hasFiles: false
         )
         #expect(single.itemActions == [
-            .paste, .pastePlainText, .copy, .copyPlainText, .saveForReuse, .delete,
+            .paste, .pastePlainText, .copy, .copyPlainText, .quickLookFiles,
+            .saveForReuse, .delete,
         ])
 
         var savedURL = entry("https://openfind.example", kind: .url)
@@ -152,20 +153,44 @@ struct ClipboardAlfredWorkflowTests {
         let controller = ClipboardHistoryWindowController(store: context.store)
         let mainWindow = testWindow(identifier: "OpenFind.main")
         let settingsWindow = testWindow(identifier: "OpenFind.settings")
+        let companionWindow = testWindow(identifier: nil)
         mainWindow.orderFront(nil)
         settingsWindow.orderFront(nil)
+        companionWindow.orderFront(nil)
         defer {
             mainWindow.orderOut(nil)
             settingsWindow.orderOut(nil)
+            companionWindow.orderOut(nil)
         }
 
         #expect(mainWindow.isVisible)
         #expect(settingsWindow.isVisible)
+        #expect(companionWindow.isVisible)
 
         controller.activateForClipboardPanel(hideApplicationWindows: true)
 
         #expect(!mainWindow.isVisible)
         #expect(!settingsWindow.isVisible)
+        #expect(!companionWindow.isVisible)
+        #expect(mainWindow.animationBehavior == .none)
+        #expect(settingsWindow.animationBehavior == .none)
+        #expect(companionWindow.animationBehavior == .none)
+
+        let panel = controller.makePanelIfNeeded()
+        #expect(panel.styleMask.contains(.nonactivatingPanel))
+        #expect(panel.animationBehavior == .none)
+    }
+
+    @Test func preparingClipboardPanelBuildsItOffscreen() throws {
+        let context = try makeContext()
+        let controller = ClipboardHistoryWindowController(store: context.store)
+
+        controller.prepare()
+
+        let panel = try #require(controller.panel)
+        #expect(!panel.isVisible)
+        #expect(panel.contentView != nil)
+        #expect(context.store.isPreviewVisible)
     }
 
     @Test func commandActionsPrecedeTheIMECompositionGuard() throws {
@@ -224,14 +249,16 @@ struct ClipboardAlfredWorkflowTests {
         #expect(saveCount == 1)
     }
 
-    private func testWindow(identifier: String) -> NSWindow {
+    private func testWindow(identifier: String?) -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
             styleMask: .titled,
             backing: .buffered,
             defer: false
         )
-        window.identifier = NSUserInterfaceItemIdentifier(identifier)
+        if let identifier {
+            window.identifier = NSUserInterfaceItemIdentifier(identifier)
+        }
         return window
     }
 

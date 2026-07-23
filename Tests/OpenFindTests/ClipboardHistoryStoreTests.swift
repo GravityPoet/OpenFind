@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Foundation
 import Testing
 @testable import OpenFind
@@ -243,13 +244,7 @@ struct ClipboardHistoryStoreTests {
             kind: .text,
             representations: ["public.utf8-plain-text": Data("legacy".utf8)]
         )
-        let signedWriter = EncryptedClipboardHistoryPersistence(
-            defaults: defaults,
-            keyFileURL: keyURL,
-            keychain: keychain,
-            signingTeamIdentifier: "TESTTEAM"
-        )
-        try signedWriter.save([existing])
+        try seedLegacyHistory([existing], defaults: defaults, keychain: keychain)
         #expect(!FileManager.default.fileExists(atPath: keyURL.path))
 
         let localReader = EncryptedClipboardHistoryPersistence(
@@ -305,6 +300,71 @@ struct ClipboardHistoryStoreTests {
         #expect(FileManager.default.fileExists(atPath: keyURL.path))
     }
 
+    @Test func encryptedDatabaseRoundTripsFiveThousandItemsAndOneEntryUpdate() throws {
+        let suite = "OpenFindTests.ClipboardDatabase.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "OpenFindClipboardDatabase-\(UUID())",
+            isDirectory: true
+        )
+        let keyURL = directory.appendingPathComponent("clipboard-history-key-v3")
+        let databaseURL = directory.appendingPathComponent("clipboard-history-v3.sqlite3")
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let entries = (0..<5_000).map { index in
+            let value = "persisted item \(index)"
+            return ClipboardEntry(
+                createdAt: Date(timeIntervalSince1970: TimeInterval(index)),
+                previewText: value,
+                kind: .text,
+                representations: ["public.utf8-plain-text": Data(value.utf8)],
+                isPinned: index.isMultiple(of: 997)
+            )
+        }
+        let writer = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            databaseURL: databaseURL,
+            keychain: MemoryClipboardKeychain(),
+            signingTeamIdentifier: nil
+        )
+
+        let initialStart = ContinuousClock.now
+        try writer.save(entries)
+        let initialDuration = initialStart.duration(to: .now)
+
+        let reader = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            databaseURL: databaseURL,
+            keychain: MemoryClipboardKeychain(),
+            signingTeamIdentifier: nil
+        )
+        #expect(try reader.load() == entries)
+        var updated = entries
+        updated[2_500].previewText = "updated once"
+
+        let updateStart = ContinuousClock.now
+        try reader.save(updated)
+        let updateDuration = updateStart.duration(to: .now)
+
+        let verifier = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            databaseURL: databaseURL,
+            keychain: MemoryClipboardKeychain(),
+            signingTeamIdentifier: nil
+        )
+        #expect(try verifier.load() == updated)
+        #expect(defaults.data(forKey: EncryptedClipboardHistoryPersistence.ciphertextKey) == nil)
+        let attributes = try FileManager.default.attributesOfItem(atPath: databaseURL.path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        #expect(initialDuration < .seconds(5))
+        #expect(updateDuration < .seconds(2))
+    }
+
     @Test func localKeySymlinkIsRejectedWithoutTouchingItsTarget() throws {
         let suite = "OpenFindTests.ClipboardKeySymlink.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -351,13 +411,7 @@ struct ClipboardHistoryStoreTests {
             try? FileManager.default.removeItem(at: directory)
         }
         let keychain = MemoryClipboardKeychain()
-        let signedWriter = EncryptedClipboardHistoryPersistence(
-            defaults: defaults,
-            keyFileURL: keyURL,
-            keychain: keychain,
-            signingTeamIdentifier: "TESTTEAM"
-        )
-        try signedWriter.save([])
+        keychain.data = Data(repeating: 23, count: 32)
         defaults.set(Data(repeating: 0, count: 64), forKey: EncryptedClipboardHistoryPersistence.ciphertextKey)
         let localReader = EncryptedClipboardHistoryPersistence(
             defaults: defaults,
@@ -514,7 +568,7 @@ struct ClipboardHistoryStoreTests {
         #expect(pasteboard.data(forType: .init("public.rtf")) == nil)
     }
 
-    @Test func loadedPinnedItemsAreStillBoundedByTheHardPayloadLimit() throws {
+    @Test func loadedPinnedItemsAreNeverSilentlyTrimmed() throws {
         let suite = "OpenFindTests.Clipboard.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -537,16 +591,16 @@ struct ClipboardHistoryStoreTests {
         let retainedBytes = store.entries.reduce(0) { total, entry in
             total + entry.representations.values.reduce(0) { $0 + $1.count }
         }
-        #expect(store.entries.count == 3)
-        #expect(retainedBytes == ClipboardHistoryStore.maximumHistoryBytes)
+        #expect(store.entries.count == 4)
+        #expect(retainedBytes == payload.count * 4)
         #expect(store.entries.allSatisfy { $0.isPinned })
     }
 
-    @Test func aFullPinnedHistoryRejectsNewContentInsteadOfReportingInvisibleSuccess() throws {
+    @Test func foreverRetentionKeepsMoreThanTheLegacyThousandItemLimit() throws {
         let suite = "OpenFindTests.Clipboard.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let loaded = (0..<ClipboardHistoryStore.maximumEntries).map { index in
+        let loaded = (0..<5_000).map { index in
             ClipboardEntry(
                 previewText: "pinned \(index)",
                 kind: .text,
@@ -559,15 +613,16 @@ struct ClipboardHistoryStoreTests {
             persistence: MemoryClipboardPersistence(savedEntries: loaded),
             pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
         )
+        store.setRetentionPeriod(.forever)
 
-        #expect(!store.ingest(
+        #expect(store.ingest(
             representations: ["public.utf8-plain-text": Data("new".utf8)],
             previewText: "new",
             kind: .text
         ))
-        #expect(store.entries.count == ClipboardHistoryStore.maximumEntries)
-        #expect(store.entries.allSatisfy { $0.previewText != "new" })
-        #expect(store.lastErrorMessage == ClipboardHistoryError.historyFull.localizedDescription)
+        #expect(store.entries.count == 5_001)
+        #expect(store.entries.first?.previewText == "new")
+        #expect(store.entries.dropFirst().allSatisfy { $0.isPinned })
     }
 
     @Test func clipboardBehaviorPreferencesPersistAcrossReload() throws {
@@ -596,6 +651,109 @@ struct ClipboardHistoryStoreTests {
         #expect(reloaded.clearHistoryOnQuit)
         #expect(reloaded.clearSystemClipboardOnQuit)
         #expect(reloaded.fuzzySearchEnabled)
+    }
+
+    @Test(arguments: [1_000, 5_000])
+    func cachedProjectionKeepsSearchAndPointerSelectionResponsive(itemCount: Int) throws {
+        let suite = "OpenFindTests.ClipboardProjection.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = Date()
+        let loaded = (0..<itemCount).map { index in
+            let value = String(format: "item %05d needle-%05d", index, index)
+            return ClipboardEntry(
+                createdAt: now.addingTimeInterval(-TimeInterval(index)),
+                previewText: value,
+                kind: .text,
+                representations: ["public.utf8-plain-text": Data(value.utf8)]
+            )
+        }
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(savedEntries: loaded),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+
+        let coldStart = ContinuousClock.now
+        let visible = store.filteredEntries
+        let coldDuration = coldStart.duration(to: .now)
+        #expect(visible.count == itemCount)
+        #expect(store.clipboardProjectionBuildCount == 1)
+
+        let pointerStart = ContinuousClock.now
+        for entry in visible {
+            store.select(entry, preservingMultiSelection: true)
+        }
+        for _ in 0..<20_000 {
+            _ = store.filteredEntries.count
+        }
+        let pointerDuration = pointerStart.duration(to: .now)
+        #expect(store.clipboardProjectionBuildCount == 1)
+        #expect(store.selectedIndex == itemCount - 1)
+
+        store.query = "needle-\(String(format: "%05d", itemCount - 1))"
+        let searchStart = ContinuousClock.now
+        let matches = store.filteredEntries
+        let searchDuration = searchStart.duration(to: .now)
+        #expect(matches.count == 1)
+        #expect(matches.first?.previewText.hasSuffix(String(format: "%05d", itemCount - 1)) == true)
+        #expect(store.clipboardProjectionBuildCount == 2)
+
+        // Guard the interaction budget, not merely eventual completion. A
+        // quarter second regression is already visible in a transient panel.
+        #expect(coldDuration < .milliseconds(250))
+        #expect(pointerDuration < .milliseconds(250))
+        #expect(searchDuration < .milliseconds(250))
+    }
+
+    @Test func unchangedEmptyQueryKeepsTheWarmProjection() throws {
+        let suite = "OpenFindTests.ClipboardWarmProjection.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(savedEntries: [ClipboardEntry(
+                previewText: "warm",
+                kind: .text,
+                representations: ["public.utf8-plain-text": Data("warm".utf8)]
+            )]),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+        _ = store.filteredEntries
+        #expect(store.clipboardProjectionBuildCount == 1)
+
+        store.query = ""
+        _ = store.filteredEntries
+
+        #expect(store.clipboardProjectionBuildCount == 1)
+    }
+
+    @Test func imagePreviewUsesBoundedDownsamplingAndHeaderOnlyDimensions() throws {
+        let bitmap = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 2_000,
+            pixelsHigh: 1_000,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        let data = try #require(bitmap.representation(using: .png, properties: [:]))
+        let entry = ClipboardEntry(
+            previewText: "Image",
+            kind: .image,
+            representations: ["public.png": data]
+        )
+
+        let thumbnail = try #require(entry.downsampledPreviewImage(maxPixelSize: 256))
+
+        #expect(thumbnail.size.width <= 256)
+        #expect(thumbnail.size.height <= 256)
+        #expect(abs((thumbnail.size.width / thumbnail.size.height) - 2) < 0.01)
+        #expect(entry.imageDimensions == "2000×1000")
     }
 
     @Test func fuzzySearchRanksConsecutiveMatchesAndAcceptsApplicationAliases() throws {
@@ -709,4 +867,19 @@ private final class MemoryClipboardKeychain: ClipboardHistoryKeychainAccessing {
     func remove() throws {
         data = nil
     }
+}
+
+private func seedLegacyHistory(
+    _ entries: [ClipboardEntry],
+    defaults: UserDefaults,
+    keychain: MemoryClipboardKeychain
+) throws {
+    let keyData = Data(repeating: 19, count: 32)
+    keychain.data = keyData
+    let encoded = try JSONEncoder().encode(entries)
+    let sealed = try AES.GCM.seal(encoded, using: SymmetricKey(data: keyData))
+    defaults.set(
+        sealed.combined,
+        forKey: EncryptedClipboardHistoryPersistence.ciphertextKey
+    )
 }

@@ -40,7 +40,13 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     func show() {
         shortcutCycleState.reset()
         removeShortcutFlagsMonitor()
-        present()
+        present(positionOverride: .center, hideApplicationWindows: true)
+    }
+
+    func prepare() {
+        let panel = makePanelIfNeeded()
+        resize(panel, showingPreview: true, animated: false)
+        panel.contentView?.layoutSubtreeIfNeeded()
     }
 
     func present(
@@ -58,12 +64,19 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         resize(panel, showingPreview: store.isPreviewVisible, animated: false)
         position(panel, override: positionOverride)
         panel.makeKeyAndOrderFront(nil)
+        if hideApplicationWindows {
+            orderOutApplicationWindows(except: panel)
+        }
     }
 
     func paste(_ entry: ClipboardEntry, plainTextOnly: Bool = false) {
         let shouldPastePlainText = plainTextOnly || store.pasteWithoutFormatting
+        let cursorOffsetFromEnd: Int
         do {
-            try store.copy(entry, plainTextOnly: shouldPastePlainText)
+            cursorOffsetFromEnd = try store.copy(
+                entry,
+                plainTextOnly: shouldPastePlainText
+            )
         } catch {
             store.reportError(error)
             return
@@ -72,7 +85,9 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await pasteService.pasteIntoCapturedApplication()
+                try await pasteService.pasteIntoCapturedApplication(
+                    cursorOffsetFromEnd: cursorOffsetFromEnd
+                )
                 close()
             } catch {
                 store.reportError(error)

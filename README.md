@@ -67,7 +67,7 @@ Perform advanced boolean querying, metadata checks (`size`, `creation date`), gl
 OpenFind also replaces three separate menu-bar utilities without embedding or launching their app bundles:
 
 - **Keep Awake:** timed and conditional sessions, all 14 Amphetamine-style Trigger criteria, screen-saver/display policy, closed-display mode with transactional recovery, optional Power Protect, notifications, hot keys, AppleScript, statistics, and Drive Alive.
-- **Clipboard History:** bounded local history for text, rich text, URLs, files, and images, with search, preview, pinning, duplicate handling, ignore rules, encrypted persistence, and paste-without-formatting.
+- **Clipboard History:** encrypted, time-based history for text, rich text, URLs, files, and images, presented in one centered Liquid Glass panel with instant search, source-app metadata, synchronized preview, click/Return paste, reusable snippet collections and expansion, paste stacks, quick merge, full Quick Look, content actions, and Shortcuts/App Intents. Pinned items are never silently expired.
 - **Keyboard Cleaning:** Accessibility-gated keyboard/media-key suppression, pointer-only unlock, countdown, emergency auto-unlock, and lifecycle cleanup.
 
 Privileged closed-display changes are opt-in. Drive Alive writes one bounded marker per selected target and never overwrites an unrelated file.
