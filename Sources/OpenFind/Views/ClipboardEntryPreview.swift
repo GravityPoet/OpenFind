@@ -1,16 +1,23 @@
 import SwiftUI
 
 struct ClipboardEntryPreview: View {
-    let entry: ClipboardEntry?
+    @Bindable var store: ClipboardHistoryStore
 
     var body: some View {
-        if let entry {
+        if let entry = store.selectedEntry {
             VStack(spacing: 0) {
-                ClipboardEntryPreviewBody(entry: entry)
+                ClipboardEntryPreviewBody(
+                    entry: entry,
+                    previewImage: store.entryPreviewImage(for: entry)
+                )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 Divider()
-                ClipboardEntryMetadata(entry: entry)
+                ClipboardEntryMetadata(
+                    entry: entry,
+                    sourceApplicationIcon: store.applicationIcon(for: entry),
+                    imageDimensions: store.imageDimensions(for: entry)
+                )
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
             }

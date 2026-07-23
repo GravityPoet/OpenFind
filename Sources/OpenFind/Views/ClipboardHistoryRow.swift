@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ClipboardHistoryRow: View {
     let entry: ClipboardEntry
+    let previewImage: NSImage?
+    let sourceApplicationIcon: NSImage?
     let quickIndex: Int?
     let selectionOrder: Int?
     let isSelected: Bool
@@ -31,7 +33,7 @@ struct ClipboardHistoryRow: View {
 
             leadingIcon
 
-            if let image = entry.previewImage {
+            if let image = previewImage {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
@@ -57,7 +59,7 @@ struct ClipboardHistoryRow: View {
                 query: query,
                 preferences: preferences
             ))
-                .font(.system(size: 13.5, weight: .regular))
+                .font(ClipboardTypography.row)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -68,21 +70,25 @@ struct ClipboardHistoryRow: View {
                     .opacity(isSelected ? 0.9 : 0.48)
                 if let pin = ClipboardPinKey.normalize(entry.pinKey) {
                     Text("⌘\(pin.uppercased())")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .opacity(isSelected ? 0.9 : 0.52)
+                        .font(ClipboardTypography.shortcut)
+                        .foregroundStyle(isSelected
+                            ? Color.white.opacity(0.96)
+                            : ClipboardTypography.secondaryText)
                 }
             }
 
             if let quickIndex {
                 Text("⌘\(quickIndex)")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .font(ClipboardTypography.shortcut)
                     .monospacedDigit()
-                    .opacity(isSelected ? 0.9 : 0.52)
+                    .foregroundStyle(isSelected
+                        ? Color.white.opacity(0.96)
+                        : ClipboardTypography.secondaryText)
             }
         }
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
-        .foregroundStyle(isSelected ? Color.white : Color.primary)
+        .foregroundStyle(isSelected ? Color.white : ClipboardTypography.primaryText)
         .modifier(ClipboardHistoryRowSurface(
             isSelected: isSelected,
             isHovered: isHovered
@@ -110,13 +116,13 @@ struct ClipboardHistoryRow: View {
 
     @ViewBuilder
     private var leadingIcon: some View {
-        if preferences.showApplicationIcons, let icon = entry.sourceApplicationIcon {
+        if preferences.showApplicationIcons, let icon = sourceApplicationIcon {
             Image(nsImage: icon)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 21, height: 21)
                 .frame(width: 24, height: 24)
-        } else if entry.previewImage == nil {
+        } else if previewImage == nil {
             Image(systemName: entry.kind.systemImage)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(isSelected ? Color.white : Color.secondary)
@@ -129,7 +135,7 @@ struct ClipboardHistoryRow: View {
     }
 
     private var rowHeight: CGFloat {
-        entry.previewImage == nil ? 34 : CGFloat(preferences.imageRowHeight + 8)
+        previewImage == nil ? 30 : CGFloat(preferences.imageRowHeight + 8)
     }
 
     private var sourceHelp: String {

@@ -21,7 +21,7 @@ extension ClipboardHistoryStore {
     func migratePersistence() -> Bool {
         guard isPersistenceEnabled, requiresPersistenceMigration else { return true }
         do {
-            entries = Array(try persistence.load().prefix(Self.maximumEntries))
+            entries = try persistence.load()
             let trimmed = trimToLimits()
             let normalizedPins = normalizePinnedKeys()
             selectedIndex = 0
@@ -51,14 +51,17 @@ extension ClipboardHistoryStore {
         if let cutoff = retentionPeriod.cutoff(referenceDate: referenceDate) {
             entries.removeAll { !$0.isPinned && $0.createdAt < cutoff }
         }
-        var payloadBytes = retainedPayloadBytes
-        while entries.count > Self.maximumEntries || payloadBytes > Self.maximumHistoryBytes {
-            guard let index = entries.lastIndex(where: { !$0.isPinned })
-                ?? entries.indices.last else { break }
-            payloadBytes -= payloadByteCount(of: entries[index])
-            entries.remove(at: index)
-        }
         return entries.count != initialCount
+    }
+
+    @discardableResult
+    func pruneExpiredHistory(referenceDate: Date = Date()) -> Bool {
+        guard !isPanelPresented, trimToLimits(referenceDate: referenceDate) else {
+            return false
+        }
+        selectedIndex = min(selectedIndex, max(0, filteredEntries.count - 1))
+        persist()
+        return true
     }
 
     var retainedPayloadBytes: Int {

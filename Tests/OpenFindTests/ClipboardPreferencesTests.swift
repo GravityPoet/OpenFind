@@ -11,6 +11,29 @@ struct ClipboardPreferencesTests {
 
         #expect(preferences.allowedBundleIdentifiers.isEmpty)
         #expect(!preferences.captureOnlyFromAllowedApplications)
+        #expect(preferences.popupPosition == .center)
+    }
+
+    @Test func legacyCursorDefaultMigratesToCenterExactlyOnce() throws {
+        let suite = "OpenFindTests.ClipboardCenteredPopup.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var legacy = ClipboardPreferences()
+        legacy.popupPosition = .cursor
+        defaults.set(
+            try JSONEncoder().encode(legacy),
+            forKey: "OpenFind.clipboardPreferencesV3"
+        )
+        defaults.set(2, forKey: "OpenFind.clipboardDefaultIgnoredAppsSeedVersionV1")
+
+        let migrated = ClipboardPreferencesPersistence.load(from: defaults)
+        #expect(migrated.popupPosition == .center)
+
+        var explicit = migrated
+        explicit.popupPosition = .cursor
+        ClipboardPreferencesPersistence.save(explicit, to: defaults)
+        let reloaded = ClipboardPreferencesPersistence.load(from: defaults)
+        #expect(reloaded.popupPosition == .cursor)
     }
 
     @Test func preferencePayloadIsNormalizedAndRoundTrips() throws {

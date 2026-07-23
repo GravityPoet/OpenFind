@@ -12,21 +12,22 @@ struct ClipboardHistoryList: View {
     @State private var selectionOrigin = SelectionOrigin.other
 
     var body: some View {
+        let visibleEntries = store.filteredEntries
         ScrollViewReader { proxy in
             Group {
-                if store.filteredEntries.isEmpty {
+                if visibleEntries.isEmpty {
                     ContentUnavailableView.search(text: store.query)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 1) {
-                            ForEach(
-                                Array(store.filteredEntries.enumerated()),
-                                id: \.element.id
-                            ) { index, entry in
+                            ForEach(visibleEntries) { entry in
+                                let index = store.visibleIndex(for: entry) ?? 0
                                 ClipboardHistoryRow(
                                     entry: entry,
-                                    quickIndex: quickIndex(for: entry),
+                                    previewImage: store.rowPreviewImage(for: entry),
+                                    sourceApplicationIcon: store.applicationIcon(for: entry),
+                                    quickIndex: store.quickIndex(for: entry),
                                     selectionOrder: store.selectionOrder(for: entry),
                                     isSelected: index == store.selectedIndex
                                         || store.selectionOrder(for: entry) != nil,
@@ -104,13 +105,6 @@ struct ClipboardHistoryList: View {
         .background(Color.clear)
     }
 
-    private func quickIndex(for entry: ClipboardEntry) -> Int? {
-        guard !entry.isPinned else { return nil }
-        let unpinned = store.filteredEntries.filter { !$0.isPinned }
-        guard let index = unpinned.firstIndex(where: { $0.id == entry.id }),
-              index < 9 else { return nil }
-        return index + 1
-    }
 }
 
 private enum SelectionOrigin {

@@ -16,18 +16,14 @@ extension ClipboardHistoryView {
     }
 
     func performQuickAction(index: Int, action: ClipboardQuickAction) {
-        let entries = store.filteredEntries.filter { !$0.isPinned }
-        guard entries.indices.contains(index) else { return }
-        let entry = entries[index]
+        guard let entry = store.quickEntry(at: index) else { return }
         store.clearMultiSelection()
         store.select(entry)
         perform(action, on: entry)
     }
 
     func performPinnedAction(key: String, action: ClipboardQuickAction) {
-        guard let entry = store.filteredEntries.first(where: {
-            $0.isPinned && ClipboardPinKey.normalize($0.pinKey) == key
-        }) else { return }
+        guard let entry = store.pinnedEntry(for: key) else { return }
         store.select(entry)
         perform(action, on: entry)
     }
@@ -112,10 +108,9 @@ extension ClipboardHistoryView {
             onClose()
             FileActions.revealInFinder(urls)
         case .quickLookFiles:
-            let urls = store.selectedEntry?.fileURLs ?? []
-            guard !urls.isEmpty else { return }
+            guard let entry = store.selectedEntry else { return }
             onClose()
-            onQuickLook(urls)
+            onQuickLook(entry)
         case .saveForReuse:
             saveSelectedForReuse()
         case .removeFromSaved:
@@ -129,6 +124,16 @@ extension ClipboardHistoryView {
             store.clearRecent(minutes: 15)
         case .clearUnpinned:
             store.clearUnpinned()
+        }
+    }
+
+    func performContentAction(_ action: ClipboardContentActionDescriptor) {
+        guard let entry = store.selectedEntry else { return }
+        do {
+            try store.performContentAction(action, on: entry)
+            onClose()
+        } catch {
+            store.reportError(error)
         }
     }
 

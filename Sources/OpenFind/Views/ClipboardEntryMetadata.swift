@@ -1,12 +1,15 @@
+import AppKit
 import SwiftUI
 
 struct ClipboardEntryMetadata: View {
     let entry: ClipboardEntry
+    let sourceApplicationIcon: NSImage?
+    let imageDimensions: String?
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 14) {
             HStack(spacing: 7) {
-                if let icon = entry.sourceApplicationIcon {
+                if let icon = sourceApplicationIcon {
                     Image(nsImage: icon)
                         .resizable()
                         .scaledToFit()
@@ -19,7 +22,8 @@ struct ClipboardEntryMetadata: View {
                 if let sourceName {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(sourceName)
-                            .foregroundStyle(.primary)
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(ClipboardTypography.primaryText)
                             .lineLimit(1)
                         if let sourceDetail {
                             Text(sourceDetail)
@@ -47,7 +51,7 @@ struct ClipboardEntryMetadata: View {
                 }
 
                 HStack(spacing: 5) {
-                    if let dimensions = entry.imageDimensions {
+                    if let dimensions = imageDimensions {
                         Text(dimensions)
                         Text("·")
                     }

@@ -55,7 +55,7 @@ final class ClipboardPasteService {
         targetApplication = frontmost
     }
 
-    func pasteIntoCapturedApplication() async throws {
+    func pasteIntoCapturedApplication(cursorOffsetFromEnd: Int = 0) async throws {
         let targetPID = try await activateCapturedApplicationProcess()
 
         guard let keyDown = CGEvent(
@@ -73,6 +73,23 @@ final class ClipboardPasteService {
         keyUp.flags = .maskCommand
         keyDown.postToPid(targetPID)
         keyUp.postToPid(targetPID)
+        guard cursorOffsetFromEnd > 0 else { return }
+        try await Task.sleep(for: .milliseconds(35))
+        for _ in 0..<cursorOffsetFromEnd {
+            guard let leftDown = CGEvent(
+                keyboardEventSource: nil,
+                virtualKey: CGKeyCode(kVK_LeftArrow),
+                keyDown: true
+            ), let leftUp = CGEvent(
+                keyboardEventSource: nil,
+                virtualKey: CGKeyCode(kVK_LeftArrow),
+                keyDown: false
+            ) else {
+                throw ClipboardPasteError.eventCreationFailed
+            }
+            leftDown.postToPid(targetPID)
+            leftUp.postToPid(targetPID)
+        }
     }
 
     func activateCapturedApplication() async throws {

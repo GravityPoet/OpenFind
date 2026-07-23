@@ -9,6 +9,7 @@ final class ClipboardMonitor {
     private let onExternalChange: @MainActor () -> Void
     private var timer: Timer?
     private var lastChangeCount: Int = 0
+    private var nextRetentionCleanupAt = Date.distantFuture
 
     init(
         store: ClipboardHistoryStore,
@@ -25,6 +26,7 @@ final class ClipboardMonitor {
     func start(interval: TimeInterval = 0.5) {
         stop()
         lastChangeCount = pasteboard.changeCount
+        nextRetentionCleanupAt = Date().addingTimeInterval(60)
         let boundedInterval = min(5, max(0.1, interval))
         timer = Timer.scheduledTimer(withTimeInterval: boundedInterval, repeats: true) {
             [weak self] _ in
@@ -38,6 +40,11 @@ final class ClipboardMonitor {
     }
 
     func poll() {
+        let now = Date()
+        if now >= nextRetentionCleanupAt {
+            _ = store.pruneExpiredHistory(referenceDate: now)
+            nextRetentionCleanupAt = now.addingTimeInterval(60)
+        }
         let changeCount = pasteboard.changeCount
         guard changeCount != lastChangeCount else { return }
         lastChangeCount = changeCount

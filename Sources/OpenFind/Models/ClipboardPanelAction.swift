@@ -47,9 +47,8 @@ struct ClipboardPanelActionContext: Equatable, Sendable {
         actions.append(.copy)
         if canCopyPlainText { actions.append(.copyPlainText) }
         if hasOpenableURL { actions.append(.openURL) }
-        if hasFiles {
-            actions.append(contentsOf: [.openFiles, .revealFiles, .quickLookFiles])
-        }
+        if hasFiles { actions.append(contentsOf: [.openFiles, .revealFiles]) }
+        actions.append(.quickLookFiles)
         actions.append(entry.isPinned ? .removeFromSaved : .saveForReuse)
         actions.append(.delete)
         return actions

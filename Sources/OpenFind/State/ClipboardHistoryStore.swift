@@ -5,9 +5,7 @@ import Observation
 @MainActor
 @Observable
 final class ClipboardHistoryStore {
-    static let maximumEntries = 1_000
     static let maximumItemBytes = 16 * 1_024 * 1_024
-    static let maximumHistoryBytes = 48 * 1_024 * 1_024
     static let defaultItemLimitBytes = 8 * 1_024 * 1_024
     static let persistenceEnabledKey = "OpenFind.clipboardPersistenceEnabledV1"
     static let remoteClipboardType = "com.apple.is-remote-clipboard"
@@ -34,18 +32,58 @@ final class ClipboardHistoryStore {
     @ObservationIgnored let defaults: UserDefaults
     @ObservationIgnored let persistence: any ClipboardHistoryPersisting
     @ObservationIgnored let pasteboard: NSPasteboard
-    var entries: [ClipboardEntry] = []
+    @ObservationIgnored let contentActionRegistry: ClipboardContentActionRegistry
+    var entries: [ClipboardEntry] = [] {
+        didSet { invalidateClipboardProjection() }
+    }
     var lastErrorMessage: String?
     var isPersistenceEnabled = true
     var requiresPersistenceMigration = false
-    var preferences: ClipboardPreferences
-    var query = ""
+    var preferences: ClipboardPreferences {
+        didSet { invalidateClipboardProjection() }
+    }
+    var query = "" {
+        didSet {
+            if query != oldValue { invalidateClipboardProjection() }
+        }
+    }
+    private(set) var clipboardProjectionRevision: UInt64 = 0
+    @ObservationIgnored var cachedClipboardProjectionRevision: UInt64?
+    @ObservationIgnored var cachedFilteredEntries: [ClipboardEntry] = []
+    @ObservationIgnored var cachedVisibleIndexByID: [UUID: Int] = [:]
+    @ObservationIgnored var cachedQuickIndexByID: [UUID: Int] = [:]
+    @ObservationIgnored var cachedQuickEntryIDs: [UUID] = []
+    @ObservationIgnored var cachedEntryByID: [UUID: ClipboardEntry] = [:]
+    @ObservationIgnored var cachedSnippetKeywords: [(keyword: String, id: UUID)] = []
+    @ObservationIgnored var clipboardProjectionBuildCount = 0
+    @ObservationIgnored private let rowImageCache: NSCache<NSUUID, NSImage> = {
+        let cache = NSCache<NSUUID, NSImage>()
+        cache.countLimit = 160
+        cache.totalCostLimit = 48 * 1_024 * 1_024
+        return cache
+    }()
+    @ObservationIgnored private let previewImageCache: NSCache<NSUUID, NSImage> = {
+        let cache = NSCache<NSUUID, NSImage>()
+        cache.countLimit = 16
+        cache.totalCostLimit = 192 * 1_024 * 1_024
+        return cache
+    }()
+    @ObservationIgnored private let imageDimensionsCache: NSCache<NSUUID, NSString> = {
+        let cache = NSCache<NSUUID, NSString>()
+        cache.countLimit = 160
+        return cache
+    }()
+    @ObservationIgnored private let applicationIconCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 96
+        return cache
+    }()
     var selectedIndex = 0
     var selectedEntryIDs: [UUID] = []
     var selectionAnchorID: UUID?
     var pasteStack: ClipboardPasteStack?
     var isSearchPresented = false
-    var isPreviewVisible = false
+    var isPreviewVisible = true
     var isActionPanelPresented = false
     var isPanelPresented = false
     var presentationGeneration = 0
@@ -53,18 +91,20 @@ final class ClipboardHistoryStore {
     init(
         defaults: UserDefaults = .standard,
         persistence: any ClipboardHistoryPersisting = EncryptedClipboardHistoryPersistence(),
-        pasteboard: NSPasteboard = .general
+        pasteboard: NSPasteboard = .general,
+        contentActionRegistry: ClipboardContentActionRegistry = .standard
     ) {
         self.defaults = defaults
         self.persistence = persistence
         self.pasteboard = pasteboard
+        self.contentActionRegistry = contentActionRegistry
         preferences = ClipboardPreferencesPersistence.load(from: defaults)
         let enabled = defaults.object(forKey: Self.persistenceEnabledKey) as? Bool ?? true
         isPersistenceEnabled = enabled
         requiresPersistenceMigration = enabled && persistence.requiresExplicitMigration
         guard enabled, !requiresPersistenceMigration else { return }
         do {
-            entries = Array(try persistence.load().prefix(Self.maximumEntries))
+            entries = try persistence.load()
             let trimmed = trimToLimits()
             if trimmed || normalizePinnedKeys() { persist() }
         } catch {
@@ -84,11 +124,49 @@ final class ClipboardHistoryStore {
     var clipboardCheckInterval: TimeInterval { preferences.clipboardCheckInterval }
     var retainedStorageBytes: Int { retainedPayloadBytes }
 
+    func rowPreviewImage(for entry: ClipboardEntry) -> NSImage? {
+        guard entry.kind == .image else { return nil }
+        let key = entry.id as NSUUID
+        if let cached = rowImageCache.object(forKey: key) { return cached }
+        guard let image = entry.downsampledPreviewImage(maxPixelSize: 256) else { return nil }
+        let cost = Int(image.size.width * image.size.height * 4)
+        rowImageCache.setObject(image, forKey: key, cost: cost)
+        return image
+    }
+
+    func entryPreviewImage(for entry: ClipboardEntry) -> NSImage? {
+        guard entry.kind == .image else { return nil }
+        let key = entry.id as NSUUID
+        if let cached = previewImageCache.object(forKey: key) { return cached }
+        guard let image = entry.downsampledPreviewImage(maxPixelSize: 1_600) else { return nil }
+        let cost = Int(image.size.width * image.size.height * 4)
+        previewImageCache.setObject(image, forKey: key, cost: cost)
+        return image
+    }
+
+    func imageDimensions(for entry: ClipboardEntry) -> String? {
+        guard entry.kind == .image else { return nil }
+        let key = entry.id as NSUUID
+        if let cached = imageDimensionsCache.object(forKey: key) { return cached as String }
+        guard let dimensions = entry.imageDimensions else { return nil }
+        imageDimensionsCache.setObject(dimensions as NSString, forKey: key)
+        return dimensions
+    }
+
+    func applicationIcon(for entry: ClipboardEntry) -> NSImage? {
+        guard let identifier = entry.sourceBundleIdentifier else { return nil }
+        let key = identifier as NSString
+        if let cached = applicationIconCache.object(forKey: key) { return cached }
+        guard let icon = entry.sourceApplicationIcon else { return nil }
+        applicationIconCache.setObject(icon, forKey: key)
+        return icon
+    }
+
+    private func invalidateClipboardProjection() {
+        clipboardProjectionRevision &+= 1
+    }
+
     func beginPresentation() {
-        if trimToLimits() {
-            selectedIndex = min(selectedIndex, max(0, filteredEntries.count - 1))
-            persist()
-        }
         isPanelPresented = true
         isPreviewVisible = true
         isActionPanelPresented = false
@@ -97,7 +175,6 @@ final class ClipboardHistoryStore {
 
     func endPresentation() {
         isPanelPresented = false
-        isPreviewVisible = false
         isActionPanelPresented = false
         presentationGeneration &+= 1
     }

@@ -20,6 +20,8 @@ final class ClipboardController {
     @ObservationIgnored private let registry: GlobalHotKeyRegistry
     let store: ClipboardHistoryStore
     private let monitor: ClipboardMonitor
+    let snippetExpansion: ClipboardSnippetExpansionController
+    let quickMerge: ClipboardQuickMergeController
     private let windowController: ClipboardHistoryWindowController
     @ObservationIgnored private let defaults: UserDefaults
     private var hasStarted = false
@@ -42,6 +44,8 @@ final class ClipboardController {
                 windowController?.cancelPasteStack()
             }
         )
+        snippetExpansion = ClipboardSnippetExpansionController(store: store)
+        quickMerge = ClipboardQuickMergeController(store: store)
         self.defaults = defaults
         shortcut = Self.loadShortcut(from: defaults)
         isShortcutEnabled = defaults.object(forKey: Self.shortcutEnabledKey) as? Bool ?? true
@@ -50,6 +54,8 @@ final class ClipboardController {
     func start() {
         hasStarted = true
         monitor.start(interval: store.clipboardCheckInterval)
+        snippetExpansion.refresh()
+        quickMerge.refresh()
         registry.start()
         registrationState = registry.bind(
             id: Self.hotKeyID,
@@ -57,10 +63,13 @@ final class ClipboardController {
             enabled: isShortcutEnabled,
             action: { [weak self] in self?.handleShortcutInvocation() }
         )
+        windowController.prepare()
     }
 
     func stop() {
         monitor.stop()
+        snippetExpansion.stop()
+        quickMerge.stop()
         windowController.cancelPasteStack()
         windowController.close()
         registry.unbind(id: Self.hotKeyID)
@@ -121,6 +130,16 @@ final class ClipboardController {
         if hasStarted {
             monitor.start(interval: store.clipboardCheckInterval)
         }
+    }
+
+    func setSnippetExpansionEnabled(_ enabled: Bool) {
+        store.setSnippetExpansionEnabled(enabled)
+        snippetExpansion.refresh()
+    }
+
+    func setQuickMergeEnabled(_ enabled: Bool) {
+        store.setQuickMergeEnabled(enabled)
+        quickMerge.refresh()
     }
 
     private static func loadShortcut(from defaults: UserDefaults) -> GlobalShortcut {

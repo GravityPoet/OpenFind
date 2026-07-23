@@ -102,6 +102,22 @@ extension ClipboardHistoryStore {
         updatePreferences { $0.clipboardCheckInterval = interval }
     }
 
+    func setSnippetExpansionEnabled(_ enabled: Bool) {
+        updatePreferences { $0.snippetExpansionEnabled = enabled }
+    }
+
+    func setQuickMergeEnabled(_ enabled: Bool) {
+        updatePreferences { $0.quickMergeEnabled = enabled }
+    }
+
+    func setQuickMergeSeparator(_ separator: ClipboardQuickMergeSeparator) {
+        updatePreferences { $0.quickMergeSeparator = separator }
+    }
+
+    func setQuickMergeCustomSeparator(_ separator: String) {
+        updatePreferences { $0.quickMergeCustomSeparator = separator }
+    }
+
     func setPreference<Value>(
         _ keyPath: WritableKeyPath<ClipboardPreferences, Value>,
         to value: Value

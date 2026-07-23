@@ -13,6 +13,9 @@ enum ClipboardPreferencesPersistence {
     private static let defaultIgnoredAppsSeedVersionKey =
         "OpenFind.clipboardDefaultIgnoredAppsSeedVersionV1"
     private static let currentDefaultIgnoredAppsSeedVersion = 2
+    private static let centeredPopupMigrationVersionKey =
+        "OpenFind.clipboardCenteredPopupMigrationVersionV1"
+    private static let currentCenteredPopupMigrationVersion = 1
 
     static func load(from defaults: UserDefaults) -> ClipboardPreferences {
         if let data = defaults.data(forKey: preferencesKey) {
@@ -57,6 +60,7 @@ enum ClipboardPreferencesPersistence {
         forceSave: Bool = false
     ) -> ClipboardPreferences {
         let previousVersion = defaults.integer(forKey: defaultIgnoredAppsSeedVersionKey)
+        let popupMigrationVersion = defaults.integer(forKey: centeredPopupMigrationVersionKey)
         var seeded = preferences
         if previousVersion < 1 {
             seeded.ignoredBundleIdentifiers.formUnion(
@@ -70,14 +74,29 @@ enum ClipboardPreferencesPersistence {
                 ClipboardPreferences.defaultIgnoredBundleIdentifiersV2
             )
         }
+        if popupMigrationVersion < currentCenteredPopupMigrationVersion,
+           seeded.popupPosition == .cursor {
+            // Earlier releases defaulted the global shortcut panel to the
+            // pointer. Migrate that old default once; later explicit choices
+            // remain untouched because the migration marker is persisted.
+            seeded.popupPosition = .center
+        }
         seeded = seeded.normalized()
-        if forceSave || previousVersion < currentDefaultIgnoredAppsSeedVersion {
+        if forceSave
+            || previousVersion < currentDefaultIgnoredAppsSeedVersion
+            || popupMigrationVersion < currentCenteredPopupMigrationVersion {
             save(seeded, to: defaults)
         }
         if previousVersion < currentDefaultIgnoredAppsSeedVersion {
             defaults.set(
                 currentDefaultIgnoredAppsSeedVersion,
                 forKey: defaultIgnoredAppsSeedVersionKey
+            )
+        }
+        if popupMigrationVersion < currentCenteredPopupMigrationVersion {
+            defaults.set(
+                currentCenteredPopupMigrationVersion,
+                forKey: centeredPopupMigrationVersionKey
             )
         }
         return seeded

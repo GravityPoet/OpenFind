@@ -5,6 +5,7 @@ struct ClipboardHistoryHeader: View {
     @FocusState.Binding var searchFocused: Bool
     @Binding var isActionPanelPresented: Bool
     let onPerformAction: (ClipboardPanelAction) -> Void
+    let onPerformContentAction: (ClipboardContentActionDescriptor) -> Void
 
     var body: some View {
         OpenFindGlassContainer {
@@ -28,8 +29,10 @@ struct ClipboardHistoryHeader: View {
                 .popover(isPresented: $isActionPanelPresented, arrowEdge: .top) {
                     ClipboardActionPanel(
                         itemActions: actionContext.itemActions,
+                        contentActions: contentActions,
                         historyActions: ClipboardPanelActionContext.historyActions,
                         onPerform: onPerformAction,
+                        onPerformContentAction: onPerformContentAction,
                         onDismiss: { isActionPanelPresented = false }
                     )
                 }
@@ -37,6 +40,12 @@ struct ClipboardHistoryHeader: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
+    }
+
+    private var contentActions: [ClipboardContentActionDescriptor] {
+        guard actionContext.selectedEntries.count == 1,
+              let entry = actionContext.entry else { return [] }
+        return store.availableContentActions(for: entry)
     }
 
     private var actionContext: ClipboardPanelActionContext {
@@ -63,7 +72,8 @@ struct ClipboardHistoryHeader: View {
 
             TextField(L("Search Clipboard History"), text: $store.query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 15))
+                .font(ClipboardTypography.search)
+                .foregroundStyle(ClipboardTypography.primaryText)
                 .focused($searchFocused)
 
             if !store.query.isEmpty {

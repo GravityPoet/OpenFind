@@ -71,6 +71,15 @@ enum ClipboardHighlightStyle: String, CaseIterable, Codable, Identifiable, Senda
     var id: Self { self }
 }
 
+enum ClipboardQuickMergeSeparator: String, CaseIterable, Codable, Identifiable, Sendable {
+    case newline
+    case space
+    case none
+    case custom
+
+    var id: Self { self }
+}
+
 struct ClipboardPreferences: Codable, Equatable, Sendable {
     var retentionPeriod = ClipboardRetentionPeriod.days30
     var itemLimitBytes = 8 * 1_024 * 1_024
@@ -89,7 +98,7 @@ struct ClipboardPreferences: Codable, Equatable, Sendable {
     var searchMode = ClipboardSearchMode.exact
     var sortMode = ClipboardSortMode.lastCopied
     var pinsPosition = ClipboardPinsPosition.top
-    var popupPosition = ClipboardPopupPosition.cursor
+    var popupPosition = ClipboardPopupPosition.center
     var popupScreen = 0
     var openPreviewAutomatically = true
     var previewDelayMilliseconds = 1_500
@@ -101,6 +110,10 @@ struct ClipboardPreferences: Codable, Equatable, Sendable {
     var showSpecialSymbols = true
     var showHexColorSwatch = true
     var showRecentCopyInMenuBar = false
+    var snippetExpansionEnabled = false
+    var quickMergeEnabled = false
+    var quickMergeSeparator = ClipboardQuickMergeSeparator.newline
+    var quickMergeCustomSeparator = " · "
     var pinShortcut = Self.defaultPinShortcut
     var deleteShortcut = Self.defaultDeleteShortcut
     var previewShortcut = Self.defaultPreviewShortcut
@@ -196,6 +209,11 @@ struct ClipboardPreferences: Codable, Equatable, Sendable {
             return trimmed
         }.uniqued().prefix(128).map { $0 }
         value.clipboardCheckInterval = min(5, max(0.1, clipboardCheckInterval))
+        value.quickMergeCustomSeparator = String(
+            quickMergeCustomSeparator
+                .filter { !$0.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) }
+                .prefix(16)
+        )
         value.popupScreen = max(0, popupScreen)
         value.previewDelayMilliseconds = min(100_000, max(200, previewDelayMilliseconds))
         value.previewWidth = min(800, max(260, previewWidth))

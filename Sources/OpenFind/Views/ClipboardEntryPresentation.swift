@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SwiftUI
 
 extension ClipboardEntryKind {
@@ -28,6 +29,29 @@ extension ClipboardEntryKind {
 extension ClipboardEntry {
     var previewImage: NSImage? {
         imageData.flatMap(NSImage.init(data:))
+    }
+
+    func downsampledPreviewImage(maxPixelSize: Int) -> NSImage? {
+        guard maxPixelSize > 0,
+              let imageData,
+              let source = CGImageSourceCreateWithData(imageData as CFData, nil) else {
+            return nil
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            options as CFDictionary
+        ) else { return nil }
+        return NSImage(
+            cgImage: image,
+            size: NSSize(width: image.width, height: image.height)
+        )
     }
 
     var fileURL: URL? {
@@ -92,10 +116,14 @@ extension ClipboardEntry {
 
     var imageDimensions: String? {
         guard let imageData,
-              let representation = NSBitmapImageRep(data: imageData),
-              representation.pixelsWide > 0,
-              representation.pixelsHigh > 0 else { return nil }
-        return "\(representation.pixelsWide)×\(representation.pixelsHigh)"
+              let source = CGImageSourceCreateWithData(imageData as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+              let height = properties[kCGImagePropertyPixelHeight] as? NSNumber,
+              width.intValue > 0,
+              height.intValue > 0 else { return nil }
+        return "\(width.intValue)×\(height.intValue)"
     }
 
     var textStatistics: (words: Int, characters: Int)? {

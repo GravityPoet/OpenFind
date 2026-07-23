@@ -171,6 +171,8 @@ cp -R Sources/OpenFind/Resources/en.lproj "$RESOURCES_DIR/"
 cp -R Sources/OpenFind/Resources/zh-Hans.lproj "$RESOURCES_DIR/"
 cp Sources/OpenFind/Resources/OpenFind.sdef "$RESOURCES_DIR/"
 cp Sources/OpenFind/Resources/ThirdPartyNotices.txt "$RESOURCES_DIR/"
+MINIMUM_MACOS_VERSION="$MINIMUM_MACOS_VERSION" \
+    bash Scripts/extract_app_intents_metadata.sh "$RESOURCES_DIR"
 
 SPARKLE_FRAMEWORK="$(find "$ROOT_DIR/.build/artifacts" \
     -path '*/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' \
@@ -309,6 +311,24 @@ if [ ! -f "$RESOURCES_DIR/ThirdPartyNotices.txt" ]; then
     echo "Error: third-party notices are missing from Contents/Resources." >&2
     exit 1
 fi
+if [ ! -s "$RESOURCES_DIR/Metadata.appintents/version.json" ] \
+    || [ ! -s "$RESOURCES_DIR/Metadata.appintents/extract.actionsdata" ]; then
+    echo "Error: App Intents metadata is missing from Contents/Resources." >&2
+    exit 1
+fi
+for action in \
+    ClearClipboardHistoryIntent \
+    CopyClipboardItemIntent \
+    CreateClipboardSnippetIntent \
+    DeleteClipboardItemIntent \
+    GetClipboardItemTextIntent \
+    GetRecentClipboardItemsIntent \
+    ShowClipboardHistoryIntent; do
+    if ! grep -Fq "$action" "$RESOURCES_DIR/Metadata.appintents/extract.actionsdata"; then
+        echo "Error: packaged App Intents metadata is missing $action." >&2
+        exit 1
+    fi
+done
 if [ "$(plutil -extract NSAppleScriptEnabled raw "$CONTENTS_DIR/Info.plist")" != "true" ] \
     || [ "$(plutil -extract OSAScriptingDefinition raw "$CONTENTS_DIR/Info.plist")" != "OpenFind.sdef" ]; then
     echo "Error: AppleScript bundle metadata is invalid." >&2
@@ -356,6 +376,11 @@ if [ ! -f "$VERIFY_APP/Contents/Resources/OpenFind.sdef" ]; then
 fi
 if [ ! -f "$VERIFY_APP/Contents/Resources/ThirdPartyNotices.txt" ]; then
     echo "Error: archived app is missing its third-party notices." >&2
+    exit 1
+fi
+if [ ! -s "$VERIFY_APP/Contents/Resources/Metadata.appintents/version.json" ] \
+    || [ ! -s "$VERIFY_APP/Contents/Resources/Metadata.appintents/extract.actionsdata" ]; then
+    echo "Error: archived app is missing its App Intents metadata." >&2
     exit 1
 fi
 for arch in $ARCHS; do
