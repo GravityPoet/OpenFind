@@ -18,13 +18,21 @@ extension ClipboardHistoryStore {
             }
             return false
         }
-        let normalizedSourceBundleIdentifier = sourceBundleIdentifier?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        var identifiers = sourceIdentifiers
-        if let normalizedSourceBundleIdentifier,
-           !normalizedSourceBundleIdentifier.isEmpty {
-            identifiers.insert(normalizedSourceBundleIdentifier)
+        guard let pasteboardItems = pasteboard.pasteboardItems,
+              !pasteboardItems.isEmpty else { return false }
+        let sourceType = NSPasteboard.PasteboardType(Self.sourcePasteboardType)
+        let embeddedSourceBundleIdentifiers = Set(pasteboardItems.compactMap {
+            normalizedSourceBundleIdentifier($0.string(forType: sourceType))
+        })
+        let observedSourceBundleIdentifier = normalizedSourceBundleIdentifier(
+            sourceBundleIdentifier
+        )
+        var sourceBundleIdentifiers = embeddedSourceBundleIdentifiers
+        if let observedSourceBundleIdentifier {
+            sourceBundleIdentifiers.insert(observedSourceBundleIdentifier)
         }
+        var identifiers = sourceIdentifiers
+        identifiers.formUnion(sourceBundleIdentifiers)
         identifiers = Set(identifiers.map {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
         }.filter { !$0.isEmpty })
@@ -36,13 +44,14 @@ extension ClipboardHistoryStore {
             return false
         }
         if preferences.captureOnlyFromAllowedApplications {
-            guard let normalizedSourceBundleIdentifier,
+            guard let observedSourceBundleIdentifier,
                   preferences.allowedBundleIdentifiers.contains(
-                      normalizedSourceBundleIdentifier
+                      observedSourceBundleIdentifier
+                  ),
+                  sourceBundleIdentifiers.isSubset(
+                      of: preferences.allowedBundleIdentifiers
                   ) else { return false }
         }
-        guard let pasteboardItems = pasteboard.pasteboardItems,
-              !pasteboardItems.isEmpty else { return false }
         let types = Set(pasteboardItems.flatMap { $0.types.map(\.rawValue) })
         guard !types.contains(Self.internalPasteboardType) else { return false }
         cancelPasteStack()
@@ -52,13 +61,20 @@ extension ClipboardHistoryStore {
         guard let content = retainedContent(from: pasteboardItems) else { return false }
         let regexCandidate = String(content.previewText.prefix(100_000))
         if matchesIgnoredPattern(regexCandidate) { return false }
+        let embeddedSourceBundleIdentifier = embeddedSourceBundleIdentifiers.count == 1
+            ? embeddedSourceBundleIdentifiers.first : nil
+        let effectiveSourceBundleIdentifier = embeddedSourceBundleIdentifier
+            ?? observedSourceBundleIdentifier
+        let effectiveSourceApplicationName =
+            effectiveSourceBundleIdentifier == observedSourceBundleIdentifier
+                ? sourceApplicationName : nil
         return ingest(
             representations: content.representations,
             pasteboardItems: content.pasteboardItems,
             previewText: content.previewText,
             kind: content.kind,
-            sourceBundleIdentifier: sourceBundleIdentifier,
-            sourceApplicationName: sourceApplicationName
+            sourceBundleIdentifier: effectiveSourceBundleIdentifier,
+            sourceApplicationName: effectiveSourceApplicationName
         )
     }
 
@@ -132,5 +148,20 @@ extension ClipboardHistoryStore {
             enqueueImageTextRecognition(ids: [retainedEntryID])
         }
         return true
+    }
+
+    private func normalizedSourceBundleIdentifier(_ value: String?) -> String? {
+        guard let normalized = normalizedMetadata(value, limit: 512),
+              normalized.contains("."),
+              !normalized.hasPrefix("."),
+              !normalized.hasSuffix("."),
+              !normalized.contains("..") else { return nil }
+        let permitted = CharacterSet.alphanumerics.union(
+            CharacterSet(charactersIn: ".-")
+        )
+        guard normalized.unicodeScalars.allSatisfy(permitted.contains) else {
+            return nil
+        }
+        return normalized
     }
 }

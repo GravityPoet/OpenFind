@@ -10,6 +10,7 @@ final class ClipboardHistoryStore {
     static let persistenceEnabledKey = "OpenFind.clipboardPersistenceEnabledV1"
     static let remoteClipboardType = "com.apple.is-remote-clipboard"
     static let internalPasteboardType = "com.openfind.internal.clipboard"
+    static let sourcePasteboardType = "org.nspasteboard.source"
     static let ignoredTypes: Set<String> = [
         "org.nspasteboard.ConcealedType",
         "org.nspasteboard.TransientType",
