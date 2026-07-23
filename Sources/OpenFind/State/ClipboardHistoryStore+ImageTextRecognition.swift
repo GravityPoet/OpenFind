@@ -1,10 +1,12 @@
 import Foundation
 
 extension ClipboardHistoryStore {
+    private static let currentImageTextRecognitionRevision = 1
+
     func enqueueMissingImageTextRecognition() {
         guard preferences.imageTextRecognitionEnabled else { return }
         let missing = entries.lazy.filter {
-            $0.kind == .image && $0.recognizedText == nil && $0.imageData != nil
+            self.needsImageTextRecognition($0)
         }.map(\.id)
         enqueueImageTextRecognition(ids: missing)
     }
@@ -28,18 +30,9 @@ extension ClipboardHistoryStore {
             var changed = false
             while !Task.isCancelled,
                   let id = pendingImageTextRecognitionIDs.first {
-                if isPanelPresented {
-                    do {
-                        try await Task.sleep(for: .milliseconds(100))
-                    } catch {
-                        break
-                    }
-                    continue
-                }
                 pendingImageTextRecognitionIDs.remove(id)
                 guard let entry = entries.first(where: { $0.id == id }),
-                      entry.kind == .image,
-                      entry.recognizedText == nil,
+                      needsImageTextRecognition(entry),
                       let data = entry.imageData else { continue }
                 let recognized = await imageTextRecognizer.recognizeText(in: data)
                 guard !Task.isCancelled else { break }
@@ -67,8 +60,11 @@ extension ClipboardHistoryStore {
         imageTextRecognitionTask = nil
         pendingImageTextRecognitionIDs.removeAll()
         var changed = false
-        for index in entries.indices where entries[index].recognizedText != nil {
+        for index in entries.indices
+            where entries[index].recognizedText != nil
+                || entries[index].imageTextRecognitionRevision != nil {
             entries[index].recognizedText = nil
+            entries[index].imageTextRecognitionRevision = nil
             changed = true
         }
         if changed { persist() }
@@ -93,6 +89,16 @@ extension ClipboardHistoryStore {
             return false
         }
         entries[index].recognizedText = normalized ?? ""
+        entries[index].imageTextRecognitionRevision =
+            Self.currentImageTextRecognitionRevision
         return true
+    }
+
+    private func needsImageTextRecognition(_ entry: ClipboardEntry) -> Bool {
+        guard entry.kind == .image, entry.imageData != nil else { return false }
+        if entry.recognizedText == nil { return true }
+        return entry.recognizedText?.isEmpty == true
+            && (entry.imageTextRecognitionRevision ?? 0)
+                < Self.currentImageTextRecognitionRevision
     }
 }
