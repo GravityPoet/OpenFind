@@ -33,6 +33,8 @@ final class ClipboardHistoryStore {
     @ObservationIgnored let persistence: any ClipboardHistoryPersisting
     @ObservationIgnored let pasteboard: NSPasteboard
     @ObservationIgnored let contentActionRegistry: ClipboardContentActionRegistry
+    @ObservationIgnored let imageTextRecognizer: any ClipboardImageTextRecognizing
+    @ObservationIgnored let imageTextRecognitionStartDelay: Duration
     var entries: [ClipboardEntry] = [] {
         didSet { invalidateClipboardProjection() }
     }
@@ -53,6 +55,7 @@ final class ClipboardHistoryStore {
     @ObservationIgnored var cachedVisibleIndexByID: [UUID: Int] = [:]
     @ObservationIgnored var cachedQuickIndexByID: [UUID: Int] = [:]
     @ObservationIgnored var cachedQuickEntryIDs: [UUID] = []
+    @ObservationIgnored var cachedHighlightQuery = ""
     @ObservationIgnored var cachedEntryByID: [UUID: ClipboardEntry] = [:]
     @ObservationIgnored var cachedSnippetKeywords: [(keyword: String, id: UUID)] = []
     @ObservationIgnored var clipboardProjectionBuildCount = 0
@@ -78,10 +81,13 @@ final class ClipboardHistoryStore {
         cache.countLimit = 96
         return cache
     }()
+    @ObservationIgnored var pendingImageTextRecognitionIDs: Set<UUID> = []
+    @ObservationIgnored var imageTextRecognitionTask: Task<Void, Never>?
     var selectedIndex = 0
     var selectedEntryIDs: [UUID] = []
     var selectionAnchorID: UUID?
     var pasteStack: ClipboardPasteStack?
+    var deletionUndo: ClipboardDeletionUndo?
     var isSearchPresented = false
     var isPreviewVisible = true
     var isActionPanelPresented = false
@@ -92,12 +98,17 @@ final class ClipboardHistoryStore {
         defaults: UserDefaults = .standard,
         persistence: any ClipboardHistoryPersisting = EncryptedClipboardHistoryPersistence(),
         pasteboard: NSPasteboard = .general,
-        contentActionRegistry: ClipboardContentActionRegistry = .standard
+        contentActionRegistry: ClipboardContentActionRegistry = .standard,
+        imageTextRecognizer: any ClipboardImageTextRecognizing =
+            VisionClipboardImageTextRecognizer(),
+        imageTextRecognitionStartDelay: Duration = .seconds(2)
     ) {
         self.defaults = defaults
         self.persistence = persistence
         self.pasteboard = pasteboard
         self.contentActionRegistry = contentActionRegistry
+        self.imageTextRecognizer = imageTextRecognizer
+        self.imageTextRecognitionStartDelay = imageTextRecognitionStartDelay
         preferences = ClipboardPreferencesPersistence.load(from: defaults)
         let enabled = defaults.object(forKey: Self.persistenceEnabledKey) as? Bool ?? true
         isPersistenceEnabled = enabled
@@ -107,6 +118,7 @@ final class ClipboardHistoryStore {
             entries = try persistence.load()
             let trimmed = trimToLimits()
             if trimmed || normalizePinnedKeys() { persist() }
+            enqueueMissingImageTextRecognition()
         } catch {
             entries = []
             lastErrorMessage = error.localizedDescription
@@ -123,6 +135,15 @@ final class ClipboardHistoryStore {
     var searchMode: ClipboardSearchMode { preferences.searchMode }
     var clipboardCheckInterval: TimeInterval { preferences.clipboardCheckInterval }
     var retainedStorageBytes: Int { retainedPayloadBytes }
+    var canUndoDeletion: Bool { deletionUndo != nil }
+    var undoDeletionCount: Int { deletionUndo?.count ?? 0 }
+    var highlightQuery: String {
+        _ = filteredEntries
+        return cachedHighlightQuery
+    }
+    var hasStructuredSearchFilters: Bool {
+        ClipboardStructuredQuery.parse(query).hasFilters
+    }
 
     func rowPreviewImage(for entry: ClipboardEntry) -> NSImage? {
         guard entry.kind == .image else { return nil }

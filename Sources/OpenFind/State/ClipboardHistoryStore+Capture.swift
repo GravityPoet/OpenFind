@@ -128,6 +128,9 @@ extension ClipboardHistoryStore {
         selectedIndex = 0
         clearMultiSelection()
         persist()
+        if kind == .image {
+            enqueueImageTextRecognition(ids: [retainedEntryID])
+        }
         return true
     }
 }

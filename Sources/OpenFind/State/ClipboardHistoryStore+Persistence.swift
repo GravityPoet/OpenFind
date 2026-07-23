@@ -28,6 +28,7 @@ extension ClipboardHistoryStore {
             requiresPersistenceMigration = false
             lastErrorMessage = nil
             if trimmed || normalizedPins { persist() }
+            enqueueMissingImageTextRecognition()
             return true
         } catch {
             lastErrorMessage = error.localizedDescription

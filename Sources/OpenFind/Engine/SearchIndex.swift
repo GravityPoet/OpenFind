@@ -597,6 +597,7 @@ final class SearchNameIndex: Sendable {
 
         for index in 0..<nameCount {
             if yieldsToForegroundSearches, index.isMultiple(of: 4_096) {
+                guard !Task.isCancelled else { return nil }
                 SearchWorkCoordinator.shared.waitForSearchesToFinish()
             }
             let shortName = nameAt(index)
@@ -614,6 +615,7 @@ final class SearchNameIndex: Sendable {
         var counts = [Int32](repeating: 0, count: uniqueNames.count)
         for (index, group) in groupForNode.enumerated() {
             if yieldsToForegroundSearches, index.isMultiple(of: 4_096) {
+                guard !Task.isCancelled else { return nil }
                 SearchWorkCoordinator.shared.waitForSearchesToFinish()
             }
             counts[Int(group)] += 1
@@ -622,6 +624,7 @@ final class SearchNameIndex: Sendable {
         var groupOffsets = [Int32](repeating: 0, count: uniqueNames.count + 1)
         for group in counts.indices {
             if yieldsToForegroundSearches, group.isMultiple(of: 4_096) {
+                guard !Task.isCancelled else { return nil }
                 SearchWorkCoordinator.shared.waitForSearchesToFinish()
             }
             groupOffsets[group + 1] = groupOffsets[group] + counts[group]
@@ -630,6 +633,7 @@ final class SearchNameIndex: Sendable {
         var groupedNodeIndices = [Int32](repeating: 0, count: nameCount)
         for (nodeIndex, group) in groupForNode.enumerated() {
             if yieldsToForegroundSearches, nodeIndex.isMultiple(of: 4_096) {
+                guard !Task.isCancelled else { return nil }
                 SearchWorkCoordinator.shared.waitForSearchesToFinish()
             }
             let groupIndex = Int(group)
@@ -653,6 +657,7 @@ final class SearchNameIndex: Sendable {
         var shortScratch = [UInt64](repeating: 0, count: 4)
         for (group, name) in uniqueNames.enumerated() {
             if yieldsToForegroundSearches, group.isMultiple(of: 4_096) {
+                guard !Task.isCancelled else { return nil }
                 SearchWorkCoordinator.shared.waitForSearchesToFinish()
             }
             let base = (group / Self.namesPerBlock) * 4
@@ -1060,6 +1065,7 @@ fileprivate final class SearchNameIndexCache: @unchecked Sendable {
     private var index: SearchNameIndex?
     private var isBuilding = false
     private var isBuilt = false
+    private var prewarmTask: Task<Void, Never>?
 
     init(
         nodes: [IndexedFileNode],
@@ -1103,15 +1109,32 @@ fileprivate final class SearchNameIndexCache: @unchecked Sendable {
             return
         }
         isBuilding = true
-        condition.unlock()
-        Task.detached(priority: .background) { [self] in
+        prewarmTask = Task.detached(priority: .background) { [weak self] in
             // Let an immediate launch-time query use the complete linear
             // fallback before optional posting construction consumes CPU and
             // memory. Once a search starts, remain behind the foreground gate.
-            try? await Task.sleep(for: .seconds(5))
+            do {
+                try await Task.sleep(for: .seconds(5))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self else { return }
             SearchWorkCoordinator.shared.waitForSearchesToFinish()
-            finish(SearchNameIndex(nodes: nodes, yieldsToForegroundSearches: true))
+            guard !Task.isCancelled else { return }
+            self.finish(SearchNameIndex(nodes: self.nodes, yieldsToForegroundSearches: true))
         }
+        condition.unlock()
+    }
+
+    func cancelPrewarm() {
+        condition.lock()
+        prewarmTask?.cancel()
+        prewarmTask = nil
+        if isBuilding, !isBuilt {
+            isBuilding = false
+            condition.broadcast()
+        }
+        condition.unlock()
     }
 
     private func finish(_ built: SearchNameIndex?) {
@@ -1129,6 +1152,7 @@ fileprivate final class SearchNameIndexCache: @unchecked Sendable {
         index = finalIndex
         isBuilt = true
         isBuilding = false
+        prewarmTask = nil
         condition.broadcast()
         let latePersistence = persistence == nil ? persistBuiltIndex : nil
         condition.unlock()
@@ -1758,6 +1782,10 @@ struct SearchIndex: Sendable {
 
     func prewarmNameIndex() {
         nameIndexCache?.prewarm()
+    }
+
+    func cancelBackgroundWork() {
+        nameIndexCache?.cancelPrewarm()
     }
 
     var usesPersistedMappedNameIndex: Bool {
@@ -3337,6 +3365,28 @@ actor SearchIndexStore {
     /// AppKit has accepted a quit request.
     func cancelActiveWorkForTermination() {
         cancelPipeline()
+    }
+
+    /// Persists pending filesystem changes, stops rebuild/watch work, and
+    /// releases the large in-memory snapshot. The next foreground prepare
+    /// reloads the durable cache and replays FSEvents that arrived meanwhile.
+    @discardableResult
+    func hibernate() async -> Bool {
+        await flushPersistence()
+        guard !Task.isCancelled else { return false }
+
+        index?.cancelBackgroundWork()
+        compositeSnapshot?.cancelBackgroundWork()
+        cancelPipeline()
+        index = nil
+        compositeSnapshot = nil
+        currentSignature = nil
+        currentStats = SearchIndexStats()
+        persistTask = nil
+        eventLog.removeAll(keepingCapacity: false)
+        nextEventLogID = 1
+        ProcessMemoryReclaimer.schedule()
+        return true
     }
 
     func contentIndexHandle() -> ContentSearchIndex {

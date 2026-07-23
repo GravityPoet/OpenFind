@@ -715,6 +715,22 @@
 "Closed Display Warning Help" = "提醒依据真实合盖状态，不会把普通显示器休眠误判为合盖。启用临时音量后，OpenFind 会在每次提醒后恢复原输出音量。";
 
 /* 剪贴板增强：短语、内容操作、快速查看与快速合并 */
+"Search Text Inside Clipboard Images" = "搜索图片中的文字";
+"Clipboard Image Text Recognition Help" = "复制后使用 Apple Vision 在本机后台识别；文字与图片一起加密保存，不会拖慢剪贴板面板唤起。";
+"Clipboard Recognized Text Count" = "可搜索图片文字：%ld 个字符";
+"Clipboard Search Filters" = "剪贴板搜索筛选";
+"Clipboard Search Filter Help" = "无需增加一排工具栏，即可按当前来源应用、内容类型、复用状态或片段集合筛选；也可直接输入 app:、type:、is: 或 collection:。";
+"Filter Current Source Application" = "仅看来自 %@";
+"Filter Current Snippet Collection" = "片段集合：%@";
+"Clipboard Content Type" = "内容类型";
+"Clipboard Item State" = "项目状态";
+"Only Reusable Items" = "仅复用项目";
+"Only Snippets" = "仅片段";
+"Remove Search Filters" = "移除筛选";
+"Clipboard Items Removed" = "已移除 %ld 个剪贴板项目";
+"Restore Removed Clipboard Items" = "恢复最近一次移除的剪贴板项目。";
+"Undo" = "撤销";
+"Press Return to Paste Clipboard Item" = "按回车键粘贴此项目。";
 "Clipboard Content Action Invalid Input" = "所选内容无法执行这项转换。";
 "Clipboard Content Action Unavailable" = "当前内容已无法使用这项操作。";
 "Clipboard Quick Look Failed" = "OpenFind 无法为“快速查看”准备此项目。";

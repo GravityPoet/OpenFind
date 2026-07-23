@@ -715,6 +715,22 @@
 "Closed Display Warning Help" = "Warnings use the real clamshell state, not ordinary display sleep. If temporary volume adjustment is enabled, OpenFind restores the previous output volume after each alert.";
 
 /* Clipboard maturity: snippets, actions, Quick Look, and quick merge */
+"Search Text Inside Clipboard Images" = "Search text inside images";
+"Clipboard Image Text Recognition Help" = "Uses Apple Vision locally after capture. Recognized text stays encrypted with the image and never delays the clipboard panel.";
+"Clipboard Recognized Text Count" = "Searchable image text: %ld characters";
+"Clipboard Search Filters" = "Clipboard search filters";
+"Clipboard Search Filter Help" = "Filter without adding another toolbar: use the selected source app, content type, reusable state, or snippet collection. You can also type app:, type:, is:, or collection:.";
+"Filter Current Source Application" = "From %@";
+"Filter Current Snippet Collection" = "Collection: %@";
+"Clipboard Content Type" = "Content Type";
+"Clipboard Item State" = "Item State";
+"Only Reusable Items" = "Reusable items only";
+"Only Snippets" = "Snippets only";
+"Remove Search Filters" = "Remove filters";
+"Clipboard Items Removed" = "%ld clipboard items removed";
+"Restore Removed Clipboard Items" = "Restore the most recently removed clipboard items.";
+"Undo" = "Undo";
+"Press Return to Paste Clipboard Item" = "Press Return to paste this item.";
 "Clipboard Content Action Invalid Input" = "The selected content cannot be transformed by this action.";
 "Clipboard Content Action Unavailable" = "This action is no longer available for the selected content.";
 "Clipboard Quick Look Failed" = "OpenFind could not prepare this item for Quick Look.";

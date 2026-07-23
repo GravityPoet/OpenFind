@@ -26,6 +26,21 @@ struct ClipboardStorageSettings: View {
             .font(.footnote)
             .foregroundStyle(.secondary)
 
+        if store.preferences.enabledStorageCategories.contains(.images) {
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle(
+                    L("Search Text Inside Clipboard Images"),
+                    isOn: Binding(
+                        get: { store.preferences.imageTextRecognitionEnabled },
+                        set: { store.setImageTextRecognitionEnabled($0) }
+                    )
+                )
+                Text(L("Clipboard Image Text Recognition Help"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
         Picker(L("Clipboard Item Size Limit"), selection: Binding(
             get: { store.itemLimitBytes / (1_024 * 1_024) },
             set: { store.setItemLimitMegabytes($0) }

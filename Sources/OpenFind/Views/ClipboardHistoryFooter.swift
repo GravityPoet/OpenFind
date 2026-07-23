@@ -29,7 +29,10 @@ struct ClipboardHistoryFooter: View {
         .font(.caption)
         .padding(.horizontal, 11)
         .frame(height: 30)
-        .openFindGlassRoundedRectangle(cornerRadius: 10)
+        .background(
+            .regularMaterial,
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
         .padding(.horizontal, 8)
         .padding(.bottom, 8)
     }

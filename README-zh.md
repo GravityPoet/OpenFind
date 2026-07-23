@@ -101,6 +101,11 @@ bash Scripts/install_local_app.sh
 ```
 *使用全局快捷键 **`⌘⇧Space`** 即可在任意位置唤起或隐藏 OpenFind！*
 
+必须通过 `Scripts/install_local_app.sh` 安装完整应用包，不要只替换
+`OpenFind.app/Contents/MacOS/OpenFind`。主程序、内嵌 Sparkle、运行时路径、
+App Intents 元数据和代码签名是一个完整验收单元；局部替换会导致 macOS
+无法启动应用。
+
 ---
 
 ## 👥 典型场景

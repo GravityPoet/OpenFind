@@ -179,18 +179,39 @@ struct ClipboardAlfredWorkflowTests {
         let panel = controller.makePanelIfNeeded()
         #expect(panel.styleMask.contains(.nonactivatingPanel))
         #expect(panel.animationBehavior == .none)
+        #expect(!panel.hidesOnDeactivate)
     }
 
-    @Test func preparingClipboardPanelBuildsItOffscreen() throws {
+    @Test func preparingClipboardPanelKeepsAnImperceptibleNonInteractiveSurfaceWarm() throws {
         let context = try makeContext()
         let controller = ClipboardHistoryWindowController(store: context.store)
 
         controller.prepare()
 
         let panel = try #require(controller.panel)
-        #expect(!panel.isVisible)
+        #expect(panel.isVisible)
+        #expect(panel.alphaValue == 0.49)
+        #expect(panel.contentView?.alphaValue == 0.001)
+        #expect(panel.ignoresMouseEvents)
+        #expect(!panel.hasShadow)
+        #expect(!panel.isKeyWindow)
         #expect(panel.contentView != nil)
         #expect(context.store.isPreviewVisible)
+    }
+
+    @Test func backgroundResidencePrewarmsTheHiddenSearchInputClient() throws {
+        let context = try makeContext()
+        let controller = ClipboardHistoryWindowController(store: context.store)
+
+        controller.prepareForBackgroundResidence()
+
+        let panel = try #require(controller.panel)
+        #expect(panel.firstResponder is NSTextView)
+        #expect(panel.alphaValue == 0.49)
+        #expect(panel.contentView?.alphaValue == 0.001)
+        #expect(panel.ignoresMouseEvents)
+        #expect(!context.store.isPanelPresented)
+        controller.close()
     }
 
     @Test func commandActionsPrecedeTheIMECompositionGuard() throws {
@@ -213,33 +234,37 @@ struct ClipboardAlfredWorkflowTests {
 
         var actionPanelToggleCount = 0
         var saveCount = 0
-        let handler = ClipboardHistoryKeyMonitor(
-            isSearchPresented: true,
-            isActionPanelPresented: false,
-            pinShortcut: ClipboardPreferences.defaultPinShortcut,
-            deleteShortcut: ClipboardPreferences.defaultDeleteShortcut,
-            previewShortcut: ClipboardPreferences.defaultPreviewShortcut,
-            onMove: { _ in },
-            onSelectBoundary: { _ in },
-            onExtend: { _ in },
-            onExtendBoundary: { _ in },
-            onDefaultAction: {},
-            onPaste: { _ in },
-            onCopyPlainText: {},
-            onTogglePin: {},
-            onSaveForReuse: { saveCount += 1 },
-            onToggleActions: { actionPanelToggleCount += 1 },
-            onTogglePreview: {},
-            onDelete: {},
-            onClear: { _ in },
-            onEscape: {},
-            onBeginSearch: { _ in },
-            onQuickAction: { _, _ in },
-            onPinnedAction: { _, _ in }
-        )
+        func makeHandler(isPanelPresented: Bool) -> ClipboardHistoryKeyMonitor {
+            ClipboardHistoryKeyMonitor(
+                isPanelPresented: isPanelPresented,
+                isSearchPresented: true,
+                isActionPanelPresented: false,
+                pinShortcut: ClipboardPreferences.defaultPinShortcut,
+                deleteShortcut: ClipboardPreferences.defaultDeleteShortcut,
+                previewShortcut: ClipboardPreferences.defaultPreviewShortcut,
+                onMove: { _ in },
+                onSelectBoundary: { _ in },
+                onExtend: { _ in },
+                onExtendBoundary: { _ in },
+                onDefaultAction: {},
+                onPaste: { _ in },
+                onCopyPlainText: {},
+                onTogglePin: {},
+                onSaveForReuse: { saveCount += 1 },
+                onToggleActions: { actionPanelToggleCount += 1 },
+                onTogglePreview: {},
+                onDelete: {},
+                onClear: { _ in },
+                onUndo: {},
+                onEscape: {},
+                onBeginSearch: { _ in },
+                onQuickAction: { _, _ in },
+                onPinnedAction: { _, _ in }
+            )
+        }
         let coordinator = ClipboardHistoryKeyMonitor.Coordinator()
         coordinator.hostView = hostView
-        coordinator.handler = handler
+        coordinator.handler = makeHandler(isPanelPresented: true)
 
         let commandK = try #require(keyEvent(keyCode: kVK_ANSI_K, characters: "k"))
         let commandS = try #require(keyEvent(keyCode: kVK_ANSI_S, characters: "s"))
@@ -247,6 +272,10 @@ struct ClipboardAlfredWorkflowTests {
         #expect(coordinator.handle(commandS) == nil)
         #expect(actionPanelToggleCount == 1)
         #expect(saveCount == 1)
+
+        coordinator.handler = makeHandler(isPanelPresented: false)
+        #expect(coordinator.handle(commandK) === commandK)
+        #expect(actionPanelToggleCount == 1)
     }
 
     private func testWindow(identifier: String?) -> NSWindow {

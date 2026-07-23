@@ -5,6 +5,7 @@ import Carbon
 final class ClipboardHistoryPanel: NSPanel {
     var onToggleActions: (() -> Void)?
     var onSaveForReuse: (() -> Void)?
+    var onUndo: (() -> Void)?
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, performClipboardCommand(with: event) { return }
@@ -25,6 +26,9 @@ final class ClipboardHistoryPanel: NSPanel {
             return true
         case kVK_ANSI_S:
             onSaveForReuse?()
+            return true
+        case kVK_ANSI_Z:
+            onUndo?()
             return true
         default:
             return false

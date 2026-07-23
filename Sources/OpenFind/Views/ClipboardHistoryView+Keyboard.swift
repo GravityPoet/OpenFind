@@ -3,6 +3,7 @@ import SwiftUI
 extension ClipboardHistoryView {
     var keyMonitor: ClipboardHistoryKeyMonitor {
         ClipboardHistoryKeyMonitor(
+            isPanelPresented: store.isPanelPresented,
             isSearchPresented: store.isSearchPresented,
             isActionPanelPresented: store.isActionPanelPresented,
             pinShortcut: store.preferences.pinShortcut,
@@ -25,6 +26,7 @@ extension ClipboardHistoryView {
             onTogglePreview: { togglePreview() },
             onDelete: { deleteSelected() },
             onClear: { all in all ? store.clearAll() : store.clearUnpinned() },
+            onUndo: { store.undoLastDeletion() },
             onEscape: handleEscape,
             onBeginSearch: { beginSearch(with: $0) },
             onQuickAction: performQuickAction,

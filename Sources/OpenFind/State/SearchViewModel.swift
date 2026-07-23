@@ -65,6 +65,8 @@ final class SearchViewModel {
     @ObservationIgnored private var automaticSearchTask: Task<Void, Never>?
     @ObservationIgnored private var elapsedTask: Task<Void, Never>?
     @ObservationIgnored private var indexStatsTask: Task<Void, Never>?
+    @ObservationIgnored private var indexPreparationTask: Task<Void, Never>?
+    @ObservationIgnored private var indexPreparationGeneration = 0
     @ObservationIgnored private var manualRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var resultPageTask: Task<Void, Never>?
     @ObservationIgnored private var pendingResultPageExpansions = 0
@@ -277,8 +279,43 @@ final class SearchViewModel {
     /// next launch. This is separate from `cancel()`, which is also used for
     /// ordinary query changes and must keep the shared index alive.
     func prepareForTermination() async {
+        indexPreparationGeneration &+= 1
+        indexPreparationTask?.cancel()
+        indexPreparationTask = nil
+        indexStatsTask?.cancel()
+        indexStatsTask = nil
         cancel()
         await indexStore.cancelActiveWorkForTermination()
+    }
+
+    /// Keeps clipboard, menu-bar, awake, and global-hot-key services alive
+    /// while releasing the file-search snapshot that dominates idle memory.
+    func hibernateForBackground() async {
+        debounceTask?.cancel()
+        debounceTask = nil
+        indexPreparationGeneration &+= 1
+        indexPreparationTask?.cancel()
+        indexPreparationTask = nil
+        manualRefreshTask?.cancel()
+        manualRefreshTask = nil
+        isManualRefreshInFlight = false
+        indexStatsTask?.cancel()
+        indexStatsTask = nil
+        cancel()
+        resetResults()
+        eventEntries.removeAll(keepingCapacity: false)
+        filteredEventEntries.removeAll(keepingCapacity: false)
+        unavailablePaths.removeAll(keepingCapacity: false)
+
+        let didHibernate = await indexStore.hibernate()
+        guard didHibernate, !Task.isCancelled else { return }
+        indexStats = await indexStore.stats()
+        ProcessMemoryReclaimer.schedule()
+    }
+
+    func resumeFromBackground() {
+        startIndexStatsObserver()
+        refreshIndex()
     }
 
     private func cancel(preservingResultPageExpansion: Bool) {
@@ -843,18 +880,24 @@ final class SearchViewModel {
     }
 
     private func refreshIndex(fullDiskAccess knownFullDiskAccess: Bool? = nil) {
+        indexPreparationGeneration &+= 1
+        let generation = indexPreparationGeneration
+        indexPreparationTask?.cancel()
         let currentScopes = scopes
         let deepIndex = options.deepIndex
         let indexStore = self.indexStore
-        Task { [weak self] in
+        indexPreparationTask = Task { [weak self] in
             let fda = knownFullDiskAccess ?? SearchPermissions.hasFullDiskAccess()
             let stats = await indexStore.prepare(
                 scopes: currentScopes,
                 deepIndex: deepIndex,
                 hasFullDiskAccess: fda
             )
+            guard !Task.isCancelled else { return }
             await MainActor.run {
-                self?.handleStatsTick(
+                guard let self, generation == self.indexPreparationGeneration else { return }
+                self.indexPreparationTask = nil
+                self.handleStatsTick(
                     stats,
                     changes: nil,
                     fullDiskAccess: fda,
@@ -879,7 +922,7 @@ final class SearchViewModel {
                 let observation = await self?.indexStore.observation(
                     since: revision
                 )
-                guard let observation else { return }
+                guard !Task.isCancelled, let observation else { return }
                 let shouldRefreshEventLog = self?.displayMode == .events
                 let events: [FileSystemEventLogEntry]? = if shouldRefreshEventLog {
                     await self?.indexStore.recentEventLog()
@@ -888,6 +931,7 @@ final class SearchViewModel {
                 }
                 let unavailablePaths = await self?.indexStore.unavailablePathDiagnostics() ?? []
                 let fda = SearchPermissions.hasFullDiskAccess()
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard let self else { return }
                     if let events,

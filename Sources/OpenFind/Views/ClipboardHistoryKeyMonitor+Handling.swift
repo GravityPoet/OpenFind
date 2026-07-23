@@ -3,8 +3,14 @@ import Carbon
 
 extension ClipboardHistoryKeyMonitor.Coordinator {
     func handle(_ event: NSEvent) -> NSEvent? {
-        guard let handler, hostView?.window?.isVisible == true else { return event }
+        guard let handler,
+              handler.isPanelPresented,
+              hostView?.window?.isVisible == true else { return event }
         let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if Int(event.keyCode) == kVK_ANSI_Z, flags == .command {
+            handler.onUndo()
+            return nil
+        }
         if handler.isActionPanelPresented {
             if Int(event.keyCode) == kVK_ANSI_K, flags == .command {
                 handler.onToggleActions()

@@ -22,6 +22,7 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
     var customTitle: String?
     var sourceBundleIdentifier: String?
     var sourceApplicationName: String?
+    var recognizedText: String?
     var copyCount: Int?
     var snippetCollection: String?
     var snippetKeyword: String?
@@ -40,6 +41,7 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         firstCopiedAt: Date? = nil,
         sourceBundleIdentifier: String? = nil,
         sourceApplicationName: String? = nil,
+        recognizedText: String? = nil,
         copyCount: Int? = nil,
         snippetCollection: String? = nil,
         snippetKeyword: String? = nil,
@@ -57,6 +59,7 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         self.customTitle = customTitle
         self.sourceBundleIdentifier = sourceBundleIdentifier
         self.sourceApplicationName = sourceApplicationName
+        self.recognizedText = recognizedText
         self.copyCount = copyCount
         self.snippetCollection = snippetCollection
         self.snippetKeyword = snippetKeyword

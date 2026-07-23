@@ -10,6 +10,10 @@ struct ClipboardHistoryView: View {
     let onCancelPasteStack: () -> Void
     let onClose: () -> Void
     @FocusState var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @State private var searchFocusTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,13 +55,26 @@ struct ClipboardHistoryView: View {
             idealHeight: 500
         )
         .background(
-            .ultraThinMaterial,
+            panelSurface,
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.24), lineWidth: 0.8)
+                .strokeBorder(
+                    Color.primary.opacity(colorSchemeContrast == .increased ? 0.34 : 0.12),
+                    lineWidth: colorSchemeContrast == .increased ? 1.2 : 0.8
+                )
         }
+        .overlay(alignment: .bottom) {
+            if store.canUndoDeletion {
+                ClipboardUndoBanner(itemCount: store.undoDeletionCount) {
+                    store.undoLastDeletion()
+                }
+                .padding(.bottom, store.preferences.showFooter ? 45 : 10)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: store.canUndoDeletion)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .ignoresSafeArea(edges: .top)
         .background {
@@ -84,16 +101,32 @@ struct ClipboardHistoryView: View {
             requestSearchFocus()
         }
         .onDisappear {
+            searchFocusTask?.cancel()
+            searchFocusTask = nil
             store.isActionPanelPresented = false
         }
     }
 
     private func requestSearchFocus() {
+        searchFocusTask?.cancel()
         searchFocused = false
-        Task { @MainActor in
-            await Task.yield()
-            guard store.isPanelPresented, !store.isActionPanelPresented else { return }
+        guard store.isPanelPresented, !store.isActionPanelPresented else { return }
+        let generation = store.presentationGeneration
+        searchFocusTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled,
+                  store.isPanelPresented,
+                  store.presentationGeneration == generation,
+                  !store.isActionPanelPresented else { return }
             searchFocused = true
+            searchFocusTask = nil
         }
+    }
+
+    private var panelSurface: AnyShapeStyle {
+        if reduceTransparency {
+            return AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
+        }
+        return AnyShapeStyle(Material.ultraThinMaterial)
     }
 }

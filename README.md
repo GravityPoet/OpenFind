@@ -101,6 +101,11 @@ bash Scripts/install_local_app.sh
 ```
 *Press **`⌘⇧Space`** to toggle the search window from anywhere!*
 
+Always install a complete package with `Scripts/install_local_app.sh`. Do not replace
+only `OpenFind.app/Contents/MacOS/OpenFind`: the executable, embedded Sparkle framework,
+runtime paths, App Intents metadata, and code signature are one verified unit, and a
+partial replacement can leave macOS unable to launch the app.
+
 ---
 
 ## 👥 Who Needs This

@@ -33,6 +33,44 @@ struct GlobalHotKeyRegistryTests {
         #expect(registry.bind(id: "first", shortcut: shortcut, enabled: false, action: {}) == .disabled)
         #expect(registry.bind(id: "second", shortcut: shortcut, enabled: true, action: {}) == .disabled)
     }
+
+    @Test func externalConflictAutomaticallyRecoversAfterOwnerReleasesShortcut() async throws {
+        let shortcut = GlobalShortcut(
+            keyCode: UInt32(kVK_F19),
+            modifiers: UInt32(controlKey | optionKey | shiftKey),
+            keyLabel: "F19"
+        )
+        var blocker: EventHotKeyRef?
+        let blockerID = EventHotKeyID(signature: 0x54455354, id: 1) // TEST
+        let blockerStatus = RegisterEventHotKey(
+            shortcut.keyCode,
+            shortcut.modifiers,
+            blockerID,
+            GetApplicationEventTarget(),
+            0,
+            &blocker
+        )
+        #expect(blockerStatus == noErr)
+        defer {
+            if let blocker { UnregisterEventHotKey(blocker) }
+        }
+
+        let registry = GlobalHotKeyRegistry(retryDelay: .milliseconds(20))
+        _ = registry.bind(id: "recovering", shortcut: shortcut, enabled: true, action: {})
+        registry.start()
+        #expect(registry.state(for: "recovering") == .conflict)
+
+        if let registeredBlocker = blocker {
+            UnregisterEventHotKey(registeredBlocker)
+            blocker = nil
+        }
+        for _ in 0..<100 where registry.state(for: "recovering") != .registered {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(registry.state(for: "recovering") == .registered)
+        registry.stop()
+    }
 }
 
 @MainActor
