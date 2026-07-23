@@ -105,7 +105,11 @@ enum FileActions {
 
     @MainActor
     static func openSettings(showSettings: () -> Void = {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        if let delegate = AppDelegate.shared {
+            delegate.showSettingsWindow(nil)
+        } else {
+            NSApp.sendAction(#selector(AppDelegate.showSettingsWindow(_:)), to: nil, from: nil)
+        }
     }) {
         NSApp.unhide(nil)
         showSettings()

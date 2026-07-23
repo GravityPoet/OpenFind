@@ -6,14 +6,23 @@ import Testing
 @MainActor
 @Suite("Clipboard Preferences Tests")
 struct ClipboardPreferencesTests {
+    @Test func applicationAllowListDefaultsToOffAndEmpty() {
+        let preferences = ClipboardPreferences()
+
+        #expect(preferences.allowedBundleIdentifiers.isEmpty)
+        #expect(!preferences.captureOnlyFromAllowedApplications)
+    }
+
     @Test func preferencePayloadIsNormalizedAndRoundTrips() throws {
-        let suite = "OpenFindTests.ClipboardPreferencesV2.\(UUID())"
+        let suite = "OpenFindTests.ClipboardPreferencesV3.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         var preferences = ClipboardPreferences()
         preferences.retentionPeriod = .days15
         preferences.itemLimitBytes = 1
         preferences.ignoredBundleIdentifiers = ["com.example.Editor", "bad\nvalue", ""]
+        preferences.allowedBundleIdentifiers = ["com.example.Allowed", "bad\nvalue", ""]
+        preferences.captureOnlyFromAllowedApplications = true
         preferences.ignoredTextPatterns = ["^secret$", "[", "^secret$"]
         preferences.clipboardCheckInterval = 30
         preferences.previewDelayMilliseconds = 1
@@ -26,6 +35,8 @@ struct ClipboardPreferencesTests {
         #expect(loaded.itemLimitBytes == 1_024)
         #expect(loaded.ignoredBundleIdentifiers ==
             ClipboardPreferences.defaultIgnoredBundleIdentifiers.union(["com.example.Editor"]))
+        #expect(loaded.allowedBundleIdentifiers == ["com.example.Allowed"])
+        #expect(loaded.captureOnlyFromAllowedApplications)
         #expect(loaded.ignoredTextPatterns == ["^secret$"])
         #expect(loaded.clipboardCheckInterval == 5)
         #expect(loaded.previewDelayMilliseconds == 200)
@@ -58,6 +69,13 @@ struct ClipboardPreferencesTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(
             Data(#"{"historyLimit":"not-a-number","searchMode":"unknown"}"#.utf8),
+            forKey: "OpenFind.clipboardPreferencesV3"
+        )
+        defaults.set(
+            try JSONSerialization.data(withJSONObject: [
+                "ignoredBundleIdentifiers": ["com.example.AccidentalAllow"],
+                "ignoreAllAppsExceptListed": true,
+            ]),
             forKey: "OpenFind.clipboardPreferencesV2"
         )
         defaults.set(321, forKey: "OpenFind.clipboardHistoryLimitV1")
@@ -69,6 +87,8 @@ struct ClipboardPreferencesTests {
         #expect(loaded.pinShortcut == ClipboardPreferences.defaultPinShortcut)
         #expect(loaded.ignoredBundleIdentifiers ==
             ClipboardPreferences.defaultIgnoredBundleIdentifiers)
+        #expect(loaded.allowedBundleIdentifiers.isEmpty)
+        #expect(!loaded.captureOnlyFromAllowedApplications)
     }
 
     @Test func passwordManagerDefaultsSeedOnceAndRespectRemoval() throws {
@@ -111,19 +131,61 @@ struct ClipboardPreferencesTests {
                 .subtracting(["com.bitwarden.desktop"]))
     }
 
-    @Test func defaultIgnoreMigrationDoesNotInvertAllowListSemantics() throws {
-        let suite = "OpenFindTests.ClipboardDefaultIgnoredAppsAllowList.\(UUID())"
+    @Test func legacySharedAllowListMigratesToSafeIndependentDefaults() throws {
+        let suite = "OpenFindTests.ClipboardSeparateAllowListMigration.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        var preferences = ClipboardPreferences()
-        preferences.ignoreAllAppsExceptListed = true
-        preferences.ignoredBundleIdentifiers = ["com.example.Allowed"]
-        ClipboardPreferencesPersistence.save(preferences, to: defaults)
+        defaults.set(
+            try JSONSerialization.data(withJSONObject: [
+                "ignoredBundleIdentifiers": [
+                    "com.example.AccidentalAllow",
+                    "com.bitwarden.desktop",
+                ],
+                "ignoreAllAppsExceptListed": true,
+                "retentionPeriod": "days15",
+            ]),
+            forKey: "OpenFind.clipboardPreferencesV2"
+        )
+        defaults.set(2, forKey: "OpenFind.clipboardDefaultIgnoredAppsSeedVersionV1")
 
         let loaded = ClipboardPreferencesPersistence.load(from: defaults)
 
-        #expect(loaded.ignoreAllAppsExceptListed)
-        #expect(loaded.ignoredBundleIdentifiers == ["com.example.Allowed"])
+        #expect(loaded.retentionPeriod == .days15)
+        #expect(!loaded.captureOnlyFromAllowedApplications)
+        #expect(loaded.allowedBundleIdentifiers.isEmpty)
+        #expect(loaded.ignoredBundleIdentifiers ==
+            ClipboardPreferences.defaultIgnoredBundleIdentifiers)
+        #expect(defaults.data(forKey: "OpenFind.clipboardPreferencesV3") != nil)
+
+        let rollbackData = try #require(
+            defaults.data(forKey: "OpenFind.clipboardPreferencesV2")
+        )
+        let rollbackPreferences = try JSONDecoder().decode(
+            ClipboardPreferences.self,
+            from: rollbackData
+        )
+        #expect(!rollbackPreferences.captureOnlyFromAllowedApplications)
+        #expect(rollbackPreferences.allowedBundleIdentifiers.isEmpty)
+    }
+
+    @Test func legacyDenyListModePreservesExplicitUserRemovals() throws {
+        let suite = "OpenFindTests.ClipboardDenyListMigration.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(
+            try JSONSerialization.data(withJSONObject: [
+                "ignoredBundleIdentifiers": ["com.example.CustomDenied"],
+                "ignoreAllAppsExceptListed": false,
+            ]),
+            forKey: "OpenFind.clipboardPreferencesV2"
+        )
+        defaults.set(2, forKey: "OpenFind.clipboardDefaultIgnoredAppsSeedVersionV1")
+
+        let loaded = ClipboardPreferencesPersistence.load(from: defaults)
+
+        #expect(loaded.ignoredBundleIdentifiers == ["com.example.CustomDenied"])
+        #expect(loaded.allowedBundleIdentifiers.isEmpty)
+        #expect(!loaded.captureOnlyFromAllowedApplications)
     }
 
     @Test func defaultPasswordManagersAreRejectedBeforeStorage() throws {
@@ -156,10 +218,31 @@ struct ClipboardPreferencesTests {
         #expect(!context.store.captureCurrentPasteboard())
         context.store.setIgnoredTextPatterns([])
 
-        context.store.setIgnoredBundleIdentifiers(["com.example.Allowed"])
-        context.store.setIgnoreAllAppsExceptListed(true)
+        context.store.setAllowedBundleIdentifiers([])
+        context.store.setCaptureOnlyFromAllowedApplications(true)
+        #expect(!context.store.captureCurrentPasteboard(
+            sourceBundleIdentifier: "com.example.Allowed"
+        ))
+
+        context.store.setIgnoredBundleIdentifiers(["com.example.Denied"])
+        context.store.setAllowedBundleIdentifiers([
+            "com.example.Allowed",
+            "com.example.Denied",
+        ])
         #expect(!context.store.captureCurrentPasteboard(
             sourceBundleIdentifier: "com.example.Blocked"
+        ))
+        #expect(!context.store.captureCurrentPasteboard())
+        #expect(!context.store.captureCurrentPasteboard(
+            sourceBundleIdentifier: "com.example.Blocked",
+            sourceIdentifiers: ["com.example.Allowed"]
+        ))
+        #expect(!context.store.captureCurrentPasteboard(
+            sourceBundleIdentifier: "com.example.Denied"
+        ))
+        #expect(!context.store.captureCurrentPasteboard(
+            sourceBundleIdentifier: "com.example.Allowed",
+            sourceIdentifiers: ["com.example.Denied"]
         ))
         #expect(context.store.captureCurrentPasteboard(
             sourceBundleIdentifier: "com.example.Allowed"
@@ -169,7 +252,8 @@ struct ClipboardPreferencesTests {
         context.store.setCapturePaused(true)
         #expect(!context.store.captureCurrentPasteboard())
         context.store.setCapturePaused(false)
-        context.store.setIgnoreAllAppsExceptListed(false)
+        context.store.setCaptureOnlyFromAllowedApplications(false)
+        context.store.setAllowedBundleIdentifiers([])
         context.store.setIgnoredBundleIdentifiers([])
         context.store.ignoreNextCapture()
         #expect(!context.store.captureCurrentPasteboard())

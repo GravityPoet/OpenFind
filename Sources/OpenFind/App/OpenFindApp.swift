@@ -71,28 +71,6 @@ struct OpenFindApp: App {
             }
         }
         .menuBarExtraStyle(.menu)
-
-        Settings {
-            SettingsView(
-                viewModel: appDelegate.viewModel,
-                globalHotKey: appDelegate.globalHotKey,
-                driveAliveStore: appDelegate.driveAliveStore,
-                driveAlive: appDelegate.driveAlive,
-                clipboardStore: appDelegate.clipboardStore,
-                clipboard: appDelegate.clipboard,
-                keyboardLock: appDelegate.keyboardLock,
-                triggerStore: appDelegate.triggerStore,
-                triggerCoordinator: appDelegate.triggerCoordinator,
-                awakeHotKeys: appDelegate.awakeHotKeys,
-                awakeSessionPreferences: appDelegate.awakeSessionPreferences,
-                launchAtLogin: appDelegate.launchAtLogin,
-                awakeNotifications: appDelegate.awakeNotifications,
-                awakeStatistics: appDelegate.awakeStatistics,
-                sessionActivity: appDelegate.sessionActivity,
-                powerProtect: appDelegate.powerProtect,
-                awakeSession: appDelegate.awakeSession
-            )
-        }
         .commands {
             AppCommands(
                 viewModel: appDelegate.viewModel,
@@ -103,13 +81,9 @@ struct OpenFindApp: App {
 }
 
 private struct OpenFindSettingsMenuItem: View {
-    @Environment(\.openSettings) private var openSettings
-
     var body: some View {
         Button(L("Settings")) {
-            FileActions.openSettings {
-                openSettings()
-            }
+            FileActions.openSettings()
         }
     }
 }

@@ -18,17 +18,28 @@ extension ClipboardHistoryStore {
             }
             return false
         }
+        let normalizedSourceBundleIdentifier = sourceBundleIdentifier?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         var identifiers = sourceIdentifiers
-        if let sourceBundleIdentifier { identifiers.insert(sourceBundleIdentifier) }
+        if let normalizedSourceBundleIdentifier,
+           !normalizedSourceBundleIdentifier.isEmpty {
+            identifiers.insert(normalizedSourceBundleIdentifier)
+        }
         identifiers = Set(identifiers.map {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
-        })
+        }.filter { !$0.isEmpty })
         if identifiers.contains(Bundle.main.bundleIdentifier ?? "") { return false }
-        let listedApplication = identifiers.contains(where: {
+        let ignoredApplication = identifiers.contains(where: {
             preferences.ignoredBundleIdentifiers.contains($0)
         })
-        if preferences.ignoreAllAppsExceptListed ? !listedApplication : listedApplication {
+        if ignoredApplication {
             return false
+        }
+        if preferences.captureOnlyFromAllowedApplications {
+            guard let normalizedSourceBundleIdentifier,
+                  preferences.allowedBundleIdentifiers.contains(
+                      normalizedSourceBundleIdentifier
+                  ) else { return false }
         }
         guard let pasteboardItems = pasteboard.pasteboardItems,
               !pasteboardItems.isEmpty else { return false }

@@ -4,52 +4,85 @@ import UniformTypeIdentifiers
 
 struct ClipboardIgnoredApplicationsView: View {
     @Bindable var store: ClipboardHistoryStore
+
+    var body: some View {
+        ClipboardApplicationsListEditor(
+            identifiers: store.preferences.ignoredBundleIdentifiers,
+            knownApplicationNames: ClipboardPreferences.defaultIgnoredApplicationNames,
+            emptyTitle: L("No Ignored Clipboard Apps"),
+            emptyDescription: L("No Ignored Clipboard Apps Help"),
+            emptySystemImage: "app.badge",
+            helpText: L("Clipboard Ignore Apps Help"),
+            updateIdentifiers: store.setIgnoredBundleIdentifiers
+        )
+    }
+}
+
+struct ClipboardAllowedApplicationsView: View {
+    @Bindable var store: ClipboardHistoryStore
+
+    var body: some View {
+        ClipboardApplicationsListEditor(
+            identifiers: store.preferences.allowedBundleIdentifiers,
+            knownApplicationNames: ClipboardPreferences.defaultIgnoredApplicationNames,
+            emptyTitle: L("No Allowed Clipboard Apps"),
+            emptyDescription: L("No Allowed Clipboard Apps Help"),
+            emptySystemImage: "checkmark.app",
+            helpText: L("Clipboard Allowed Apps Help"),
+            updateIdentifiers: store.setAllowedBundleIdentifiers
+        )
+    }
+}
+
+struct ClipboardAllowedApplicationsSheet: View {
+    @Bindable var store: ClipboardHistoryStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(L("Allowed Clipboard Apps"))
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button(L("Done")) { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(14)
+
+            Divider()
+            ClipboardAllowedApplicationsView(store: store)
+        }
+        .frame(width: 560, height: 430)
+    }
+}
+
+private struct ClipboardApplicationsListEditor: View {
+    let identifiers: Set<String>
+    let knownApplicationNames: [String: String]
+    let emptyTitle: String
+    let emptyDescription: String
+    let emptySystemImage: String
+    let helpText: String
+    let updateIdentifiers: (Set<String>) -> Void
+
     @State private var selection: String?
     @State private var isImporting = false
     @State private var manualIdentifier = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle(
-                L("Clipboard Allow Listed Apps Only"),
-                isOn: Binding(
-                    get: { store.preferences.ignoreAllAppsExceptListed },
-                    set: { store.setIgnoreAllAppsExceptListed($0) }
+            if applications.isEmpty {
+                ContentUnavailableView(
+                    emptyTitle,
+                    systemImage: emptySystemImage,
+                    description: Text(emptyDescription)
                 )
-            )
-
-            List(applications, id: \.self, selection: $selection) { identifier in
-                HStack(spacing: 8) {
-                    if let url = NSWorkspace.shared.urlForApplication(
-                        withBundleIdentifier: identifier
-                    ) {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 22, height: 22)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(url.deletingPathExtension().lastPathComponent)
-                            Text(identifier)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Image(systemName: "questionmark.app")
-                            .frame(width: 22, height: 22)
-                        if let applicationName = ClipboardPreferences
-                            .defaultIgnoredApplicationNames[identifier] {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(applicationName)
-                                Text(identifier)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else {
-                            Text(identifier)
-                        }
-                    }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(applications, id: \.self, selection: $selection) { identifier in
+                    applicationRow(identifier)
+                        .tag(identifier)
                 }
-                .tag(identifier)
             }
 
             HStack(spacing: 8) {
@@ -73,9 +106,7 @@ struct ClipboardIgnoredApplicationsView: View {
                     ).isEmpty)
             }
 
-            Text(store.preferences.ignoreAllAppsExceptListed
-                ? L("Clipboard Allow List Help")
-                : L("Clipboard Ignore Apps Help"))
+            Text(helpText)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -90,8 +121,54 @@ struct ClipboardIgnoredApplicationsView: View {
         }
     }
 
+    @ViewBuilder
+    private func applicationRow(_ identifier: String) -> some View {
+        HStack(spacing: 8) {
+            if let url = NSWorkspace.shared.urlForApplication(
+                withBundleIdentifier: identifier
+            ) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(applicationDisplayName(for: url))
+                    Text(identifier)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Image(systemName: "questionmark.app")
+                    .frame(width: 22, height: 22)
+                if let applicationName = knownApplicationNames[identifier] {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(applicationName)
+                        Text(identifier)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text(identifier)
+                }
+            }
+        }
+    }
+
     private var applications: [String] {
-        store.preferences.ignoredBundleIdentifiers.sorted()
+        identifiers.sorted()
+    }
+
+    private func applicationDisplayName(for url: URL) -> String {
+        let canonicalName = url.deletingPathExtension().lastPathComponent
+        guard let metadataName = NSMetadataItem(url: url)?.value(
+            forAttribute: NSMetadataItemDisplayNameKey
+        ) as? String else { return canonicalName }
+        let localizedName = (metadataName as NSString).deletingPathExtension
+        guard !localizedName.isEmpty,
+              localizedName.caseInsensitiveCompare(canonicalName) != .orderedSame else {
+            return canonicalName
+        }
+        return "\(localizedName) (\(canonicalName))"
     }
 
     private func addManualIdentifier() {
@@ -102,17 +179,13 @@ struct ClipboardIgnoredApplicationsView: View {
     }
 
     private func add(_ identifier: String) {
-        store.setIgnoredBundleIdentifiers(
-            store.preferences.ignoredBundleIdentifiers.union([identifier])
-        )
+        updateIdentifiers(identifiers.union([identifier]))
         selection = identifier
     }
 
     private func removeSelection() {
         guard let selection else { return }
-        store.setIgnoredBundleIdentifiers(
-            store.preferences.ignoredBundleIdentifiers.subtracting([selection])
-        )
+        updateIdentifiers(identifiers.subtracting([selection]))
         self.selection = nil
     }
 }
