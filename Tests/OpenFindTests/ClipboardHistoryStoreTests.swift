@@ -167,6 +167,7 @@ struct ClipboardHistoryStoreTests {
         #expect(decoded.numberOfCopies == 1)
         #expect(decoded.sourceApplicationName == nil)
         #expect(decoded.recognizedText == nil)
+        #expect(decoded.imageTextRecognitionRevision == nil)
     }
 
     @Test func persistenceCanBeDisabledAndClearsStoredHistory() throws {
@@ -939,11 +940,12 @@ struct ClipboardHistoryStoreTests {
         #expect(persistence.savedEntries.isEmpty)
     }
 
-    @Test func imageTextRecognitionWaitsUntilClipboardPanelIsDismissed() async throws {
+    @Test func imageTextBecomesSearchableWhileClipboardPanelIsPresented() async throws {
         let suite = "OpenFindTests.ClipboardImageTextPresentation.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let recognizer = CountingClipboardImageTextRecognizer(recognizedText: "Deferred OCR")
+        let recognizedText = "下午三点开会"
+        let recognizer = CountingClipboardImageTextRecognizer(recognizedText: recognizedText)
         let image = ClipboardEntry(
             previewText: "Image",
             kind: .image,
@@ -958,16 +960,69 @@ struct ClipboardHistoryStoreTests {
         )
 
         store.beginPresentation()
-        try await Task.sleep(for: .milliseconds(120))
+        store.query = recognizedText
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while await recognizer.callCount == 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         let callsWhilePresented = await recognizer.callCount
-        #expect(callsWhilePresented == 0)
+        #expect(callsWhilePresented == 1)
+        #expect(store.filteredEntries.map(\.id) == [image.id])
 
         store.endPresentation()
         await store.waitForPendingImageTextRecognition()
+    }
 
-        let callsAfterDismissal = await recognizer.callCount
-        #expect(callsAfterDismissal == 1)
-        #expect(store.entries.first?.recognizedText == "Deferred OCR")
+    @Test func emptyImageTextFromAnEarlierRecognizerIsRetried() async throws {
+        let suite = "OpenFindTests.ClipboardImageTextRetry.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recognizedText = "下午三点开会"
+        let recognizer = CountingClipboardImageTextRecognizer(recognizedText: recognizedText)
+        let image = ClipboardEntry(
+            previewText: "Image",
+            kind: .image,
+            representations: ["public.png": Data([7, 8, 9])],
+            recognizedText: ""
+        )
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(savedEntries: [image]),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())")),
+            imageTextRecognizer: recognizer,
+            imageTextRecognitionStartDelay: .zero
+        )
+
+        await store.waitForPendingImageTextRecognition()
+
+        #expect(await recognizer.callCount == 1)
+        #expect(store.entries.first?.recognizedText == recognizedText)
+    }
+
+    @Test func currentEmptyImageTextIsNotRepeatedlyRetried() async throws {
+        let suite = "OpenFindTests.ClipboardImageTextNoRepeat.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recognizer = CountingClipboardImageTextRecognizer(recognizedText: "unexpected")
+        let image = ClipboardEntry(
+            previewText: "Image",
+            kind: .image,
+            representations: ["public.png": Data([10, 11, 12])],
+            recognizedText: "",
+            imageTextRecognitionRevision: 1
+        )
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(savedEntries: [image]),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())")),
+            imageTextRecognizer: recognizer,
+            imageTextRecognitionStartDelay: .zero
+        )
+
+        await store.waitForPendingImageTextRecognition()
+
+        #expect(await recognizer.callCount == 0)
+        #expect(store.entries.first?.recognizedText == "")
     }
 
     @Test func deletionAndClearCanBeUndoneWithoutDiscardingNewCaptures() throws {

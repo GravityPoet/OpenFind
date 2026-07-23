@@ -23,6 +23,7 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
     var sourceBundleIdentifier: String?
     var sourceApplicationName: String?
     var recognizedText: String?
+    var imageTextRecognitionRevision: Int?
     var copyCount: Int?
     var snippetCollection: String?
     var snippetKeyword: String?
@@ -42,6 +43,7 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         sourceBundleIdentifier: String? = nil,
         sourceApplicationName: String? = nil,
         recognizedText: String? = nil,
+        imageTextRecognitionRevision: Int? = nil,
         copyCount: Int? = nil,
         snippetCollection: String? = nil,
         snippetKeyword: String? = nil,
@@ -60,6 +62,7 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         self.sourceBundleIdentifier = sourceBundleIdentifier
         self.sourceApplicationName = sourceApplicationName
         self.recognizedText = recognizedText
+        self.imageTextRecognitionRevision = imageTextRecognitionRevision
         self.copyCount = copyCount
         self.snippetCollection = snippetCollection
         self.snippetKeyword = snippetKeyword

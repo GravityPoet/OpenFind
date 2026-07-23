@@ -20,7 +20,7 @@ Status: `[x]` verified and enabled by default, `[~]` supported but intentionally
 | Source application identity | App icon per item | App icon per item | Installed app icon/name plus bundle ID in metadata | `[x]` |
 | Click/Return behavior | Paste to previous app | Paste to previous app by default | Paste to previous app and close | `[x]` |
 | Hot invocation | Same-script first 237.8 ms; warm median 150.7 ms | 40–55 ms warm in the earlier AX observation | Final Universal build: same-script first 184.4 ms after closing the main window; warm median 103.5 ms, versus 903.6 ms before the resident-utility fix | `[x]` |
-| Image text search | No built-in OCR search | Image history, but no documented OCR text filter | Local Vision OCR, encrypted with the item and paused while the panel is open | `[x]` exceeds |
+| Image text search | No built-in OCR search | Image history, but no documented OCR text filter | Local Vision OCR, encrypted with the item and searchable while the panel stays open | `[x]` exceeds |
 | Precise filtering | Text search | Text search and workflow/snippet context | Text plus source app, content type, pinned/snippet state, and collection filters | `[x]` exceeds |
 | Destructive-action recovery | Delete/clear without a persistent recovery banner | Individual/recent/all clearing | Visible undo banner and `⌘Z` for individual, multi-item, recent, or full clear | `[x]` exceeds |
 | Retention | Primarily capacity based | Per-type time choices | User-selected 3/7/15/30 days or Forever; reusable items never age out | `[-]` user-selected model |
@@ -135,8 +135,10 @@ activation-policy/TextInputUI timeout without dropping OpenFind's two-pane previ
 - `[x]` Search editing supports clear, character/word deletion, IME marked text, and
   first/last/next/previous keyboard navigation without stealing system shortcuts.
 - `[x]` Local Vision OCR makes image text searchable and copyable. It starts after a
-  delay at background priority, pauses between items while the panel is presented, and
-  applies privacy text rules before an OCR result remains in encrypted history.
+  bounded delay at utility priority, falls back from fast to accurate recognition when
+  needed, updates live search while the panel is presented, retries legacy empty results
+  once, defers ordinary persistence until dismissal, and applies privacy text rules
+  before an OCR result remains in encrypted history.
 - `[x]` The compact filter menu composes source-application, content-type,
   pinned/snippet-state, and snippet-collection filters with ordinary text search.
 
