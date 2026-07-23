@@ -101,6 +101,11 @@ bash Scripts/install_local_app.sh
 ```
 *Press **`⌘⇧Space`** to toggle the search window from anywhere!*
 
+On its first launch, an installed copy of OpenFind registers itself as a macOS
+login item. Future logins start it quietly in the menu bar without opening the
+main window. Users can turn off **Launch OpenFind at Login** in OpenFind Settings,
+and that choice will not be overridden on later launches.
+
 Always install a complete package with `Scripts/install_local_app.sh`. Do not replace
 only `OpenFind.app/Contents/MacOS/OpenFind`: the executable, embedded Sparkle framework,
 runtime paths, App Intents metadata, and code signature are one verified unit, and a

@@ -97,8 +97,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             name: NSWorkspace.didWakeNotification,
             object: nil
         )
+        launchAtLogin.enableByDefaultIfNeeded()
         configureUpdaterIfAvailable()
-        showMainWindow()
+        if Self.isLoginItemLaunch(
+            event: NSAppleEventManager.shared().currentAppleEvent
+        ) {
+            enterBackgroundMode()
+        } else {
+            showMainWindow()
+        }
         startRuntimeServices(includeTriggerScheduler: false)
         closedDisplayRecoveryTask = Task { [weak self] in
             guard let self else { return }
@@ -204,6 +211,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showMainWindow()
         return true
+    }
+
+    static func isLoginItemLaunch(event: NSAppleEventDescriptor?) -> Bool {
+        event?.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem) != nil
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
