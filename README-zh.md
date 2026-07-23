@@ -2,194 +2,152 @@
 
 # 🚀 OpenFind
 
----
-
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS_14+-black.svg)](https://apple.com)
 [![Swift: 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 
-**告别 Spotlight 的迟钝与局限。让任何文件、内容、甚至是未解压的代码归档，瞬间直达。**
+**macOS 开发者与极客的全能瑞士军刀。**  
+*用一个超轻量、纯原生 Swift 引擎，一次性替代 5 款臃肿的后台工具！*
 
-OpenFind 是一款专为开发者打造的 macOS 极速本地搜索引擎。它抛弃了臃肿且容易死锁的传统索引服务，使用轻量化的内存映射（`mmap`）二进制索引与原生 `FSEvents` 实时文件监控。不管是全局快捷键呼出，还是在 Shell 中编排脚本，它都能在微秒间为您提供流式结果。
+OpenFind 完美融合了 **极速文件/内容搜索引擎**、**加密智能剪贴板（含 OCR 文字识别）**、**智能防休眠与合盖运行**、**外接硬盘防掉盘心跳** 以及 **一键键盘锁** 5 大核心功能，提供常驻状态栏 App 与高效 CLI 工具。
 
 ---
 
 ## 🎯 一句话定位
 
-零延迟、本地优先的 macOS 搜索引擎。无需反复读写 SSD，通过正则、Glob 与自定义元数据，瞬间搜遍文件和内容。
+别再给你的 Mac 安装 5 个单功能后台小工具了。OpenFind 提供零延迟搜索、OCR 剪贴板历史、智能防休眠自动化与外接硬盘保护，全部由原生 Swift 引擎驱动，极低 CPU 与内存占用。
 
 ---
 
-## 🔥 为什么我们需要它？
+## 🔥 为什么你需要 OpenFind？
 
-### Spotlight 的噩梦
-1. **CPU 飙升与无预警卡顿**: `mds` 和 `mds_stores` 经常强占 100% CPU，在后台疯狂重建损坏的索引，大幅缩短 MacBook 的电池寿命。
-2. **不懂开发者的痛点**: 想要查找一个 `.env` 配置文件，或者搜索一个嵌套在 `.zip` 压缩包或 PDF 里的变量？Spotlight 对此无能为力。
-3. **不支持正则与 Glob**: 你无法使用 `src/**/*.swift` 这样的通配符，也无法使用类似 `^Report-[0-9]+$` 的正则表达式进行匹配。
-4. **命令行极度不友好**: Spotlight 的命令行工具 `mdfind` 响应迟缓，极难优雅地通过管道接入 Shell 脚本。
+### 传统工具的臃肿噩梦
+为了获得舒适的 macOS 开发体验，开发者通常需要同时安装：
+1. **Spotlight 替代品 / 搜索工具**: 索引极其臃肿缓慢，狂占 CPU 和 SSD。
+2. **剪贴板管理工具**: 许多第三方剪贴板工具未加密，容易在后台泄露密码与密钥。
+3. **防休眠工具 (Amphetamine / Caffeine)**: 缺乏智能自动化，合盖即断开，功能单一。
+4. **硬盘防休眠脚本**: 需要单独挂载后台脚本，防止移动硬盘和 NAS 频繁掉盘。
+5. **清洁键盘工具**: 为了擦拭键盘或防止猫咪踏过，还需要单独下载键盘锁软件。
 
-### OpenFind 的解脱
-- **瞬时加载 (`mmap`)**: 通过将目录节点直接映射到虚拟内存空间，即使包含数百万个文件，也无需在 Swift 堆区分配空间，实现微秒级启动。
-- **基于 FSEvents 的实时监控**: 自动在后台监听文件系统事件，你在终端里刚 `touch` 或 `git pull`，变动就已经被瞬间同步到索引中。
-- **全文本“深空”提取器**: 深度检索纯文本、PDF、Office 文档（`docx`, `xlsx`）、Apple iWork 格式（`pages`, `numbers`），甚至能在内存中直接流式遍历压缩包（`.zip`, `.tar.gz`），无需解压到磁盘。
-- **原生 Quick Look 快速预览**: 选中文件按下 `Space` 键，即可直接调起系统级原生 `Quick Look` 面板进行预览，无需点开任何笨重的编辑器。
+### OpenFind 终极解决方案
+OpenFind 将这 5 大刚需工具集成为一个统一、隐私优先的 macOS 原生应用，内存与 CPU 占用极低。
 
 ---
 
 ## 🆚 痛点对比
 
-| 场景 / 特性 | 传统方式 (Spotlight / `find` / `grep`) | OpenFind 方式 🚀 |
+| 场景 / 特性 | 5 款独立软件组合 (Spotlight + 剪贴板 + 咖啡因等) | OpenFind 极客方案 🚀 |
 | :--- | :--- | :--- |
-| **搜索速度** | ⏱️ 5~10+ 秒的磁盘扫描，让 SSD 持续高负荷运转。 | ⚡ **瞬时 (毫秒级)**，采用 `mmap` 二进制索引。 |
-| **正则与 Glob 支持** | ❌ 无内置正则，需写极其复杂的 `find` 命令行。 | ✅ **开箱即用**。只需输入 `regex:^Report-[0-9]+$` 或 `src/**/*.swift`。 |
-| **压缩包与 PDF 内容检索** | ❌ 必须手动解包，用专用阅读器检索。 | 🔍 **内存流式匹配**。完美支持 PDF、Word、ZIP 包内源码。 |
-| **系统资源占用** | 🥵 `mds` 进程导致 CPU 暴走，风扇狂转。 | 🍃 **极低占用**。后台 FSEvents 零碎监听 + 内存映射。 |
-| **开发者噪音过滤** | ❌ 搜出大量 `node_modules` 或 `build` 等无用缓存。 | 🛡️ **智能忽略列表**。专注核心代码，动态过滤噪音。 |
-| **使用界面** | 🎛️ 笨重的 UI 或纯命令行，预览文件极不方便。 | 💻 **双栖模式**: 全局快捷键状态栏 App + 脚本化 CLI，支持原生 `Quick Look` 预览！ |
+| **系统资源占用** | 🥵 5 个后台进程常驻，吃掉 1GB+ 内存与大量电量。 | 🍃 **单个原生 Swift 引擎**，二进制 `mmap` 索引，极低开销。 |
+| **文件与内容搜索** | ⏱️ 5~10秒扫描；不支持正则、不支持 ZIP 包内搜索。 | ⚡ **毫秒级极速搜索**，代码/PDF/Word，免解压流式穿透 ZIP。 |
+| **剪贴板历史** | 🔓 明文存储，存在 API Key 和密码泄露安全隐患。 | 🔐 **硬件级 AES 加密存储**，Vision OCR 图片识别，顺序粘贴栈。 |
+| **防休眠与合盖运行** | ☕ 手动开关；MacBook 一合盖依然强制休眠断网。 | ☕ **智能防休眠**，支持**合盖保持运行 (Clamshell Mode)** 与条件触发。 |
+| **外接硬盘健康** | 🛑 移动硬盘频繁休眠、卡死 Finder 或自动断开。 | 💾 **DriveAlive 心跳保鲜**：定期微写，防止 SSD/HDD/NAS 掉盘。 |
+| **键盘清理维护** | 🧼 还要再下载一个第三方小工具来锁定键盘。 | 🔒 **快捷键一键锁定键盘**，轻松清洁键帽或防止猫咪踩踏误触。 |
 
 ---
 
-## ✨ 杀手级特性与高光时刻
+## ✨ 5 大杀手级工具箱
 
-### 1. ⚡ 内存映射瞬时索引与实时同步
-微秒级加载数百万条文件路径。利用 macOS 的 `FSEvents` API，在后台无感追踪文件系统的新增、重命名和删除，保持索引鲜活性，且绝不占用额外 CPU 资源。
-* **高光时刻:** 在终端中运行命令创建文件，还没松开 Enter 键，该文件就已经出现在你的 OpenFind 搜索框中了。
+### 1. ⚡ 极速搜索引擎 (文件与全文)
+* **瞬时 `mmap` 索引**: 微秒级加载数百万路径，零堆内存开销。
+* **实时 FSEvents 同步**: 自动监听终端变化（如 `git pull` / `touch`），变动实时生效。
+* **深空内容提取**: 深度检索 PDF、Word/Excel、iWork，免解压直接在内存中流式遍历 `.zip` / `.tar.gz` 压缩包。
+* **正则、Glob 与快速预览**: 支持 `src/**/*.swift` 与 `regex:^Report-[0-9]+$`，选中按 `Space` 空格键调起原生 Quick Look。
 
-### 2. 🔍 深空内容提取与免解压压缩包流式匹配
-不仅支持纯文本，还能深度检索 PDF、Microsoft Office、Apple iWork 格式和压缩归档（`.zip`, `.tar.gz`, `.7z`）。在内存中直接流式解压并遍历成员，不对磁盘进行临时写入，同时采用进程级沙盒隔离确保数据安全。
-* **高光时刻:** 无需解压，瞬间定位嵌套在好几层 zip 发包文件锁死深处的某个配置项。
+### 2. 📋 加密剪贴板历史与 OCR 识别
+* **加密 SQLite 数据库**: 采用硬件级 AES 加密，安全保护隐私历史。
+* **Vision 框架 OCR 文字识别**: 复制任何截图，OpenFind 自动识别图片中的文字并支持搜索。
+* **顺序粘贴栈 (Paste Stack)**: 连续复制 10 条内容，通过快捷键按顺序一次性连续粘贴。
+* **Snippet 片段快捷替换**: 常用文本固定，自动排除 1Password、Keychain 等敏感应用。
 
-### 3. 🛠️ 强大的高级查询语法与 GUI + CLI 双栖体验
-支持高级布尔逻辑、元数据过滤（文件大小、创建日期）、Glob、正则以及 Finder 标签。通过全局快捷键 `⌘⇧Space` 唤起极简搜索窗口，按下 `Space` 即可快速预览文件；或将 CLI 命令无缝拼入你的自动化工作流。
-* **高光时刻:** 唤起窗口，搜到 PDF 后，只需按一下空格键就能立即阅读里面的结构，行云流水。
+### 3. ☕ 智能防休眠与合盖运行 (Clamshell Mode)
+* **系统/屏幕防休眠**: 自定义时长或无限期保持 Mac 处于唤醒状态。
+* **合盖模式 (Clamshell Mode)**: 即使合上 MacBook 屏幕，后台脚本、服务器或编译任务依然持续运行。
+* **自动化条件触发**: 当指定 App 运行、大文件下载中或 CPU/网络活跃时自动触发防休眠。
+* **低电量保护**: 当电池电量低于设定阈值时，自动恢复正常休眠以节省电量。
 
-### 4. 原生效率工具模块
-OpenFind 现在可直接替代三款独立状态栏工具，不会内嵌或启动它们的 App 包：
+### 4. 💾 DriveAlive 外接硬盘保鲜
+* **防止硬盘掉盘**: 后台定时微写心跳脉冲，防止外接移动硬盘、SSD 或 NAS 进入休眠。
+* **告别 Finder 卡顿**: 彻底解决访问外接盘时 5 秒以上的唤醒延迟和假死现象。
 
-- **保持唤醒：** 定时及条件会话、Amphetamine 风格的全部 14 类 Trigger、显示器与屏保策略、可事务回滚的闭盖模式、可选 Power Protect、通知、热键、AppleScript、统计和 Drive Alive。
-- **剪贴板历史：** 文本、富文本、URL、文件和图片均采用加密、按时间保留的本机历史；通过一个居中的液态玻璃面板提供即时搜索、来源应用、左右同步预览、点击/回车直贴、可复用短语集合与自动展开、连续粘贴、快速合并、完整“快速查看”、内容动作和快捷指令/App Intents；置顶项目绝不会被静默过期。
-- **键盘清洁：** 经辅助功能授权后拦截普通键、修饰键和媒体键，并提供纯鼠标解锁、倒计时、紧急自动解锁与生命周期清理。
-
-闭盖模式的特权写入默认不启用；Drive Alive 只在每个选定目标中维护一个有大小上限的标记文件，不会覆盖无关文件。
+### 5. 🔒 一键键盘锁
+* **一键安全清理**: 快捷键瞬间锁定所有键盘输入，方便清理键盘键帽，或防止宠物踏过造成误操作。
 
 ---
 
 ## ⚡ 极简上手 (60 秒)
 
-你可以在一分钟内编译并体验 CLI 命令行搜索！
-
-### 运行 CLI 命令行
+### 运行 CLI 命令行模式
 ```bash
-# 1. 克隆仓库
+# 1. 克隆并进入仓库
 git clone https://github.com/GravityPoet/OpenFind.git && cd OpenFind
 
 # 2. 使用 macOS 14+ SDK 编译
 xcrun --sdk macosx swift build
 
-# 3. 瞬时搜索包含 "OpenFind" 的 Markdown 文件
-xcrun --sdk macosx swift run OpenFind --search "ext:md content:OpenFind"
+# 3. 瞬时搜索包含 "OpenFind" 的 Swift 代码
+xcrun --sdk macosx swift run OpenFind --search "ext:swift content:OpenFind"
 ```
 
-### 安装 GUI 客户端（状态栏 App）
-运行打包脚本自动生成通用包并注册 LaunchServices，即可安装常驻状态栏：
+### 安装 GUI 客户端 (状态栏 App)
+运行打包脚本生成全功能 App 并安装到 `/Applications`：
 ```bash
-# 构建 Universal 生产发布包
+# 构建生产发布包
 bash Scripts/build_customer_app.sh
 
-# 原子替换并注册 Spotlight / LaunchServices
+# 原子替换并安装到系统的应用程序目录
 bash Scripts/install_local_app.sh
 ```
-*使用全局快捷键 **`⌘⇧Space`** 即可在任意位置唤起或隐藏 OpenFind！*
-
-首次打开已安装的 OpenFind 时，应用会默认注册为 macOS 登录项；以后登录
-Mac 时会直接驻留在菜单栏，不主动弹出主窗口。用户随时可以在 OpenFind
-设置中关闭“登录时启动 OpenFind”，关闭后不会被后续启动强制重新开启。
-
-必须通过 `Scripts/install_local_app.sh` 安装完整应用包，不要只替换
-`OpenFind.app/Contents/MacOS/OpenFind`。主程序、内嵌 Sparkle、运行时路径、
-App Intents 元数据和代码签名是一个完整验收单元；局部替换会导致 macOS
-无法启动应用。
 
 ---
 
-## 👥 典型场景
-
-* 💻 **软件开发与 SRE**: 在海量代码或挂载盘中瞬间定位特定日志、配置和 API 定义，避免卡死编辑器。
-* 📦 **发版与包管理**: 无需解压，在各种分发压缩包和嵌套归档中搜索符号及配置值。
-* 🔍 **效率极客与 Power User**: 用一个隐私安全、支持正则和原生 Quick Look 的极简搜索面板完全替代经常损坏索引的 Spotlight。
-
----
-
-## ⚙️ 常用查询示例
-
-OpenFind 支持开箱即用的高级查询语法：
+## ⚙️ 快捷键与查询命令语法示例
 
 ```text
-*.pdf briefing          # 文件名包含 briefing 的 PDF 文件
-ext:png;jpg travel      # 文件名包含 travel 的 PNG 或 JPG 图片
-type:code openfind      # 文件名包含 openfind 的源码/代码文件
-doc:invoice             # 文件名包含 invoice 的文档文件
-size:empty              # 空文件
-size:!=0b               # 非空文件
-report summary|draft    # report 并且包含 (summary 或者 draft)
-src/**/SearchQuery.swift
-parent:/Users/me/Docs   # 在指定的父目录下进行单层搜索
-in:/Users/me/Projects   # 递归在指定的文件夹范围内搜索
-dm:pastweek             # 最近一周内修改的文件
-dc:>=2026-01-01        # 创建时间在此日期之后的文件
-tag:Project;Important  # 包含任一 Finder 标签
-regex:^Report-[0-9]+$   # 基于正则表达式匹配文件名
-content:"Q4 budget"    # 全文内容子串搜索（支持 PDF/Office/代码）
+# --- 搜索语法示例 ---
+*.pdf briefing          # 文件名包含 briefing 的 PDF
+type:code openfind      # 包含 openfind 的代码文件
+regex:^Report-[0-9]+$   # 正则匹配文件名
+content:"API_SECRET"    # 深层全文检索（支持代码、PDF 及 ZIP 包内）
+in:/Users/me/Projects   # 在指定目录下递归搜索
+tag:Project;Important  # Finder 标签过滤
+
+# --- 快捷键 ---
+⌘⇧Space                 # 唤起/隐藏 OpenFind 搜索框
+Space (选中结果时)       # 调起原生 Quick Look 快速预览
 ```
 
 ---
 
-## 🏗️ 系统架构
+## 🏗️ 架构与隐私保障
 
-OpenFind 基于 **Swift 6 / SwiftUI** 构建，严格遵循单向数据流架构：
-
-```
-Views ──> State (ViewModel) ──> Engine ──> Models
-```
-
-- **Models:** 值类型，管理查询匹配规则。
-- **Engine:** 维护高效的 mmap 内存映射路径索引，并调度 SQLite-FTS 全文搜索引擎进行精确分块匹配。
-- **DocumentTextExtractor:** 负责纯文本、PDF、微软 Office、苹果 iWork 格式及压缩包在内存中的提取。
-- **App Entry:** 分发命令行参数（CLI）或注册状态栏（GUI）处理事件。
+OpenFind 使用 **Swift 6 & SwiftUI** 构建，严格遵循隐私第一原则：
+* **100% 本地运行**: 零追踪、零云端分析、零外部网络请求。
+* **单向数据流架构**: `Views -> State -> Engine -> Models` 清晰分离。
+* **进程隔离提取**: 压缩包解压与文本提取均在安全沙盒环境中进行。
 
 ---
 
 ## 📦 打包与签名
 
-构建脚本内置了代码签名与公证（Notarization）流程：
-
 ```bash
-# 构建用于本地安装或分发的发布版 ZIP 压缩包（使用 OpenFind Customer 签名标识）
+# 生产构建
 bash Scripts/build_customer_app.sh
 
-# 执行 Ad-hoc 本地临时验证构建
-SIGN_IDENTITY=- bash Scripts/build_app.sh
-
-# 进行 Developer ID 签名并公证的直接分发构建
-SIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)" \
+# Developer ID 签名与公证构建
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
   NOTARIZE=1 \
   NOTARY_PROFILE="openfind-notary" \
   bash Scripts/build_app.sh
-```
-
-在首次进行公证构建之前，请在 macOS Keychain 中存储你的 Apple 开发者公证凭证：
-```bash
-xcrun notarytool store-credentials openfind-notary \
-  --apple-id "developer@example.com" \
-  --team-id "TEAMID"
 ```
 
 ---
 
 ## ⚖️ 许可与商业化
 
-OpenFind 基于 **GNU Affero General Public License v3.0** 协议开源（仅限 `AGPL-3.0-only`）。详见 [LICENSE](LICENSE).
+基于 **GNU Affero General Public License v3.0** 协议开源（仅限 `AGPL-3.0-only`）。详见 [LICENSE](LICENSE).
 
-* **商业授权:** 凡是希望将 OpenFind 代码整合进闭源软件、重新分发或在商业化场景中受专有条款约束的组织，可申请独立商业许可证。详见 [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)。
-* **贡献者协议 (CLA):** 为保持双重许可结构，合并任何外部 PR 前均需签署 CLA。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-* **商标声明:** 许可协议不授权任何关于 OpenFind 品牌、Logo 或图标的商标使用权。详见 [TRADEMARKS.md](TRADEMARKS.md)。
+* **商业授权**: 允许商业闭源集成与专有分发。详见 [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)。
+* **贡献者协议 (CLA)**: 提交 PR 须签署 CLA。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+* **商标声明**: 详见 [TRADEMARKS.md](TRADEMARKS.md)。
