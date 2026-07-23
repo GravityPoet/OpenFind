@@ -7,6 +7,13 @@ struct ClipboardIgnoredPasteboardTypesView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Label(
+                L("Clipboard Privacy Type Markers Explanation"),
+                systemImage: "info.circle"
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+
             List(types, id: \.self, selection: $selection) { type in
                 Text(type)
                     .font(.system(.body, design: .monospaced))

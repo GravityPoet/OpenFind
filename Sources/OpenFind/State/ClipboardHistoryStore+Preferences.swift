@@ -20,6 +20,10 @@ extension ClipboardHistoryStore {
         updatePreferences { $0.ignoredBundleIdentifiers = identifiers }
     }
 
+    func setAllowedBundleIdentifiers(_ identifiers: Set<String>) {
+        updatePreferences { $0.allowedBundleIdentifiers = identifiers }
+    }
+
     func setPasteWithoutFormatting(_ enabled: Bool) {
         updatePreferences { $0.pasteWithoutFormatting = enabled }
     }
@@ -64,8 +68,8 @@ extension ClipboardHistoryStore {
         }
     }
 
-    func setIgnoreAllAppsExceptListed(_ enabled: Bool) {
-        updatePreferences { $0.ignoreAllAppsExceptListed = enabled }
+    func setCaptureOnlyFromAllowedApplications(_ enabled: Bool) {
+        updatePreferences { $0.captureOnlyFromAllowedApplications = enabled }
     }
 
     func setIgnoredPasteboardTypes(_ types: Set<String>) {

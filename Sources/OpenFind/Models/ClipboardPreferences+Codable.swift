@@ -3,7 +3,8 @@ import Foundation
 extension ClipboardPreferences {
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case retentionPeriod, historyLimit, itemLimitBytes, enabledStorageCategories
-        case ignoredBundleIdentifiers, ignoreAllAppsExceptListed
+        case ignoredBundleIdentifiers, allowedBundleIdentifiers
+        case captureOnlyFromAllowedApplications, ignoreAllAppsExceptListed
         case ignoredPasteboardTypes, ignoredTextPatterns
         case capturePaused, ignoreOnlyNextCapture, clipboardCheckInterval
         case pasteWithoutFormatting, clearHistoryOnQuit, clearSystemClipboardOnQuit
@@ -37,10 +38,17 @@ extension ClipboardPreferences {
             Set<String>.self,
             forKey: .ignoredBundleIdentifiers
         ) ?? value.ignoredBundleIdentifiers
-        value.ignoreAllAppsExceptListed = try container.decodeIfPresent(
+        value.allowedBundleIdentifiers = try container.decodeIfPresent(
+            Set<String>.self,
+            forKey: .allowedBundleIdentifiers
+        ) ?? value.allowedBundleIdentifiers
+        value.captureOnlyFromAllowedApplications = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .captureOnlyFromAllowedApplications
+        ) ?? container.decodeIfPresent(
             Bool.self,
             forKey: .ignoreAllAppsExceptListed
-        ) ?? value.ignoreAllAppsExceptListed
+        ) ?? value.captureOnlyFromAllowedApplications
         value.ignoredPasteboardTypes = try container.decodeIfPresent(
             Set<String>.self,
             forKey: .ignoredPasteboardTypes
@@ -138,7 +146,11 @@ extension ClipboardPreferences {
         try container.encode(itemLimitBytes, forKey: .itemLimitBytes)
         try container.encode(enabledStorageCategories, forKey: .enabledStorageCategories)
         try container.encode(ignoredBundleIdentifiers, forKey: .ignoredBundleIdentifiers)
-        try container.encode(ignoreAllAppsExceptListed, forKey: .ignoreAllAppsExceptListed)
+        try container.encode(allowedBundleIdentifiers, forKey: .allowedBundleIdentifiers)
+        try container.encode(
+            captureOnlyFromAllowedApplications,
+            forKey: .captureOnlyFromAllowedApplications
+        )
         try container.encode(ignoredPasteboardTypes, forKey: .ignoredPasteboardTypes)
         try container.encode(ignoredTextPatterns, forKey: .ignoredTextPatterns)
         try container.encode(capturePaused, forKey: .capturePaused)

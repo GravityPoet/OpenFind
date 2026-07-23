@@ -3,6 +3,7 @@ import SwiftUI
 struct ClipboardBehaviorSettings: View {
     @Bindable var store: ClipboardHistoryStore
     @Bindable var controller: ClipboardController
+    @State private var showingAllowedApplications = false
 
     var body: some View {
         Toggle(
@@ -52,6 +53,52 @@ struct ClipboardBehaviorSettings: View {
                 set: { store.setClearSystemClipboardOnQuit($0) }
             )
         )
+
+        DisclosureGroup(L("Clipboard Application Allow List Advanced")) {
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(
+                    L("Enable Clipboard Application Allow List"),
+                    isOn: Binding(
+                        get: {
+                            store.preferences.captureOnlyFromAllowedApplications
+                        },
+                        set: { store.setCaptureOnlyFromAllowedApplications($0) }
+                    )
+                )
+
+                Button {
+                    showingAllowedApplications = true
+                } label: {
+                    HStack {
+                        Text(L("Manage Clipboard Allowed Applications"))
+                        Spacer()
+                        Text(store.preferences.allowedBundleIdentifiers.count.formatted())
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Text(L("Clipboard Application Allow List Help"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                if store.preferences.captureOnlyFromAllowedApplications,
+                   store.preferences.allowedBundleIdentifiers.isEmpty {
+                    Label(
+                        L("Clipboard Application Allow List Empty Warning"),
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                }
+            }
+            .padding(.top, 6)
+        }
+        .sheet(isPresented: $showingAllowedApplications) {
+            ClipboardAllowedApplicationsSheet(store: store)
+        }
 
         shortcutSettings
 

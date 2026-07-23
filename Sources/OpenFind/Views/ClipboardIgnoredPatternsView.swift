@@ -9,10 +9,26 @@ struct ClipboardIgnoredPatternsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            List(patterns, id: \.self, selection: $selection) { pattern in
-                Text(pattern)
-                    .font(.system(.body, design: .monospaced))
-                    .tag(pattern)
+            Label(
+                L("Clipboard Text Filters Explanation"),
+                systemImage: "info.circle"
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+
+            if patterns.isEmpty {
+                ContentUnavailableView(
+                    L("No Clipboard Text Filters"),
+                    systemImage: "text.magnifyingglass",
+                    description: Text(L("No Clipboard Text Filters Help"))
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(patterns, id: \.self, selection: $selection) { pattern in
+                    Text(pattern)
+                        .font(.system(.body, design: .monospaced))
+                        .tag(pattern)
+                }
             }
 
             HStack(spacing: 8) {

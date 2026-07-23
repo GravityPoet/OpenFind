@@ -13,11 +13,14 @@ struct ClipboardIgnoreRulesSheet: View {
                     }
                 ClipboardIgnoredPasteboardTypesView(store: store)
                     .tabItem {
-                        Label(L("Clipboard Pasteboard Types"), systemImage: "list.bullet.rectangle")
+                        Label(
+                            L("Clipboard Privacy Type Markers"),
+                            systemImage: "shield.lefthalf.filled"
+                        )
                     }
                 ClipboardIgnoredPatternsView(store: store)
                     .tabItem {
-                        Label(L("Clipboard Ignore Patterns"), systemImage: "text.magnifyingglass")
+                        Label(L("Clipboard Text Filters"), systemImage: "text.magnifyingglass")
                     }
             }
 

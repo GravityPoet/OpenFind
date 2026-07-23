@@ -6,6 +6,13 @@ struct AppCommands: Commands {
     let clipboardStore: ClipboardHistoryStore
 
     var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button(L("Settings")) {
+                FileActions.openSettings()
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
+
         CommandGroup(after: .appInfo) {
             Button(L("Check for Updates...")) {
                 (NSApp.delegate as? AppDelegate)?.checkForUpdates(nil)

@@ -35,7 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let triggerScheduler: TriggerMonitorScheduler
     let quickLook = QuickLookController()
     private let mainWindowFrameAutosaveName = NSWindow.FrameAutosaveName("OpenFind.mainWindow")
+    private let settingsWindowFrameAutosaveName =
+        NSWindow.FrameAutosaveName("OpenFind.settingsWindow")
     private var mainWindow: NSWindow?
+    private var settingsWindow: NSWindow?
     private var updaterController: SPUStandardUpdaterController?
     private var terminationReplyPending = false
     private var closedDisplayRecoveryTask: Task<Void, Never>?
@@ -198,6 +201,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         showMainWindow()
     }
 
+    @objc func showSettingsWindow(_ sender: Any?) {
+        let window = makeSettingsWindowIfNeeded()
+        NSApp.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(sender)
+    }
+
     @objc func checkForUpdates(_ sender: Any?) {
         updaterController?.checkForUpdates(sender)
     }
@@ -294,6 +304,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return window
     }
 
+    private func makeSettingsWindowIfNeeded() -> NSWindow {
+        if let settingsWindow {
+            if settingsWindow.isMiniaturized { settingsWindow.deminiaturize(nil) }
+            return settingsWindow
+        }
+
+        let hostingController = NSHostingController(
+            rootView: SettingsView(
+                viewModel: viewModel,
+                globalHotKey: globalHotKey,
+                driveAliveStore: driveAliveStore,
+                driveAlive: driveAlive,
+                clipboardStore: clipboardStore,
+                clipboard: clipboard,
+                keyboardLock: keyboardLock,
+                triggerStore: triggerStore,
+                triggerCoordinator: triggerCoordinator,
+                awakeHotKeys: awakeHotKeys,
+                awakeSessionPreferences: awakeSessionPreferences,
+                launchAtLogin: launchAtLogin,
+                awakeNotifications: awakeNotifications,
+                awakeStatistics: awakeStatistics,
+                sessionActivity: sessionActivity,
+                powerProtect: powerProtect,
+                awakeSession: awakeSession
+            )
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 940, height: 680),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.identifier = NSUserInterfaceItemIdentifier("OpenFind.settings")
+        window.title = L("Settings")
+        window.minSize = NSSize(width: 900, height: 620)
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.contentViewController = hostingController
+        applySavedFrameOrCenter(window, autosaveName: settingsWindowFrameAutosaveName)
+        settingsWindow = window
+        return window
+    }
+
     private func applySavedFrameOrCenter(_ window: NSWindow, autosaveName: NSWindow.FrameAutosaveName) {
         let restored = window.setFrameUsingName(autosaveName)
         window.setFrameAutosaveName(autosaveName)
@@ -309,6 +363,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let window else { return }
         if window === mainWindow {
             window.saveFrame(usingName: mainWindowFrameAutosaveName)
+        } else if window === settingsWindow {
+            window.saveFrame(usingName: settingsWindowFrameAutosaveName)
         }
     }
 

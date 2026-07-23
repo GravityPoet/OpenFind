@@ -76,7 +76,8 @@ struct ClipboardPreferences: Codable, Equatable, Sendable {
     var itemLimitBytes = 8 * 1_024 * 1_024
     var enabledStorageCategories = Set(ClipboardStorageCategory.allCases)
     var ignoredBundleIdentifiers: Set<String> = []
-    var ignoreAllAppsExceptListed = false
+    var allowedBundleIdentifiers: Set<String> = []
+    var captureOnlyFromAllowedApplications = false
     var ignoredPasteboardTypes: Set<String> = Self.defaultIgnoredPasteboardTypes
     var ignoredTextPatterns: [String] = []
     var capturePaused = false
@@ -174,6 +175,11 @@ struct ClipboardPreferences: Codable, Equatable, Sendable {
         value.itemLimitBytes = min(16 * 1_024 * 1_024, max(1_024, itemLimitBytes))
         value.ignoredBundleIdentifiers = Self.normalizedStrings(
             ignoredBundleIdentifiers,
+            countLimit: 128,
+            lengthLimit: 512
+        )
+        value.allowedBundleIdentifiers = Self.normalizedStrings(
+            allowedBundleIdentifiers,
             countLimit: 128,
             lengthLimit: 512
         )

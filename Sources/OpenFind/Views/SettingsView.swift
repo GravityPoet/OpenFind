@@ -52,7 +52,7 @@ struct SettingsView: View {
                     Label(L("Keyboard Cleaning Lock"), systemImage: "keyboard")
                 }
         }
-        .frame(minWidth: 700, minHeight: 620)
+        .frame(minWidth: 900, minHeight: 620)
         .onAppear {
             localUsageRecordCount = SearchUsageStore.shared.recordCount
         }
