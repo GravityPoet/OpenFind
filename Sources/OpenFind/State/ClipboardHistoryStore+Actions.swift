@@ -31,6 +31,15 @@ extension ClipboardHistoryStore {
             }
             if index == 0 {
                 item.setString("", forType: .init(Self.internalPasteboardType))
+                if let sourceBundleIdentifier = normalizedMetadata(
+                    entry.sourceBundleIdentifier,
+                    limit: 512
+                ) {
+                    item.setString(
+                        sourceBundleIdentifier,
+                        forType: .init(Self.sourcePasteboardType)
+                    )
+                }
             }
             return item
         }
