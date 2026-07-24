@@ -21,7 +21,8 @@ let package = Package(
         ),
         .testTarget(
             name: "OpenFindTests",
-            dependencies: ["OpenFind"]
+            dependencies: ["OpenFind"],
+            resources: [.process("Fixtures")]
         )
     ]
 )

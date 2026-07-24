@@ -11,6 +11,16 @@
 
 OpenFind unifies **Hyper-Fast File & Content Search**, **Encrypted Smart Clipboard with OCR**, **Automated Keep-Awake with Clamshell Mode**, **External Drive Keep-Alive**, and **Instant Keyboard Lock** into a single status-bar app and CLI tool.
 
+[Download the latest release](https://github.com/GravityPoet/OpenFind/releases/latest) ·
+[Watch the 60-second demo](docs/assets/OpenFind-60s-demo.mp4) ·
+[Read the v1.1.0 release notes](docs/releases/v1.1.0.md)
+
+![OpenFind first-run guide showing five capabilities and their shortcuts](docs/assets/openfind-welcome.png)
+
+| Minimum-window search | Unified interface size |
+| :---: | :---: |
+| ![OpenFind search at its minimum window size](docs/assets/openfind-search.png) | ![OpenFind compact, default, and large interface-size settings](docs/assets/openfind-interface-size.png) |
+
 ---
 
 ## 🎯 Slogan
@@ -90,15 +100,24 @@ xcrun --sdk macosx swift build
 xcrun --sdk macosx swift run OpenFind --search "ext:swift content:OpenFind"
 ```
 
-### Install status bar GUI App
-Run our unified build script to package and install the complete app:
-```bash
-# Package production build
-bash Scripts/build_customer_app.sh
+### Install the signed GUI release
 
-# Install atomically to /Applications
-bash Scripts/install_local_app.sh
+1. Download `OpenFind.zip` and `OpenFind.zip.sha256` from the
+   [latest GitHub Release](https://github.com/GravityPoet/OpenFind/releases/latest).
+2. Put both files in the same folder and verify the download:
+
+```bash
+shasum -a 256 -c OpenFind.zip.sha256
 ```
+
+3. Open the ZIP and move `OpenFind.app` to `/Applications`.
+4. The current customer build is signed with OpenFind's pinned self-signed
+   certificate. On first launch, if macOS blocks it, open **System Settings →
+   Privacy & Security → Open Anyway** once.
+
+To build from source instead, clone the repository and run
+`bash Scripts/build_customer_app.sh`; maintainers can install atomically with
+`bash Scripts/install_local_app.sh`.
 
 ---
 
@@ -114,7 +133,7 @@ in:/Users/me/Projects   # Search recursively inside specific directory
 tag:Project;Important  # Finder tag filtering
 
 # --- SHORTCUT CHEAT SHEET ---
-⌘⇧Space                 # Toggle OpenFind Search Bar
+⌃⌥F                     # Toggle OpenFind Search Bar
 Space (on result)       # Native Quick Look preview
 ```
 
@@ -131,11 +150,15 @@ OpenFind is built using **Swift 6 & SwiftUI** with strict privacy guarantees:
 
 ## 📦 Packaging & Code Signing
 
+The official v1.1.0 customer artifact is a universal (`arm64` + `x86_64`) build
+signed by OpenFind's pinned customer certificate. It is not Apple-notarized;
+the one-time first-launch override above is expected.
+
 ```bash
-# Production release build
+# Pinned customer release build
 bash Scripts/build_customer_app.sh
 
-# Developer ID signed & notarized build
+# Optional Developer ID signed and notarized build for maintainers
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
   NOTARIZE=1 \
   NOTARY_PROFILE="openfind-notary" \

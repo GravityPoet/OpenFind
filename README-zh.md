@@ -11,6 +11,16 @@
 
 OpenFind 完美融合了 **极速文件/内容搜索引擎**、**加密智能剪贴板（含 OCR 文字识别）**、**智能防休眠与合盖运行**、**外接硬盘防掉盘心跳** 以及 **一键键盘锁** 5 大核心功能，提供常驻状态栏 App 与高效 CLI 工具。
 
+[下载最新正式版](https://github.com/GravityPoet/OpenFind/releases/latest) ·
+[观看 60 秒演示](docs/assets/OpenFind-60s-demo.mp4) ·
+[查看 v1.1.0 发布说明](docs/releases/v1.1.0.md)
+
+![OpenFind 首次引导：五项能力及其快捷键](docs/assets/openfind-welcome.png)
+
+| 最小窗口搜索界面 | 统一界面尺寸 |
+| :---: | :---: |
+| ![OpenFind 最小窗口下的搜索界面](docs/assets/openfind-search.png) | ![OpenFind 紧凑、默认和大号界面尺寸设置](docs/assets/openfind-interface-size.png) |
+
 ---
 
 ## 🎯 一句话定位
@@ -90,15 +100,22 @@ xcrun --sdk macosx swift build
 xcrun --sdk macosx swift run OpenFind --search "ext:swift content:OpenFind"
 ```
 
-### 安装 GUI 客户端 (状态栏 App)
-运行打包脚本生成全功能 App 并安装到 `/Applications`：
-```bash
-# 构建生产发布包
-bash Scripts/build_customer_app.sh
+### 安装已签名的 GUI 正式版
 
-# 原子替换并安装到系统的应用程序目录
-bash Scripts/install_local_app.sh
+1. 从 [最新 GitHub Release](https://github.com/GravityPoet/OpenFind/releases/latest)
+   下载 `OpenFind.zip` 与 `OpenFind.zip.sha256`。
+2. 将两个文件放在同一目录并校验下载：
+
+```bash
+shasum -a 256 -c OpenFind.zip.sha256
 ```
+
+3. 解压后将 `OpenFind.app` 移入 `/Applications`。
+4. 当前客户版本使用 OpenFind 固定的自签名证书。首次启动若被 macOS
+   阻止，请前往 **系统设置 → 隐私与安全性 → 仍要打开**，只需操作一次。
+
+如需从源码构建，请克隆仓库后运行 `bash Scripts/build_customer_app.sh`；
+维护者可用 `bash Scripts/install_local_app.sh` 原子安装。
 
 ---
 
@@ -114,7 +131,7 @@ in:/Users/me/Projects   # 在指定目录下递归搜索
 tag:Project;Important  # Finder 标签过滤
 
 # --- 快捷键 ---
-⌘⇧Space                 # 唤起/隐藏 OpenFind 搜索框
+⌃⌥F                     # 唤起/隐藏 OpenFind 搜索框
 Space (选中结果时)       # 调起原生 Quick Look 快速预览
 ```
 
@@ -131,11 +148,14 @@ OpenFind 使用 **Swift 6 & SwiftUI** 构建，严格遵循隐私第一原则：
 
 ## 📦 打包与签名
 
+官方 v1.1.0 客户包同时支持 `arm64` 与 `x86_64`，并使用 OpenFind 固定客户
+证书签名。该版本尚未经过 Apple 公证，首次启动按上方说明放行属于预期流程。
+
 ```bash
-# 生产构建
+# 固定客户证书发布构建
 bash Scripts/build_customer_app.sh
 
-# Developer ID 签名与公证构建
+# 维护者可选：Developer ID 签名与 Apple 公证
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
   NOTARIZE=1 \
   NOTARY_PROFILE="openfind-notary" \

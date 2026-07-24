@@ -21,6 +21,8 @@ struct SettingsView: View {
     @State private var localUsageRecordCount = 0
     @AppStorage(SettingsPane.persistenceKey)
     private var selectedPaneValue = SettingsPane.search.rawValue
+    @AppStorage(OpenFindInterfaceSize.persistenceKey)
+    private var interfaceSizeValue = OpenFindInterfaceSize.standard.rawValue
 
     var body: some View {
         TabView(selection: selectedPane) {
@@ -61,6 +63,7 @@ struct SettingsView: View {
                 .tag(SettingsPane.keyboardCleaning)
         }
         .frame(minWidth: 900, minHeight: 620)
+        .openFindInterfaceSizing()
         .onAppear {
             localUsageRecordCount = SearchUsageStore.shared.recordCount
         }
@@ -71,6 +74,24 @@ struct SettingsView: View {
 
     private var searchSettings: some View {
         Form {
+            Section {
+                Picker(L("Interface Size"), selection: interfaceSize) {
+                    ForEach(OpenFindInterfaceSize.allCases) { size in
+                        Label(size.localizedName, systemImage: size.systemImage)
+                            .tag(size)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Button(L("Show Welcome Guide")) {
+                    AppDelegate.shared?.showWelcomeGuide(nil)
+                }
+            } header: {
+                Text(L("Appearance"))
+            } footer: {
+                Text(L("Interface Size Help"))
+            }
+
             Section(header: Text(L("Durable Defaults"))) {
                 Picker(L("Default Target"), selection: $viewModel.options.target) {
                     Text(L("Name")).tag(SearchTarget.name)
@@ -272,6 +293,13 @@ struct SettingsView: View {
         Binding(
             get: { SettingsPane.resolve(selectedPaneValue) },
             set: { selectedPaneValue = $0.rawValue }
+        )
+    }
+
+    private var interfaceSize: Binding<OpenFindInterfaceSize> {
+        Binding(
+            get: { OpenFindInterfaceSize.resolve(interfaceSizeValue) },
+            set: { interfaceSizeValue = $0.rawValue }
         )
     }
 }

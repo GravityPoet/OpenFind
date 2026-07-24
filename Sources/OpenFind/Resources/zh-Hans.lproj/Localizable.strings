@@ -826,3 +826,32 @@
 "Content" = "内容";
 "Show Clipboard" = "显示剪贴板";
 "Create Snippet" = "新建短语";
+
+/* 首次引导与界面缩放 */
+"Welcome to OpenFind" = "欢迎使用 OpenFind";
+"Welcome to OpenFind..." = "欢迎使用 OpenFind…";
+"Five Mac tools, one quiet menu bar app. Start with search, then use each tool when you need it." = "五项 Mac 能力，安静地收在一个菜单栏应用里。先从搜索开始，需要时再调用其他工具。";
+"Guide Search Title" = "立即找到文件";
+"Guide Search Detail" = "在你选择的文件夹中搜索名称、路径和文件内容。";
+"Guide Clipboard Title" = "找回剪贴板历史";
+"Guide Clipboard Detail" = "不打断当前工作，即可查找、预览、粘贴和保存常用内容。";
+"Guide Keep Awake Title" = "保持 Mac 唤醒";
+"Guide Keep Awake Detail" = "从菜单栏开始定时会话，也可在设置中启用这个快捷键。";
+"Guide Drive Alive Title" = "让外置硬盘保持就绪";
+"Guide Drive Alive Detail" = "重要工作期间，避免选定的外置硬盘进入空闲状态。";
+"Guide Keyboard Cleaning Title" = "安心清洁键盘";
+"Guide Keyboard Cleaning Detail" = "擦拭键盘时临时拦截按键输入。";
+"Menu Bar" = "菜单栏";
+"Not Now" = "暂时跳过";
+"Open Settings" = "打开设置";
+"Start Searching" = "开始搜索";
+"Reopen this guide from the OpenFind menu at any time." = "以后可随时从 OpenFind 菜单重新打开此引导。";
+"Shortcut Format" = "快捷键：%@";
+"Appearance" = "外观";
+"Interface Size" = "界面尺寸";
+"Interface Size Compact" = "紧凑";
+"Interface Size Standard" = "默认";
+"Interface Size Large" = "大";
+"Interface Size Help" = "统一调整 OpenFind 所有窗口的文字、控件与间距；窗口变窄时，搜索工具栏还会自动收紧。";
+"Show Welcome Guide" = "显示欢迎引导";
+"Both" = "两者";

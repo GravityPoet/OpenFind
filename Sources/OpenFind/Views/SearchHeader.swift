@@ -6,17 +6,18 @@ struct SearchHeader: View {
     @FocusState.Binding var focusedTarget: SearchFocusTarget?
     let onMoveToResults: () -> Bool
     @State private var showRecentSearches = false
+    @Environment(\.openFindInterfaceSize) private var interfaceSize
 
     private var isFocused: Bool { focusedTarget == .query }
 
     var body: some View {
         OpenFindGlassContainer {
-            HStack(spacing: 12) {
+            HStack(spacing: 12 * interfaceSize.scale) {
                 // Padding for traffic light window control buttons in hiddenTitleBar style
                 Spacer()
-                    .frame(width: 80)
+                    .frame(width: 80 * interfaceSize.scale)
 
-                HStack(spacing: 8) {
+                HStack(spacing: 8 * interfaceSize.scale) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
 
@@ -85,8 +86,8 @@ struct SearchHeader: View {
                             .controlSize(.small)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 16 * interfaceSize.scale)
+                .padding(.vertical, 8 * interfaceSize.scale)
                 .openFindGlassCapsule()
                 .overlay(
                     Capsule()
@@ -95,9 +96,9 @@ struct SearchHeader: View {
                 .animation(.easeOut(duration: 0.15), value: isFocused)
             }
         }
-        .padding(.horizontal)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.horizontal, interfaceSize.outerHorizontalPadding)
+        .padding(.top, 12 * interfaceSize.scale)
+        .padding(.bottom, 8 * interfaceSize.scale)
         .background {
             SearchDownArrowMonitor(isActive: isFocused) {
                 guard onMoveToResults() else { return false }

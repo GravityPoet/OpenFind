@@ -826,3 +826,32 @@
 "Content" = "Content";
 "Show Clipboard" = "Show Clipboard";
 "Create Snippet" = "Create Snippet";
+
+/* First run and interface sizing */
+"Welcome to OpenFind" = "Welcome to OpenFind";
+"Welcome to OpenFind..." = "Welcome to OpenFind…";
+"Five Mac tools, one quiet menu bar app. Start with search, then use each tool when you need it." = "Five Mac tools, one quiet menu bar app. Start with search, then use each tool when you need it.";
+"Guide Search Title" = "Find files instantly";
+"Guide Search Detail" = "Search names, paths, and file contents across the folders you choose.";
+"Guide Clipboard Title" = "Recall clipboard history";
+"Guide Clipboard Detail" = "Find, preview, paste, and save reusable items without leaving your flow.";
+"Guide Keep Awake Title" = "Keep your Mac awake";
+"Guide Keep Awake Detail" = "Start timed sessions from the menu bar or enable this optional shortcut.";
+"Guide Drive Alive Title" = "Keep external drives ready";
+"Guide Drive Alive Detail" = "Prevent selected external drives from idling during important work.";
+"Guide Keyboard Cleaning Title" = "Clean the keyboard safely";
+"Guide Keyboard Cleaning Detail" = "Temporarily block keystrokes while you wipe down your keyboard.";
+"Menu Bar" = "Menu Bar";
+"Not Now" = "Not Now";
+"Open Settings" = "Open Settings";
+"Start Searching" = "Start Searching";
+"Reopen this guide from the OpenFind menu at any time." = "Reopen this guide from the OpenFind menu at any time.";
+"Shortcut Format" = "Shortcut: %@";
+"Appearance" = "Appearance";
+"Interface Size" = "Interface Size";
+"Interface Size Compact" = "Compact";
+"Interface Size Standard" = "Default";
+"Interface Size Large" = "Large";
+"Interface Size Help" = "Changes text, controls, spacing, and all OpenFind windows together. The search toolbar also condenses automatically in narrow windows.";
+"Show Welcome Guide" = "Show Welcome Guide";
+"Both" = "Both";

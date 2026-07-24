@@ -23,6 +23,11 @@ jobs:
       - name: Run tests
         run: xcrun --sdk macosx swift test
 
+      - name: Run visual regression
+        env:
+          OPENFIND_RUN_VISUAL_REGRESSION: "1"
+        run: xcrun --sdk macosx swift test --filter VisualRegressionTests
+
       - name: Build universal app bundle
         env:
           SIGN_IDENTITY: "-"

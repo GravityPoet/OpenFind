@@ -30,6 +30,11 @@ jobs:
       - name: Run tests at the macOS 14 deployment target
         run: MACOSX_DEPLOYMENT_TARGET=14.0 xcrun --sdk macosx swift test
 
+      - name: Run visual regression at the macOS 14 deployment target
+        env:
+          OPENFIND_RUN_VISUAL_REGRESSION: "1"
+        run: MACOSX_DEPLOYMENT_TARGET=14.0 xcrun --sdk macosx swift test --filter VisualRegressionTests
+
       - name: Import pinned OpenFind customer certificate
         env:
           CERTIFICATE_BASE64: ${{ secrets.OPENFIND_CUSTOMER_CERT_BASE64 }}
@@ -121,7 +126,8 @@ jobs:
           test -s "$APPCAST_DIR/appcast.xml"
           xmllint --noout "$APPCAST_DIR/appcast.xml"
           cp "$APPCAST_DIR/appcast.xml" dist/appcast.xml
-          shasum -a 256 dist/appcast.xml > dist/appcast.xml.sha256
+          APPCAST_SHA256="$(shasum -a 256 dist/appcast.xml | awk '{print $1}')"
+          printf '%s  appcast.xml\n' "$APPCAST_SHA256" > dist/appcast.xml.sha256
 
       - name: Publish GitHub Release
         env:
