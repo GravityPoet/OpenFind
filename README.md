@@ -6,14 +6,14 @@
 [![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS_14+-black.svg)](https://apple.com)
 [![Swift: 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 
-**The All-in-One Power Utility for macOS Developers & Power Users.**  
-*Replaces 5 separate background apps with one ultra-fast, lightweight native Swift engine.*
+**Stop cluttering your Mac with 5 RAM-hungry background apps.**  
+*Replace them all with one ultra-fast native Swift engine: Search, OCR Clipboard, Clamshell KeepAwake, DriveAlive & KeyLock.*
 
-OpenFind unifies **Hyper-Fast File & Content Search**, **Encrypted Smart Clipboard with OCR**, **Automated Keep-Awake with Clamshell Mode**, **External Drive Keep-Alive**, and **Instant Keyboard Lock** into a single status-bar app and CLI tool.
+OpenFind frees you from multi-app lag: **Zero-latency search inside ZIPs and PDFs**, **Instant text extraction from screenshot clipboards with AES encryption**, **Keep servers and builds running with lid closed**, and **Prevent external SSD/NAS disconnects**.
 
-[**🚀 Download OpenFind v1.1.0 for macOS**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0) ·
+[**🚀 Download OpenFind v1.1.0 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0) ·
 [Watch 60s Demo](docs/assets/OpenFind-60s-demo.mp4) ·
-[Release Notes](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0)
+[v1.1.0 Release Notes](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0)
 
 ![OpenFind first-run guide showing five capabilities and their shortcuts](docs/assets/openfind-welcome.png)
 
@@ -23,9 +23,9 @@ OpenFind unifies **Hyper-Fast File & Content Search**, **Encrypted Smart Clipboa
 
 ---
 
-## 🎯 Slogan
+## 🎯 Core Value Proposition
 
-Stop cluttering your Mac with 5 single-purpose utility apps. OpenFind delivers zero-latency search, OCR clipboard history, smart sleep prevention, and system maintenance—all powered by a lightweight native Swift engine.
+Stop wasting system RAM on 5 separate utilities. OpenFind combines them into a single micro-native process that boosts your productivity 5x while saving 1GB+ RAM.
 
 ---
 

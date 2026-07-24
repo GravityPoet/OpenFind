@@ -6,14 +6,14 @@
 [![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS_14+-black.svg)](https://apple.com)
 [![Swift: 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 
-**macOS 开发者与极客的全能瑞士军刀。**  
-*用一个超轻量、纯原生 Swift 引擎，一次性替代 5 款臃肿的后台工具！*
+**把 Mac 上那 5 个吃内存的后台小工具全部删掉。**  
+*用一个超轻量原生 Swift 引擎，实现毫秒级深层搜索、全加密 OCR 剪贴板、合盖防休眠、外接盘保鲜与键盘锁。*
 
-OpenFind 完美融合了 **极速文件/内容搜索引擎**、**加密智能剪贴板（含 OCR 文字识别）**、**智能防休眠与合盖运行**、**外接硬盘防掉盘心跳** 以及 **一键键盘锁** 5 大核心功能，提供常驻状态栏 App 与高效 CLI 工具。
+OpenFind 让你不再被多工具卡顿折磨：**零延迟穿透代码与 ZIP 包**、**复制截图瞬间提取文字且全加密防护**、**合上 MacBook 屏幕编译与下载绝不断开**、**彻底解决外接硬盘与 NAS 假死掉盘**。
 
-[**🚀 下载 OpenFind v1.1.0 macOS 版**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0) ·
+[**🚀 立即下载 OpenFind v1.1.0 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0) ·
 [观看 60 秒演示](docs/assets/OpenFind-60s-demo.mp4) ·
-[查看 Release 发布说明](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0)
+[查看 v1.1.0 发布说明](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0)
 
 ![OpenFind 首次引导：五项能力及其快捷键](docs/assets/openfind-welcome.png)
 
@@ -23,9 +23,9 @@ OpenFind 完美融合了 **极速文件/内容搜索引擎**、**加密智能剪
 
 ---
 
-## 🎯 一句话定位
+## 🎯 核心价值
 
-别再给你的 Mac 安装 5 个单功能后台小工具了。OpenFind 提供零延迟搜索、OCR 剪贴板历史、智能防休眠自动化与外接硬盘保护，全部由原生 Swift 引擎驱动，极低 CPU 与内存占用。
+别再让你的 Mac 内存被 Spotlight、剪贴板、咖啡因等 5 个后台小进程蚕食了。OpenFind 用一个微型原生进程代替它们，提升 5 倍效率，节省 1GB+ 内存。
 
 ---
 
