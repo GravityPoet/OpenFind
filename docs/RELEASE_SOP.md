@@ -57,7 +57,7 @@ Run every command from the repository root.
 
    ```bash
    swift package resolve
-   swift test
+   swift test --no-parallel
    OPENFIND_RUN_VISUAL_REGRESSION=1 \
      swift test --filter VisualRegressionTests
    FILES=8000 BODY_KB=16 COPIES=4 bash Scripts/benchmark_content_index.sh
@@ -205,3 +205,5 @@ cause, correction, and prevention.
 | 2026-07-24 | Review the new canonical SOP against repository scripts | The draft SOP used non-existent benchmark wrapper names rather than the actual workflow-owned scripts | Replace the three commands with `benchmark_content_index.sh`, `benchmark_index.sh`, and `benchmark_name_index.sh` | Cross-check every release command against executable repository paths before publication |
 | 2026-07-24 | Run clean-directory artifact verification with an automatic `rm -rf` trap | The execution harness rejects `rm -rf`-style commands even when the target is a freshly resolved temporary directory | Re-run the unchanged verification in a new system temp directory without a destructive cleanup hook | Keep release evidence wrappers read-only under restricted harnesses; temp cleanup must not block artifact verification |
 | 2026-07-24 | Repeat the complete test gate after reducing snapshots to 1× | Snapshot CPU time fell below 0.5 seconds, but AppKit rendering still queued on the same process `MainActor`; under 62-suite concurrency, unrelated one-second activity tests could time out before their actor work ran | Keep the 1× baselines and run visual regression as an explicit, isolated CI/Release step controlled by `OPENFIND_RUN_VISUAL_REGRESSION=1` | GUI snapshot gates must be automated but isolated from timing-sensitive main-actor unit suites |
+| 2026-07-24 | Exact-SHA CI run `30081767829` | Swift Testing's default same-process parallel execution overloaded the hosted runner: a 50 ms process timeout took 2.09 seconds and several main-actor timers reached roughly four seconds, causing 18 secondary issues while the visual suite was correctly skipped | Run the full unit gate with explicit `swift test --no-parallel`, then run visual regression as its own blocking step | Use explicit global serialization for this timing-heavy integration suite on shared CI runners; do not relax individual deadlines to mask scheduler contention |
+| 2026-07-24 | First local `swift test --no-parallel --skip-build` | `AppLaunchContextTests` implicitly relied on another parallel test to initialize the global `NSApplication`; serial order exposed an `NSApp` nil unwrap | Initialize and retain `NSApplication.shared` inside the test before inspecting windows | Tests must create their own process-global AppKit prerequisites instead of relying on incidental parallel execution order |

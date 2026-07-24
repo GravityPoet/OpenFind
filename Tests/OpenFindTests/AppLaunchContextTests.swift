@@ -27,7 +27,8 @@ struct AppLaunchContextTests {
     }
 
     @Test func primaryWindowUsesTheDockUntilTheLastVisibleWindowCloses() throws {
-        let existingWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
+        let application = NSApplication.shared
+        let existingWindows = Set(application.windows.map(ObjectIdentifier.init))
         let delegate = AppDelegate()
         var appliedPolicies: [NSApplication.ActivationPolicy] = []
         delegate.activationPolicySetter = { policy in
@@ -35,14 +36,14 @@ struct AppLaunchContextTests {
             return true
         }
         defer {
-            NSApp.windows
+            application.windows
                 .filter { !existingWindows.contains(ObjectIdentifier($0)) }
                 .forEach { $0.orderOut(nil) }
         }
 
         delegate.showOpenFindWindow(nil)
 
-        let window = try #require(NSApp.windows.first {
+        let window = try #require(application.windows.first {
             $0.identifier?.rawValue == "OpenFind.main"
         })
         #expect(window.isVisible)
