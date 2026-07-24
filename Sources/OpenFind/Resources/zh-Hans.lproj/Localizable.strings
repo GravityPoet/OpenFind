@@ -150,6 +150,8 @@
 "Indexing %lld items so far" = "已索引 %lld 项";
 "Loaded %lld indexed items; search is ready" = "已加载 %lld 项，可立即搜索";
 "Indexing is still in progress" = "索引仍在进行";
+"Updating recent file changes" = "正在同步最近的文件变化";
+"Your saved index is searchable now. New or renamed files will appear as OpenFind finishes syncing." = "已有索引现在即可搜索；OpenFind 同步完成后，新建或改名的文件会自动出现。";
 "Results are still incomplete while OpenFind builds the local index. If nothing appears yet, keep typing or wait for indexing to finish." = "OpenFind 构建本地索引期间，结果仍不完整。如果暂时没有结果，请继续输入或等待索引完成。";
 "OpenFind is building its local index. Protected folders are skipped until Full Disk Access is enabled, which avoids blocking macOS permission popups." = "OpenFind 正在构建本地索引。为避免卡住的 macOS 权限弹窗，受保护文件夹会在启用完全磁盘访问前暂时跳过。";
 "Enable Full Disk Access to include Desktop, Documents, Downloads, Music, Movies, Pictures, Mail, and external volumes. Until then, OpenFind skips those folders instead of showing blocking macOS permission popups." = "启用完全磁盘访问后，才能包含桌面、文稿、下载、音乐、影片、图片、邮件和外接卷。在此之前，OpenFind 会跳过这些位置，不再弹出卡住的 macOS 权限窗口。";
@@ -182,6 +184,7 @@
 
 /* Settings Window */
 "Settings" = "设置";
+"Menu Bar Controls" = "菜单栏控制";
 "Default Target" = "默认搜索目标";
 "Default Match Mode" = "默认匹配模式";
 "Max Content File Size (MB)" = "内容搜索最大文件体积";
@@ -245,8 +248,8 @@
 "Statistics Help" = "统计仅保存在本机，只记录汇总后的会话次数与时长。";
 
 /* Drive Alive */
-"Drive Alive" = "硬盘唤醒";
-"Enable Drive Alive" = "启用硬盘唤醒";
+"Drive Alive" = "硬盘保活";
+"Enable Drive Alive" = "启用硬盘保活";
 "Write Interval" = "写入间隔";
 "Seconds" = "秒";
 "Add Drive Alive Folder" = "添加文件夹";
@@ -261,7 +264,7 @@
 "Drive Alive Status Format" = "%lld/%lld 个目标活跃";
 "No Drive Alive Targets" = "尚未配置文件夹";
 "Refresh Drive Alive" = "立即写入";
-"Drive Alive Help" = "硬盘唤醒会在每个选定文件夹中反复覆盖一个有上限的小标记文件。目标可设为仅在唤醒会话期间运行，或 OpenFind 运行时始终运行；网络卷和只读卷失败时会显示状态，不会阻塞应用。";
+"Drive Alive Help" = "硬盘保活会在每个选定文件夹中反复覆盖一个有上限的小标记文件。目标可设为仅在唤醒会话期间运行，或 OpenFind 运行时始终运行；网络卷和只读卷失败时会显示状态，不会阻塞应用。";
 
 /* Triggers */
 "Triggers" = "触发器";
@@ -591,6 +594,7 @@
 
 /* Keyboard Cleaning Lock */
 "Keyboard Cleaning Lock" = "键盘清洁锁定";
+"Keyboard Cleaning" = "键盘清洁";
 "Lock Keyboard" = "开始键盘清洁锁定";
 "Unlock Keyboard" = "结束键盘清洁锁定";
 "Keyboard Lock" = "键盘清洁锁定";
