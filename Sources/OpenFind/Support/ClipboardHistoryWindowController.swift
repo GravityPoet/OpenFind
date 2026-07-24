@@ -7,9 +7,11 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     let frameAutosaveName: NSWindow.FrameAutosaveName
     let applicationActivator: @MainActor () -> Void
     let applicationDeactivator: @MainActor () -> Void
+    let applicationIsActive: @MainActor () -> Bool
     let pasteService = ClipboardPasteService()
     let quickLook = QuickLookController()
     var panel: NSPanel?
+    var hasCompletedActivationHandoff = false
     var shortcutCycleState = ClipboardShortcutCycleState()
     var shortcutFlagsMonitor: Any?
     var shortcutModifierFlags: NSEvent.ModifierFlags = []
@@ -27,14 +29,25 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         },
         applicationDeactivator: @escaping @MainActor () -> Void = {
             if NSApp.isActive { NSApp.hide(nil) }
-        }
+        },
+        applicationIsActive: @escaping @MainActor () -> Bool = {
+            NSApp.isActive
+        },
+        notificationCenter: NotificationCenter = .default
     ) {
         self.store = store
         self.frameAutosaveName = frameAutosaveName
         self.applicationActivator = applicationActivator
         self.applicationDeactivator = applicationDeactivator
+        self.applicationIsActive = applicationIsActive
         super.init()
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
+            self,
+            selector: #selector(applicationDidBecomeActive),
+            name: NSApplication.didBecomeActiveNotification,
+            object: NSApp
+        )
+        notificationCenter.addObserver(
             self,
             selector: #selector(applicationDidResignActive),
             name: NSApplication.didResignActiveNotification,
@@ -42,8 +55,13 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         )
     }
 
-    @objc private func applicationDidResignActive(_ notification: Notification) {
+    @objc private func applicationDidBecomeActive(_ notification: Notification) {
         guard store.isPanelPresented else { return }
+        hasCompletedActivationHandoff = true
+    }
+
+    @objc private func applicationDidResignActive(_ notification: Notification) {
+        guard store.isPanelPresented, hasCompletedActivationHandoff else { return }
         close()
     }
 
@@ -93,6 +111,7 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         store.isSearchPresented = true
         let panel = makePanelIfNeeded()
         activateForClipboardPanel(hideApplicationWindows: hideApplicationWindows)
+        hasCompletedActivationHandoff = applicationIsActive()
         configureMinimumSize(panel, showingPreview: store.isPreviewVisible)
         if !restoreSavedFrameIfNeeded(panel, override: positionOverride) {
             resize(panel, showingPreview: store.isPreviewVisible, animated: false)
@@ -143,6 +162,7 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
 
     func close() {
         let shouldReturnApplicationFocus = store.isPanelPresented
+        hasCompletedActivationHandoff = false
         store.endPresentation()
         if let panel {
             park(panel, keepCompositorWarm: true)

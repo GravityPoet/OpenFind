@@ -219,6 +219,48 @@ struct ClipboardAlfredWorkflowTests {
         controller.close()
     }
 
+    @Test func firstBackgroundShortcutSurvivesActivationHandoff() throws {
+        let context = try makeContext()
+        let applicationActivity = ClipboardApplicationActivityProbe()
+        let notificationCenter = NotificationCenter()
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            applicationActivator: {},
+            applicationDeactivator: {},
+            applicationIsActive: { applicationActivity.isActive },
+            notificationCenter: notificationCenter
+        )
+        defer {
+            controller.close()
+            controller.panel?.orderOut(nil)
+        }
+
+        controller.handleShortcutInvocation(shortcut: ClipboardController.defaultShortcut)
+        let panel = try #require(controller.panel)
+        #expect(context.store.isPanelPresented)
+
+        controller.windowDidResignKey(
+            Notification(name: NSWindow.didResignKeyNotification, object: panel)
+        )
+        notificationCenter.post(
+            name: NSApplication.didResignActiveNotification,
+            object: NSApp
+        )
+
+        #expect(context.store.isPanelPresented)
+
+        applicationActivity.isActive = true
+        notificationCenter.post(
+            name: NSApplication.didBecomeActiveNotification,
+            object: NSApp
+        )
+        controller.windowDidResignKey(
+            Notification(name: NSWindow.didResignKeyNotification, object: panel)
+        )
+
+        #expect(!context.store.isPanelPresented)
+    }
+
     @Test func presentedClipboardPanelTargetsSearchFieldForKeyboardFocus() async throws {
         let context = try makeContext()
         let controller = ClipboardHistoryWindowController(store: context.store)
@@ -538,6 +580,11 @@ struct ClipboardAlfredWorkflowTests {
 
 private final class AlwaysMarkedTextView: NSTextView {
     override func hasMarkedText() -> Bool { true }
+}
+
+@MainActor
+private final class ClipboardApplicationActivityProbe {
+    var isActive = false
 }
 
 private struct AlfredWorkflowContext {
