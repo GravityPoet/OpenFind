@@ -113,8 +113,13 @@ shasum -a 256 -c OpenFind.zip.sha256
 ```
 
 3. 解压后将 `OpenFind.app` 移入 `/Applications`。
-4. 当前客户版本使用 OpenFind 固定的自签名证书。首次启动若被 macOS
-   阻止，请前往 **系统设置 → 隐私与安全性 → 仍要打开**，只需操作一次。
+4. **⚡ 终端一行命令一键解封并启动**（无需前往系统设置繁琐授权）：
+
+```bash
+xattr -cr /Applications/OpenFind.app && open /Applications/OpenFind.app
+```
+
+> **备用手动授权**：若不使用终端，可前往 **系统设置 → 隐私与安全性**，在底部点击一次 **“仍要打开”** 即可。
 
 如需从源码构建，请克隆仓库后运行 `bash Scripts/build_customer_app.sh`；
 维护者可用 `bash Scripts/install_local_app.sh` 原子安装。

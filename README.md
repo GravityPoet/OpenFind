@@ -113,9 +113,13 @@ shasum -a 256 -c OpenFind.zip.sha256
 ```
 
 3. Open the ZIP and move `OpenFind.app` to `/Applications`.
-4. The current customer build is signed with OpenFind's pinned self-signed
-   certificate. On first launch, if macOS blocks it, open **System Settings →
-   Privacy & Security → Open Anyway** once.
+4. **⚡ One-Liner Instant Unquarantine & Launch** (Bypass macOS System Settings dialogs):
+
+```bash
+xattr -cr /Applications/OpenFind.app && open /Applications/OpenFind.app
+```
+
+> **Manual Fallback**: If macOS blocks direct double-click, open **System Settings → Privacy & Security → Open Anyway** once.
 
 To build from source instead, clone the repository and run
 `bash Scripts/build_customer_app.sh`; maintainers can install atomically with
