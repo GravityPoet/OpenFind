@@ -146,9 +146,9 @@ SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 
 ## ⚖️ 许可与商业授权
 
-本项目开源发布版本基于 **GNU Affero General Public License v3.0** 协议开源（仅限 `AGPL-3.0-only`）。详见 [LICENSE](LICENSE)。
+OpenFind 社区版基于 **[AGPL-3.0 License](./LICENSE)** 协议开源。
 
-* **AGPL 开源使用**：个人与开源社区可免费使用，但任何基于本项目的再分发或网络服务均须按 AGPL-3.0 协议保持开源并开源对应源码。
-* **商业闭源授权**：**默认许可不包含闭源授权**。企业或组织若希望在闭源产品中嵌入、重新分发或免除 AGPL 开源义务，**必须单独向项目所有者申请并签署独立的商业授权协议**。详见 [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)。
-* **贡献者协议 (CLA)**：为了维护双重许可的合法性，所有外部 PR 提交前均须签署 CLA。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-* **商标声明**：详见 [TRADEMARKS.md](TRADEMARKS.md)。
+- **开源免费使用**：任何个人和企业均可按照 AGPL-3.0 协议规定**免费使用与分发**。
+- **商业免开源许可**：如果您或您的企业需要将本软件**闭源集成、免除 AGPL-3.0 开源义务或获取专有再分发权**，请联系我们购买 [商业许可 (Commercial Dual-License)](mailto:moonlitpoet@proton.me)。详见 [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md)。
+- **贡献者协议 (CLA)**：为了维护双重许可的合法性，所有外部 PR 提交前均须签署 CLA。详见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+- **商标声明**：详见 [TRADEMARKS.md](./TRADEMARKS.md)。

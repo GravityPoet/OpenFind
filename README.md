@@ -144,11 +144,11 @@ SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 
 ---
 
-## ⚖️ License & Commercial Licensing
+## ⚖️ Licensing & Commercial Terms
 
-OpenFind is publicly licensed under the **GNU Affero General Public License v3.0** (`AGPL-3.0-only`). See [LICENSE](LICENSE).
+OpenFind Community Edition is open source under the **[AGPL-3.0 License](./LICENSE)**.
 
-* **AGPL Compliance**: Free to use for personal and open-source projects. Any modified redistribution or hosted network service (SaaS) must be open-sourced under the AGPL-3.0 terms.
-* **Commercial Licensing**: **No proprietary or closed-source rights are granted by default**. Organizations that want to embed, redistribute, or use OpenFind in proprietary/closed-source products without AGPL restrictions **must request and acquire a separate written Commercial License from the project owner**. See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
-* **Contributor Agreement**: Requires an accepted Contributor License Agreement (CLA) for PRs. See [CONTRIBUTING.md](CONTRIBUTING.md).
-* **Trademarks**: See [TRADEMARKS.md](TRADEMARKS.md).
+- **Open Source Free Use**: Any individual or enterprise may use and distribute OpenFind for free in accordance with AGPL-3.0 license terms.
+- **Commercial Dual-License**: If you or your organization need closed-source integration, exemption from AGPL-3.0 copyleft obligations, or proprietary redistribution rights, please contact us for a [Commercial License](mailto:moonlitpoet@proton.me). See [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) for details.
+- **Contributor Agreement (CLA)**: External contributions are covered by our CLA to maintain dual-licensing clean rights. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+- **Trademarks**: See [TRADEMARKS.md](./TRADEMARKS.md).

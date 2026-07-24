@@ -21,7 +21,7 @@ Before a pull request or patch from an external contributor is merged, the
 contributor must sign or otherwise formally accept
 [CONTRIBUTOR_LICENSE_AGREEMENT.md](CONTRIBUTOR_LICENSE_AGREEMENT.md).
 
-CLA and licensing contact: GitHub: @Newfund88
+CLA and licensing contact: moonlitpoet@proton.me or GitHub: @GravityPoet
 
 The CLA does not take copyright away from contributors. It grants the project
 owner enough rights to keep distributing OpenFind under the AGPL and to offer

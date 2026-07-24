@@ -7,9 +7,9 @@ contribution intentionally submitted to OpenFind by the individual named in the
 signature block ("You"). "Project Owner" means the person or legal entity with
 authority to maintain OpenFind and grant commercial licenses for OpenFind.
 
-Project Owner: Repository owner of github.com/Newfund88/OpenFind
+Project Owner: Repository owner of github.com/GravityPoet/OpenFind
 
-Commercial licensing contact: GitHub: @Newfund88
+Commercial licensing contact: moonlitpoet@proton.me or GitHub: @GravityPoet
 
 If a separate written commercial agreement requires a formal legal name, use the
 legal name stated in that agreement.
@@ -91,6 +91,6 @@ Signature or recorded acceptance:
 
 Project owner:
 
-Repository owner of github.com/Newfund88/OpenFind
+Repository owner of github.com/GravityPoet/OpenFind
 
 Project owner acceptance date:

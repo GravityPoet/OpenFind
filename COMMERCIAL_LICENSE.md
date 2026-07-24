@@ -22,9 +22,9 @@ Request a commercial license if you want to:
 
 ## Contact and Process
 
-Project Owner: Repository owner of github.com/Newfund88/OpenFind
+Project Owner: Repository owner of github.com/GravityPoet/OpenFind
 
-Commercial licensing contact: GitHub: @Newfund88
+Commercial licensing contact: moonlitpoet@proton.me or GitHub: @GravityPoet
 
 Commercial licensing requests should be directed to the project owner through the
 official repository contact channels. Do not treat an email, issue comment,
