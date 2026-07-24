@@ -212,7 +212,9 @@ extension ClipboardHistoryWindowController {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        guard store.isPanelPresented, !store.isActionPanelPresented else { return }
+        guard store.isPanelPresented,
+              !store.isActionPanelPresented,
+              hasCompletedActivationHandoff else { return }
         close()
     }
 
