@@ -100,6 +100,13 @@ jobs:
             | awk -F= '{ print toupper($2) }' \
             | tr -d ':')"
           test "$ACTUAL_SIGNING_CERT_SHA1" = "$EXPECTED_SIGNING_CERT_SHA1"
+          echo "Trusting the pinned certificate for code signing on this ephemeral runner"
+          sudo -n security add-trusted-cert \
+            -d \
+            -r trustRoot \
+            -p codeSign \
+            -k "$KEYCHAIN_PATH" \
+            "$CERTIFICATE_PEM"
           echo "Authorizing non-interactive codesign access"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list \
@@ -107,6 +114,12 @@ jobs:
             -s \
             -k "$KEYCHAIN_PASSWORD" \
             "$KEYCHAIN_PATH"
+          ACTUAL_SIGNING_IDENTITY_SHA1="$(security find-identity \
+            -v \
+            -p codesigning \
+            "$KEYCHAIN_PATH" \
+            | awk '/"OpenFind Customer Code Signing"/ { print toupper($2); exit }')"
+          test "$ACTUAL_SIGNING_IDENTITY_SHA1" = "$EXPECTED_SIGNING_CERT_SHA1"
           echo "SIGN_IDENTITY=$EXPECTED_SIGNING_CERT_SHA1" >> "$GITHUB_ENV"
           echo "EXPECTED_SIGNING_CERT_SHA1=$EXPECTED_SIGNING_CERT_SHA1" >> "$GITHUB_ENV"
 
