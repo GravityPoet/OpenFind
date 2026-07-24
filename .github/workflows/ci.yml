@@ -23,6 +23,11 @@ jobs:
       - name: Run tests
         run: xcrun --sdk macosx swift test --no-parallel
 
+      - name: Run Drive Alive production scheduling integration
+        env:
+          OPENFIND_RUN_DRIVE_ALIVE_INTEGRATION: "1"
+        run: xcrun --sdk macosx swift test --no-parallel --filter DriveAliveIntegrationTests
+
       - name: Run visual regression
         env:
           OPENFIND_RUN_VISUAL_REGRESSION: "1"

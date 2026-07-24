@@ -15,10 +15,15 @@ final class POSIXDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
     private let operationLock = NSLock()
     private var activePaths: Set<String> = []
     private let syncFile: @Sendable (Int32) -> Int32
+    private let operationScheduler: (@Sendable (@escaping @Sendable () -> Void) -> Void)?
     private let queue = DispatchQueue(label: "com.openfind.drive-alive", qos: .utility, attributes: .concurrent)
 
-    init(syncFile: (@Sendable (Int32) -> Int32)? = nil) {
+    init(
+        syncFile: (@Sendable (Int32) -> Int32)? = nil,
+        operationScheduler: (@Sendable (@escaping @Sendable () -> Void) -> Void)? = nil
+    ) {
         self.syncFile = syncFile ?? { Darwin.fsync($0) }
+        self.operationScheduler = operationScheduler
     }
 
     func write(to directoryURL: URL, timeout: Duration = defaultTimeout) async throws {
@@ -47,7 +52,7 @@ final class POSIXDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 completion.install(continuation)
-                queue.async { [self] in
+                let work: @Sendable () -> Void = { [self] in
                     let result: Result<Void, Error>
                     do {
                         try operation()
@@ -60,6 +65,11 @@ final class POSIXDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
                     // still pending.
                     finish(path: key)
                     completion.resolve(result)
+                }
+                if let operationScheduler {
+                    operationScheduler(work)
+                } else {
+                    queue.async(execute: work)
                 }
                 _ = Task.detached(priority: .utility) {
                     do {

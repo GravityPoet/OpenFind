@@ -5,7 +5,10 @@ import Testing
 @Suite("Drive Alive Writer Tests")
 struct DriveAliveWriterTests {
     private func makeWriter() -> POSIXDriveAliveWriter {
-        POSIXDriveAliveWriter(syncFile: { _ in 0 })
+        POSIXDriveAliveWriter(
+            syncFile: { _ in 0 },
+            operationScheduler: { operation in operation() }
+        )
     }
 
     @Test func repeatedWritesKeepOneBoundedMarker() async throws {
@@ -77,7 +80,10 @@ struct DriveAliveWriterTests {
             .appendingPathComponent("OpenFindDriveAlive.\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let writer = POSIXDriveAliveWriter(syncFile: { _ in -1 })
+        let writer = POSIXDriveAliveWriter(
+            syncFile: { _ in -1 },
+            operationScheduler: { operation in operation() }
+        )
 
         do {
             try await writer.write(
