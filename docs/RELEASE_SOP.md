@@ -142,12 +142,27 @@ Run every command from the repository root.
    Sparkle appcast, ZIP, and checksums. Wait for that workflow to finish on the
    exact tag SHA before uploading the demo video.
 
-8. Upload only the 60-second demo without overwriting existing assets:
+8. Build and verify the 60-second demo, then upload it without overwriting
+   existing assets:
 
    ```bash
+   bash Scripts/build_release_demo.sh \
+     <welcome.mov> \
+     <typing.mov> \
+     <results.mov> \
+     <settings.mov>
+   ffmpeg -hide_banner -i docs/assets/OpenFind-60s-demo.mp4 \
+     -vf "freezedetect=n=-50dB:d=1.5" \
+     -an -f null -
    gh release upload "${TAG}" \
      docs/assets/OpenFind-60s-demo.mp4
    ```
+
+   The video must probe as H.264, exactly 60 seconds, 1920×1080, and 30 fps.
+   Freeze detection must not report a span of 1.5 seconds or longer. If a
+   published presentation-only video needs replacement after this gate passes,
+   preserve its digest for rollback, then use the same upload command with
+   `--clobber` and verify a clean public download against the new local digest.
 
    Keep product screenshots in `docs/assets/` and present them inline from the
    README, documentation, or Release body. Do not upload screenshots as
@@ -230,3 +245,11 @@ cause, correction, and prevention.
 | 2026-07-24 | Exact-SHA CI run `30083811270` | All four Drive Alive checks timed out, including an injected sync function that returns immediately; this proved the shared-process `.utility` queue was starved before any file operation began | Inject an inline scheduler for semantic tests and add a separately gated fresh-process integration test that exercises the real production queue and `fsync` | Keep deterministic semantics and production scheduling as separate blocking gates; never infer syscall latency when an immediate injected operation also times out |
 | 2026-07-24 | Tag-triggered Release run `30085637699` | The certificate step left a `security` process without progress for more than six minutes; the run was canceled before any Release or asset was published | Remove user Trust Settings mutation, import the PKCS#12 private key directly, restrict partition updates to signing keys, verify the pinned fingerprint with OpenSSL, and add a bounded existing-tag recovery dispatch | Certificate automation must be non-interactive and time-bounded; recover an unpublished immutable tag by checking it out explicitly rather than moving or recreating it |
 | 2026-07-24 | Existing-tag recovery Release run `30086650406` | The PKCS#12 certificate and private key imported non-interactively, but the untrusted self-signed identity was excluded by the code-signing policy and the product builder rejected it | On the ephemeral hosted runner, add the already fingerprint-pinned certificate to Admin Trust with non-interactive root execution, then require the exact identity fingerprint to pass the code-signing policy before building | Replacing interactive user trust must preserve code-signing policy validity; validate both certificate contents and the usable identity |
+| 2026-07-25 | Inspect the welcome window with `set rows to {}` in AppleScript | `rows` resolved to an accessibility property instead of a local accumulator | Rename the accumulator to `outputRows` and keep it outside the window scope | Avoid UI terminology for AppleScript accumulator names |
+| 2026-07-25 | Set `text field 1 of window "OpenFind"` while recording search | The field is nested inside the window's root group, so the direct accessibility index was invalid (`-1719`) | Raise the window and target `text field 1 of group 1` through Accessibility | Inspect the live accessibility hierarchy before scripting a release capture |
+| 2026-07-25 | Quit OpenFind through an unbounded AppleScript command before capture | The app did not finish the scripted quit and the capture workflow stopped making progress | Terminate the disposable capture process with a bounded signal, then relaunch it | Never use an unbounded application-quit step in release capture automation |
+| 2026-07-25 | Type the search demo query through synthetic keystrokes | The active Chinese input method converted the query into repeated composition characters | Set the accessibility text-field value prefix by prefix to preserve visible incremental search | Release capture automation must not depend on the operator's active input source |
+| 2026-07-25 | Capture the complete screen for a product demo | The frame included an unrelated app error and a phone notification outside OpenFind | Capture the OpenFind window by window ID and inspect representative frames before editing | Public product footage must be window-targeted, not full-screen |
+| 2026-07-25 | Accept the first 60-second demo after checking only duration and dimensions | Freeze analysis later found three 18.83-second static spans, so customers could mistake the demo for a still image | Rebuild with real interactions, continuous screenshot motion, and a 1.5-second freeze gate | Presentation media is releasable only after both technical probing and motion regression checks pass |
+| 2026-07-25 | Validate the first real-interaction demo encode | The script expected stream metadata and format duration on one CSV row, but `ffprobe` emits them as separate sections | Query the video stream and format duration independently, then compare each exact value | Keep `ffprobe` acceptance checks section-specific instead of depending on multi-section output formatting |
+| 2026-07-25 | Run the freeze gate on the first real-interaction cut | Window-only capture omitted pointer movement, leaving several visually static spans while the operator moved between controls | Add restrained continuous camera movement to every captured scene and strengthen the outro motion | Real interaction footage must still pass pixel-level motion analysis; pointer activity alone is not visible proof |
