@@ -140,18 +140,18 @@ Run every command from the repository root.
 
    `.github/workflows/release.yml` owns the public GitHub Release, signed
    Sparkle appcast, ZIP, and checksums. Wait for that workflow to finish on the
-   exact tag SHA before uploading any presentation assets.
+   exact tag SHA before uploading the demo video.
 
-8. Upload the 60-second demo and product screenshots without overwriting
-   existing assets:
+8. Upload only the 60-second demo without overwriting existing assets:
 
    ```bash
    gh release upload "${TAG}" \
-     docs/assets/OpenFind-60s-demo.mp4 \
-     docs/assets/openfind-welcome.png \
-     docs/assets/openfind-search.png \
-     docs/assets/openfind-interface-size.png
+     docs/assets/OpenFind-60s-demo.mp4
    ```
+
+   Keep product screenshots in `docs/assets/` and present them inline from the
+   README, documentation, or Release body. Do not upload screenshots as
+   downloadable Release assets.
 
 ## [B] Acceptance
 
@@ -165,7 +165,8 @@ The release is complete only when all of these checks pass:
 - Tests, visual regression, all three performance gates, packaged CLI smoke,
   local installation, and launch pass.
 - The public release is not a draft or prerelease and exposes the ZIP,
-  checksum, signed appcast, presentation assets, and generated notes.
+  checksum, signed appcast, optional demo video, and generated notes without
+  downloadable screenshot assets.
 - The public Release body contains the direct ZIP link plus complete English
   and Chinese download, customer-value, and first-launch instructions,
   including the blocked-launch prerequisite for **Open Anyway**.
