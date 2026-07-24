@@ -20,8 +20,18 @@ compatibility entry point and must not contain an independent procedure.
   `identifier "com.openfind.app" and certificate leaf = H"3e146b469f41deb31e45c28d0e9c512b3e5a41c1"`
 
 The customer certificate is intentionally self-signed. OpenFind is not Apple
-notarized, so a first-time customer may need to use **System Settings → Privacy
-& Security → Open Anyway** after downloading the ZIP.
+notarized, so every public Release body must lead with a direct recommended ZIP
+download and contain complete English and Chinese sections for:
+
+1. **Downloads / 下载资源**
+2. **What's New / 更新亮点**
+3. **macOS First Launch / macOS 首次启动**
+
+The first-launch section must tell customers to double-click the ZIP, drag
+`OpenFind.app` to Applications, open it from Finder → Applications, and—only
+when macOS blocks that launch—use **System Settings → Privacy & Security → Open
+Anyway**, then confirm **Open**. It must also explain that **Open Anyway**
+appears only after one blocked launch attempt and is normally needed once.
 
 ## Required GitHub Actions secrets
 
@@ -154,6 +164,9 @@ The release is complete only when all of these checks pass:
   local installation, and launch pass.
 - The public release is not a draft or prerelease and exposes the ZIP,
   checksum, signed appcast, presentation assets, and generated notes.
+- The public Release body contains the direct ZIP link plus complete English
+  and Chinese download, customer-value, and first-launch instructions,
+  including the blocked-launch prerequisite for **Open Anyway**.
 - A clean temporary download of every public asset succeeds and verifies
   against its published checksum where applicable.
 - `appcast.xml` points at the public ZIP and contains the expected Sparkle
