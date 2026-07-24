@@ -21,7 +21,7 @@ jobs:
           swift --version
 
       - name: Run tests
-        run: xcrun --sdk macosx swift test
+        run: xcrun --sdk macosx swift test --no-parallel
 
       - name: Run visual regression
         env:

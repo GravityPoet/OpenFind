@@ -28,7 +28,7 @@ jobs:
           echo "DOWNLOAD_PREFIX=https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" >> "$GITHUB_ENV"
 
       - name: Run tests at the macOS 14 deployment target
-        run: MACOSX_DEPLOYMENT_TARGET=14.0 xcrun --sdk macosx swift test
+        run: MACOSX_DEPLOYMENT_TARGET=14.0 xcrun --sdk macosx swift test --no-parallel
 
       - name: Run visual regression at the macOS 14 deployment target
         env:
