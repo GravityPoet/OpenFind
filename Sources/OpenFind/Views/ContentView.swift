@@ -11,8 +11,12 @@ struct ContentView: View {
     let onShowClipboardHistory: () -> Void
     let onShowMenuBar: () -> Void
     let onShowSettings: () -> Void
+    let firstRunCapabilities: () -> [FirstRunCapability]
     @FocusState private var focusedTarget: SearchFocusTarget?
     @State private var selection = Set<SearchResult.ID>()
+    @State private var isFirstRunGuidePresented = false
+    @AppStorage(FirstRunGuideStore.completionKey)
+    private var hasCompletedFirstRunGuide = false
     /// Empty means preserve engine relevance order. Once the user selects a
     /// table column, keep that explicit order during and after every refresh.
     @State private var sortOrder: [KeyPathComparator<SearchResult>] = []
@@ -43,6 +47,34 @@ struct ContentView: View {
         }
         .frame(minWidth: 800, minHeight: 500)
         .ignoresSafeArea()
+        .openFindInterfaceSizing()
+        .sheet(
+            isPresented: $isFirstRunGuidePresented,
+            onDismiss: completeFirstRunGuide
+        ) {
+            FirstRunGuideView(
+                capabilities: firstRunCapabilities(),
+                onStartSearching: {
+                    isFirstRunGuidePresented = false
+                    focusedTarget = .query
+                },
+                onOpenSettings: {
+                    isFirstRunGuidePresented = false
+                    onShowSettings()
+                },
+                onDismiss: {
+                    isFirstRunGuidePresented = false
+                }
+            )
+        }
+        .onAppear {
+            if !hasCompletedFirstRunGuide {
+                isFirstRunGuidePresented = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openFindShowWelcome)) { _ in
+            isFirstRunGuidePresented = true
+        }
         .onChange(of: selection) {
             quickLook.update(items: selectedURLs)
         }
@@ -58,6 +90,12 @@ struct ContentView: View {
         .onDisappear {
             quickLook.close()
         }
+    }
+
+    private func completeFirstRunGuide() {
+        hasCompletedFirstRunGuide = true
+        FirstRunGuideStore.markCompleted()
+        focusedTarget = .query
     }
 
     @ViewBuilder

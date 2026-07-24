@@ -4,19 +4,19 @@ struct ProductQuickActions: View {
     let onShowClipboardHistory: () -> Void
     let onShowMenuBar: () -> Void
     let onShowSettings: () -> Void
+    @Environment(\.openFindInterfaceSize) private var interfaceSize
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * interfaceSize.scale) {
                 actions
             }
 
-            VStack(spacing: 7) {
+            VStack(spacing: 7 * interfaceSize.scale) {
                 actions
             }
         }
         .buttonStyle(.bordered)
-        .controlSize(.regular)
     }
 
     @ViewBuilder

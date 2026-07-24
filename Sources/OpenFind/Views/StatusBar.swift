@@ -57,123 +57,164 @@ enum IndexStatusPhase: Equatable {
     }
 }
 
+enum StatusBarLayoutMode: Equatable {
+    case regular
+    case compact
+
+    static func resolve(
+        availableWidth: CGFloat,
+        interfaceSize: OpenFindInterfaceSize
+    ) -> Self {
+        let regularMinimum = 940 * max(1, interfaceSize.scale)
+        return availableWidth >= regularMinimum ? .regular : .compact
+    }
+}
+
 struct StatusBar: View {
     let viewModel: SearchViewModel
     @State private var showFileDetails = false
     @State private var showEventDetails = false
+    @Environment(\.openFindInterfaceSize) private var interfaceSize
 
     var body: some View {
         OpenFindGlassContainer {
-            HStack(spacing: 8) {
-                statusBadge
+            GeometryReader { proxy in
+                let layout = StatusBarLayoutMode.resolve(
+                    availableWidth: proxy.size.width,
+                    interfaceSize: interfaceSize
+                )
+                statusContent(layout: layout)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(height: interfaceSize.statusBarHeight)
+        }
+    }
 
-                statPill(
-                    title: L("Files"),
-                    value: formattedNumber(viewModel.indexStats.indexedFiles),
-                    tint: .green,
-                    isSelected: viewModel.displayMode == .files
-                ) {
-                    showEventDetails = false
-                    if viewModel.displayMode == .files {
-                        showFileDetails.toggle()
+    private func statusContent(layout: StatusBarLayoutMode) -> some View {
+        let isCompact = layout == .compact
+        return HStack(spacing: isCompact ? 6 * interfaceSize.scale : 8 * interfaceSize.scale) {
+            statusBadge
+
+            statPill(
+                title: L("Files"),
+                value: formattedNumber(viewModel.indexStats.indexedFiles),
+                tint: .green,
+                isSelected: viewModel.displayMode == .files,
+                compact: isCompact
+            ) {
+                showEventDetails = false
+                if viewModel.displayMode == .files {
+                    showFileDetails.toggle()
+                } else {
+                    viewModel.showFiles()
+                }
+            }
+            .popover(isPresented: $showFileDetails) {
+                fileDetails
+            }
+
+            statPill(
+                title: L("Events"),
+                value: formattedNumber(viewModel.indexStats.processedEvents),
+                tint: .orange,
+                isSelected: viewModel.displayMode == .events,
+                compact: isCompact
+            ) {
+                showFileDetails = false
+                if viewModel.displayMode == .events {
+                    showEventDetails.toggle()
+                } else {
+                    viewModel.showEvents()
+                }
+            }
+            .popover(isPresented: $showEventDetails) {
+                eventDetails
+            }
+
+            iconButton(
+                viewModel.isManualRefreshInFlight ? L("Refreshing Index") : L("Refresh Index"),
+                systemImage: viewModel.isManualRefreshInFlight ? "hourglass" : "arrow.clockwise"
+            ) {
+                viewModel.refreshIndexNow()
+            }
+            .disabled(viewModel.isManualRefreshInFlight)
+            .help(L("Refresh Index Help"))
+
+            iconButton(L("Settings"), systemImage: "gearshape.fill") {
+                FileActions.openSettings()
+            }
+
+            iconButton(L("Stop Search"), systemImage: "stop.circle.fill") {
+                viewModel.cancel()
+            }
+            .opacity(viewModel.isSearching ? 1 : 0)
+            .disabled(!viewModel.isSearching)
+            .accessibilityHidden(!viewModel.isSearching)
+
+            Spacer(minLength: isCompact ? 4 : 12)
+
+            if !viewModel.hasFullDiskAccess {
+                Button {
+                    FileActions.openSystemPrivacySettings()
+                } label: {
+                    if isCompact {
+                        Image(systemName: "lock.shield.fill")
                     } else {
-                        viewModel.showFiles()
-                    }
-                }
-                .popover(isPresented: $showFileDetails) {
-                    fileDetails
-                }
-
-                statPill(
-                    title: L("Events"),
-                    value: formattedNumber(viewModel.indexStats.processedEvents),
-                    tint: .orange,
-                    isSelected: viewModel.displayMode == .events
-                ) {
-                    showFileDetails = false
-                    if viewModel.displayMode == .events {
-                        showEventDetails.toggle()
-                    } else {
-                        viewModel.showEvents()
-                    }
-                }
-                .popover(isPresented: $showEventDetails) {
-                    eventDetails
-                }
-
-                iconButton(
-                    viewModel.isManualRefreshInFlight ? L("Refreshing Index") : L("Refresh Index"),
-                    systemImage: viewModel.isManualRefreshInFlight ? "hourglass" : "arrow.clockwise"
-                ) {
-                    viewModel.refreshIndexNow()
-                }
-                .disabled(viewModel.isManualRefreshInFlight)
-                .help(L("Refresh Index Help"))
-
-                iconButton(L("Settings"), systemImage: "gearshape.fill") {
-                    FileActions.openSettings()
-                }
-
-                iconButton(L("Stop Search"), systemImage: "stop.circle.fill") {
-                    viewModel.cancel()
-                }
-                .opacity(viewModel.isSearching ? 1 : 0)
-                .disabled(!viewModel.isSearching)
-                .accessibilityHidden(!viewModel.isSearching)
-
-                Spacer(minLength: 12)
-
-                if !viewModel.hasFullDiskAccess {
-                    Button {
-                        FileActions.openSystemPrivacySettings()
-                    } label: {
                         Label(L("Full Disk Access disabled"), systemImage: "lock.shield.fill")
                     }
-                    .labelStyle(.titleAndIcon)
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.orange)
                 }
-
-                if viewModel.hasMoreResults && !viewModel.isRefreshingSearchResults {
-                    Button {
-                        viewModel.showMoreResults()
-                    } label: {
-                        if viewModel.isExpandingResults {
-                            HStack(spacing: 5) {
-                                ProgressView().controlSize(.small)
-                                Text(L("Loading Results"))
-                            }
-                        } else {
-                            Label(
-                                String(
-                                    format: L("Show %lld More Results"),
-                                    Int64(viewModel.nextResultPageCount)
-                                ),
-                                systemImage: "chevron.down.circle"
-                            )
-                        }
-                    }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(Color.accentColor)
-                    .disabled(viewModel.isExpandingResults)
-                    .frame(width: 180, alignment: .trailing)
-                }
-
-                Text(searchSummary)
-                    .lineLimit(1)
-                    .monospacedDigit()
-                    .frame(width: 300, alignment: .trailing)
-                    .transaction { transaction in
-                        transaction.animation = nil
-                        transaction.disablesAnimations = true
-                    }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.orange)
+                .help(L("Full Disk Access disabled"))
+                .accessibilityLabel(L("Full Disk Access disabled"))
             }
-            .font(.caption)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .openFindGlassRectangle()
+
+            if viewModel.hasMoreResults && !viewModel.isRefreshingSearchResults {
+                Button {
+                    viewModel.showMoreResults()
+                } label: {
+                    if viewModel.isExpandingResults {
+                        ProgressView().controlSize(.small)
+                    } else if isCompact {
+                        Image(systemName: "chevron.down.circle")
+                    } else {
+                        Label(
+                            String(
+                                format: L("Show %lld More Results"),
+                                Int64(viewModel.nextResultPageCount)
+                            ),
+                            systemImage: "chevron.down.circle"
+                        )
+                    }
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(Color.accentColor)
+                .disabled(viewModel.isExpandingResults)
+                .frame(width: isCompact ? 28 : 180 * interfaceSize.scale, alignment: .trailing)
+                .help(String(
+                    format: L("Show %lld More Results"),
+                    Int64(viewModel.nextResultPageCount)
+                ))
+            }
+
+            Text(searchSummary)
+                .lineLimit(1)
+                .minimumScaleFactor(isCompact ? 0.72 : 0.9)
+                .monospacedDigit()
+                .frame(
+                    width: (isCompact ? 190 : 300) * interfaceSize.scale,
+                    alignment: .trailing
+                )
+                .transaction { transaction in
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
         }
+        .font(.caption)
+        .padding(.horizontal, 10 * interfaceSize.scale)
+        .padding(.vertical, 5 * interfaceSize.scale)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .openFindGlassRectangle()
     }
 
     private var statusBadge: some View {
@@ -326,26 +367,32 @@ struct StatusBar: View {
         value: String,
         tint: Color,
         isSelected: Bool,
+        compact: Bool,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Text(title)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .frame(width: 36, alignment: .trailing)
+                if !compact {
+                    Text(title)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(width: 36 * interfaceSize.scale, alignment: .trailing)
+                }
                 Text(value)
                     .fontWeight(.bold)
                     .foregroundStyle(tint)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-                    .frame(width: 66, alignment: .leading)
+                    .frame(
+                        width: (compact ? 48 : 66) * interfaceSize.scale,
+                        alignment: compact ? .center : .leading
+                    )
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, (compact ? 6 : 8) * interfaceSize.scale)
+            .padding(.vertical, 5 * interfaceSize.scale)
             .background(isSelected ? tint.opacity(0.15) : Color.secondary.opacity(0.12), in: Capsule())
             .overlay(
                 Capsule()
@@ -353,6 +400,7 @@ struct StatusBar: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(title), \(value)")
     }
 
     private func iconButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {

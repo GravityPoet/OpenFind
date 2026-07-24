@@ -14,6 +14,12 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(after: .appInfo) {
+            Button(L("Welcome to OpenFind...")) {
+                (NSApp.delegate as? AppDelegate)?.showWelcomeGuide(nil)
+            }
+
+            Divider()
+
             Button(L("Check for Updates...")) {
                 (NSApp.delegate as? AppDelegate)?.checkForUpdates(nil)
             }

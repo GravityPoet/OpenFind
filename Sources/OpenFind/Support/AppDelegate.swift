@@ -245,6 +245,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(sender)
     }
 
+    @objc func showWelcomeGuide(_ sender: Any?) {
+        showMainWindow()
+        Task { @MainActor in
+            await Task.yield()
+            NotificationCenter.default.post(name: .openFindShowWelcome, object: nil)
+        }
+    }
+
     @objc func checkForUpdates(_ sender: Any?) {
         updaterController?.checkForUpdates(sender)
     }
@@ -385,6 +393,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 },
                 onShowSettings: { [weak self] in
                     self?.showSettingsWindow(nil)
+                },
+                firstRunCapabilities: { [weak self] in
+                    self?.makeFirstRunCapabilities() ?? []
                 }
             )
         )
@@ -405,6 +416,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applySavedFrameOrCenter(window, autosaveName: mainWindowFrameAutosaveName)
         mainWindow = window
         return window
+    }
+
+    private func makeFirstRunCapabilities() -> [FirstRunCapability] {
+        [
+            FirstRunCapability(
+                id: .search,
+                systemImage: "magnifyingglass",
+                title: L("Guide Search Title"),
+                detail: L("Guide Search Detail"),
+                shortcut: globalHotKey.shortcut.displayText
+            ),
+            FirstRunCapability(
+                id: .clipboard,
+                systemImage: "doc.on.clipboard",
+                title: L("Guide Clipboard Title"),
+                detail: L("Guide Clipboard Detail"),
+                shortcut: clipboard.shortcut.displayText
+            ),
+            FirstRunCapability(
+                id: .keepAwake,
+                systemImage: "moon.zzz",
+                title: L("Guide Keep Awake Title"),
+                detail: L("Guide Keep Awake Detail"),
+                shortcut: AwakeHotKeyAction.toggleSession.defaultShortcut.displayText
+            ),
+            FirstRunCapability(
+                id: .driveAlive,
+                systemImage: "externaldrive",
+                title: L("Guide Drive Alive Title"),
+                detail: L("Guide Drive Alive Detail"),
+                shortcut: L("Menu Bar")
+            ),
+            FirstRunCapability(
+                id: .keyboardCleaning,
+                systemImage: "keyboard",
+                title: L("Guide Keyboard Cleaning Title"),
+                detail: L("Guide Keyboard Cleaning Detail"),
+                shortcut: keyboardLock.shortcut.displayText
+            ),
+        ]
     }
 
     private func makeSettingsWindowIfNeeded() -> NSWindow {
@@ -507,4 +558,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
 extension Notification.Name {
     static let openFindFocusSearch = Notification.Name("OpenFind.focusSearch")
+    static let openFindShowWelcome = Notification.Name("OpenFind.showWelcome")
 }

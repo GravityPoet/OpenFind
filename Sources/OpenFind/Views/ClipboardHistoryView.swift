@@ -105,6 +105,7 @@ struct ClipboardHistoryView: View {
             searchFocusTask = nil
             store.isActionPanelPresented = false
         }
+        .openFindInterfaceSizing()
     }
 
     private func requestSearchFocus() {
