@@ -5,7 +5,7 @@ import Testing
 @testable import OpenFind
 
 @MainActor
-@Suite("Alfred-Inspired Clipboard Workflow Tests")
+@Suite("Alfred-Inspired Clipboard Workflow Tests", .serialized)
 struct ClipboardAlfredWorkflowTests {
     @Test func savingForReuseIsIdempotentAndKeepsTheSelectedEntry() throws {
         let context = try makeContext()
@@ -150,7 +150,11 @@ struct ClipboardAlfredWorkflowTests {
 
     @Test func shortcutActivationHidesMainAndSettingsWindows() throws {
         let context = try makeContext()
-        let controller = ClipboardHistoryWindowController(store: context.store)
+        var activationCount = 0
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            applicationActivator: { activationCount += 1 }
+        )
         let mainWindow = testWindow(identifier: "OpenFind.main")
         let settingsWindow = testWindow(identifier: "OpenFind.settings")
         let companionWindow = testWindow(identifier: nil)
@@ -175,11 +179,12 @@ struct ClipboardAlfredWorkflowTests {
         #expect(mainWindow.animationBehavior == .none)
         #expect(settingsWindow.animationBehavior == .none)
         #expect(companionWindow.animationBehavior == .none)
+        #expect(activationCount == 1)
 
         let panel = controller.makePanelIfNeeded()
-        #expect(panel.styleMask.contains(.nonactivatingPanel))
+        #expect(!panel.styleMask.contains(.nonactivatingPanel))
         #expect(panel.animationBehavior == .none)
-        #expect(!panel.hidesOnDeactivate)
+        #expect(panel.hidesOnDeactivate)
     }
 
     @Test func preparingClipboardPanelKeepsAnImperceptibleNonInteractiveSurfaceWarm() throws {
@@ -199,19 +204,123 @@ struct ClipboardAlfredWorkflowTests {
         #expect(context.store.isPreviewVisible)
     }
 
-    @Test func backgroundResidencePrewarmsTheHiddenSearchInputClient() throws {
+    @Test func backgroundResidenceDoesNotClaimKeyboardFocusWhileHidden() throws {
         let context = try makeContext()
         let controller = ClipboardHistoryWindowController(store: context.store)
 
         controller.prepareForBackgroundResidence()
 
         let panel = try #require(controller.panel)
-        #expect(panel.firstResponder is NSTextView)
+        #expect(!panel.isKeyWindow)
         #expect(panel.alphaValue == 0.49)
         #expect(panel.contentView?.alphaValue == 0.001)
         #expect(panel.ignoresMouseEvents)
         #expect(!context.store.isPanelPresented)
         controller.close()
+    }
+
+    @Test func presentedClipboardPanelTargetsSearchFieldForKeyboardFocus() async throws {
+        let context = try makeContext()
+        let controller = ClipboardHistoryWindowController(store: context.store)
+        controller.prepareForBackgroundResidence()
+
+        controller.present(positionOverride: .center, hideApplicationWindows: true)
+        defer { controller.close() }
+
+        let panel = try #require(controller.panel)
+        let searchIsFirstResponder = await waitForSearchFirstResponder(in: panel)
+        #expect(searchIsFirstResponder)
+    }
+
+    @Test func closingPresentedClipboardPanelReturnsApplicationFocus() throws {
+        let context = try makeContext()
+        var deactivationCount = 0
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            applicationActivator: {},
+            applicationDeactivator: { deactivationCount += 1 }
+        )
+
+        controller.present(positionOverride: .center, hideApplicationWindows: true)
+        controller.close()
+
+        #expect(!context.store.isPanelPresented)
+        #expect(deactivationCount == 1)
+    }
+
+    @Test func shortcutRestoresSavedClipboardPanelSizeAndPosition() throws {
+        let context = try makeContext()
+        let frameName = "OpenFindTests.ClipboardFrame.\(UUID())"
+        defer { removeSavedFrame(named: frameName) }
+        let expectedFrame = try testPanelFrame(width: 880, height: 580)
+        let writer = ClipboardHistoryPanel(
+            contentRect: .zero,
+            styleMask: [.titled, .resizable, .fullSizeContentView, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        writer.setFrame(expectedFrame, display: false)
+        writer.saveFrame(usingName: frameName)
+        context.store.setPreference(\.popupPosition, to: .lastPosition)
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            frameAutosaveName: frameName
+        )
+
+        controller.prepareForBackgroundResidence()
+        controller.show()
+        defer { controller.close() }
+
+        let panel = try #require(controller.panel)
+        #expect(framesMatch(panel.frame, expectedFrame))
+    }
+
+    @Test func manualResizeAndMoveBecomeTheNextClipboardPanelFrame() throws {
+        let context = try makeContext()
+        let frameName = "OpenFindTests.ClipboardFrame.\(UUID())"
+        defer { removeSavedFrame(named: frameName) }
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            frameAutosaveName: frameName
+        )
+        let panel = controller.makePanelIfNeeded()
+        let resizedFrame = try testPanelFrame(width: 900, height: 600)
+
+        controller.windowWillStartLiveResize(
+            Notification(name: NSWindow.willStartLiveResizeNotification, object: panel)
+        )
+        panel.setFrame(resizedFrame, display: false)
+        controller.windowDidEndLiveResize(
+            Notification(name: NSWindow.didEndLiveResizeNotification, object: panel)
+        )
+
+        #expect(context.store.preferences.popupPosition == .lastPosition)
+
+        context.store.setPreference(\.popupPosition, to: .center)
+        controller.windowWillMove(
+            Notification(name: NSWindow.willMoveNotification, object: panel)
+        )
+        var movedFrame = panel.frame
+        movedFrame.origin.x += 36
+        movedFrame.origin.y -= 24
+        panel.setFrame(movedFrame, display: false)
+        controller.windowDidMove(
+            Notification(name: NSWindow.didMoveNotification, object: panel)
+        )
+
+        #expect(context.store.preferences.popupPosition == .lastPosition)
+        controller.close()
+
+        let reopenedController = ClipboardHistoryWindowController(
+            store: context.store,
+            frameAutosaveName: frameName
+        )
+        reopenedController.prepareForBackgroundResidence()
+        reopenedController.show()
+        defer { reopenedController.close() }
+
+        let reopenedPanel = try #require(reopenedController.panel)
+        #expect(framesMatch(reopenedPanel.frame, movedFrame))
     }
 
     @Test func commandActionsPrecedeTheIMECompositionGuard() throws {
@@ -300,20 +409,42 @@ struct ClipboardAlfredWorkflowTests {
         )
         var actionPanelToggleCount = 0
         var saveCount = 0
+        var closeCount = 0
         panel.onToggleActions = { actionPanelToggleCount += 1 }
         panel.onSaveForReuse = { saveCount += 1 }
+        panel.onClose = { closeCount += 1 }
 
         let commandK = try #require(keyEvent(keyCode: kVK_ANSI_K, characters: "k"))
         let commandS = try #require(keyEvent(keyCode: kVK_ANSI_S, characters: "s"))
+        let escape = try #require(keyEvent(
+            keyCode: kVK_Escape,
+            characters: "\u{1b}",
+            modifierFlags: []
+        ))
         #expect(panel.performKeyEquivalent(with: commandK))
         #expect(panel.performKeyEquivalent(with: commandS))
+        #expect(panel.performKeyEquivalent(with: escape))
         #expect(actionPanelToggleCount == 1)
         #expect(saveCount == 1)
+        #expect(closeCount == 1)
 
         panel.sendEvent(commandK)
         panel.sendEvent(commandS)
+        panel.sendEvent(escape)
         #expect(actionPanelToggleCount == 2)
         #expect(saveCount == 2)
+        #expect(closeCount == 2)
+    }
+
+    @Test func escapeClosesClipboardPanelEvenWhenSearchHasText() throws {
+        let context = try makeContext()
+        let controller = ClipboardHistoryWindowController(store: context.store)
+        context.store.beginPresentation()
+        context.store.query = "needle"
+
+        controller.makeHistoryView().handleEscape()
+
+        #expect(!context.store.isPanelPresented)
     }
 
     private func entry(_ text: String, kind: ClipboardEntryKind) -> ClipboardEntry {
@@ -350,11 +481,50 @@ struct ClipboardAlfredWorkflowTests {
         )
     }
 
-    private func keyEvent(keyCode: Int, characters: String) -> NSEvent? {
+    private func testPanelFrame(width: CGFloat, height: CGFloat) throws -> NSRect {
+        let visibleFrame = try #require(NSScreen.main?.visibleFrame)
+        let size = NSSize(
+            width: min(width, visibleFrame.width - 80),
+            height: min(height, visibleFrame.height - 80)
+        )
+        return NSRect(
+            x: visibleFrame.minX + 40,
+            y: visibleFrame.maxY - size.height - 40,
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    private func framesMatch(_ lhs: NSRect, _ rhs: NSRect) -> Bool {
+        abs(lhs.origin.x - rhs.origin.x) < 1
+            && abs(lhs.origin.y - rhs.origin.y) < 1
+            && abs(lhs.width - rhs.width) < 1
+            && abs(lhs.height - rhs.height) < 1
+    }
+
+    private func removeSavedFrame(named name: NSWindow.FrameAutosaveName) {
+        UserDefaults.standard.removeObject(forKey: "NSWindow Frame \(name)")
+    }
+
+    private func waitForSearchFirstResponder(in panel: NSPanel) async -> Bool {
+        for _ in 0..<20 {
+            if panel.firstResponder is NSTextView {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return false
+    }
+
+    private func keyEvent(
+        keyCode: Int,
+        characters: String,
+        modifierFlags: NSEvent.ModifierFlags = .command
+    ) -> NSEvent? {
         NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
-            modifierFlags: .command,
+            modifierFlags: modifierFlags,
             timestamp: 0,
             windowNumber: 0,
             context: nil,

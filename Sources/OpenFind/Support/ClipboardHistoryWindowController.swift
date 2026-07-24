@@ -4,6 +4,9 @@ import QuartzCore
 @MainActor
 final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     let store: ClipboardHistoryStore
+    let frameAutosaveName: NSWindow.FrameAutosaveName
+    let applicationActivator: @MainActor () -> Void
+    let applicationDeactivator: @MainActor () -> Void
     let pasteService = ClipboardPasteService()
     let quickLook = QuickLookController()
     var panel: NSPanel?
@@ -13,9 +16,23 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     var pasteStackKeyMonitor: Any?
     var pasteStackPasteKeyIsDown = false
     var pasteStackAdvanceTask: Task<Void, Never>?
+    var isUserMovingPanel = false
+    var isUserResizingPanel = false
 
-    init(store: ClipboardHistoryStore) {
+    init(
+        store: ClipboardHistoryStore,
+        frameAutosaveName: NSWindow.FrameAutosaveName = "OpenFindClipboardHistory",
+        applicationActivator: @escaping @MainActor () -> Void = {
+            NSApp.activate(ignoringOtherApps: true)
+        },
+        applicationDeactivator: @escaping @MainActor () -> Void = {
+            if NSApp.isActive { NSApp.hide(nil) }
+        }
+    ) {
         self.store = store
+        self.frameAutosaveName = frameAutosaveName
+        self.applicationActivator = applicationActivator
+        self.applicationDeactivator = applicationDeactivator
         super.init()
         NotificationCenter.default.addObserver(
             self,
@@ -41,12 +58,15 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     func show() {
         shortcutCycleState.reset()
         removeShortcutFlagsMonitor()
-        present(positionOverride: .center, hideApplicationWindows: true)
+        present(hideApplicationWindows: true)
     }
 
     func prepare() {
         let panel = makePanelIfNeeded()
-        resize(panel, showingPreview: true, animated: false)
+        configureMinimumSize(panel, showingPreview: true)
+        if !restoreSavedFrameIfNeeded(panel) {
+            resize(panel, showingPreview: true, animated: false)
+        }
         park(panel, keepCompositorWarm: true)
         panel.contentView?.layoutSubtreeIfNeeded()
         panel.displayIfNeeded()
@@ -57,12 +77,9 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         prepare()
         guard let panel,
               let searchField = firstTextField(in: panel.contentView) else { return }
-        // Connect the invisible search client while the app is already warm.
-        // The shortcut can then expose the resident panel without making the
-        // user wait for first-use text-input setup.
+        // Prepare the search target without claiming keyboard focus while the
+        // panel is invisible. Presentation performs the real key-window handoff.
         panel.initialFirstResponder = searchField
-        panel.makeKey()
-        _ = panel.makeFirstResponder(searchField)
     }
 
     func present(
@@ -76,20 +93,26 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         store.isSearchPresented = true
         let panel = makePanelIfNeeded()
         activateForClipboardPanel(hideApplicationWindows: hideApplicationWindows)
-        resize(panel, showingPreview: store.isPreviewVisible, animated: false)
-        position(panel, override: positionOverride)
+        configureMinimumSize(panel, showingPreview: store.isPreviewVisible)
+        if !restoreSavedFrameIfNeeded(panel, override: positionOverride) {
+            resize(panel, showingPreview: store.isPreviewVisible, animated: false)
+            position(panel, override: positionOverride)
+        }
         panel.alphaValue = 1
         panel.contentView?.alphaValue = 1
         panel.contentView?.setAccessibilityHidden(false)
         panel.hasShadow = true
         panel.level = .floating
         panel.ignoresMouseEvents = false
-        panel.orderFrontRegardless()
+        panel.makeKeyAndOrderFront(nil)
         if hideApplicationWindows {
             orderOutApplicationWindows(except: panel)
         }
         store.beginPresentation()
-        panel.makeKey()
+        if let searchField = firstTextField(in: panel.contentView) {
+            panel.initialFirstResponder = searchField
+            _ = panel.makeFirstResponder(searchField)
+        }
     }
 
     func paste(_ entry: ClipboardEntry, plainTextOnly: Bool = false) {
@@ -119,12 +142,16 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     }
 
     func close() {
+        let shouldReturnApplicationFocus = store.isPanelPresented
         store.endPresentation()
         if let panel {
             park(panel, keepCompositorWarm: true)
         }
         shortcutCycleState.reset()
         removeShortcutFlagsMonitor()
+        if shouldReturnApplicationFocus {
+            applicationDeactivator()
+        }
     }
 
     private func firstTextField(in view: NSView?) -> NSTextField? {

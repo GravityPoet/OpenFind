@@ -37,10 +37,6 @@ extension ClipboardHistoryView {
     func handleEscape() {
         if store.isActionPanelPresented {
             store.isActionPanelPresented = false
-        } else if store.multiSelectionCount > 0 {
-            store.clearMultiSelection()
-        } else if !store.query.isEmpty {
-            store.query = ""
         } else {
             onClose()
         }
