@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      target_tag:
+        description: Existing release tag to recover without moving it
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,20 +18,30 @@ jobs:
   release:
     name: Sign, appcast, and publish
     runs-on: macos-26
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.target_tag || github.ref_name }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_tag || github.ref }}
 
       - name: Resolve version and build number
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          TAG_SHA="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          CHECKOUT_SHA="$(git rev-parse HEAD)"
+          test "$TAG_SHA" = "$CHECKOUT_SHA"
+          VERSION="${RELEASE_TAG#v}"
           IFS=. read -r MAJOR MINOR PATCH <<<"$VERSION"
           BUILD_NUMBER=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
-          echo "DOWNLOAD_PREFIX=https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" >> "$GITHUB_ENV"
+          echo "RELEASE_SHA=$CHECKOUT_SHA" >> "$GITHUB_ENV"
+          echo "DOWNLOAD_PREFIX=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/" >> "$GITHUB_ENV"
 
       - name: Run tests at the macOS 14 deployment target
         run: MACOSX_DEPLOYMENT_TARGET=14.0 xcrun --sdk macosx swift test --no-parallel
@@ -41,6 +57,7 @@ jobs:
         run: MACOSX_DEPLOYMENT_TARGET=14.0 xcrun --sdk macosx swift test --filter VisualRegressionTests
 
       - name: Import pinned OpenFind customer certificate
+        timeout-minutes: 3
         env:
           CERTIFICATE_BASE64: ${{ secrets.OPENFIND_CUSTOMER_CERT_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.OPENFIND_CUSTOMER_CERT_PASSWORD }}
@@ -56,16 +73,18 @@ jobs:
           test -n "$CERTIFICATE_PASSWORD"
           test -n "$KEYCHAIN_PASSWORD"
           printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          echo "Creating isolated release keychain"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo "Importing PKCS#12 signing identity"
           security import "$CERTIFICATE_PATH" \
             -P "$CERTIFICATE_PASSWORD" \
             -A \
             -T /usr/bin/codesign \
-            -t cert \
             -f pkcs12 \
             -k "$KEYCHAIN_PATH"
+          echo "Validating pinned certificate fingerprint"
           openssl pkcs12 \
             -in "$CERTIFICATE_PATH" \
             -legacy \
@@ -73,19 +92,21 @@ jobs:
             -nokeys \
             -passin "pass:$CERTIFICATE_PASSWORD" \
             -out "$CERTIFICATE_PEM"
-          security add-trusted-cert \
-            -r trustRoot \
-            -p codeSign \
-            -k "$KEYCHAIN_PATH" \
-            "$CERTIFICATE_PEM"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          ACTUAL_SIGNING_CERT_SHA1="$(openssl x509 \
+            -in "$CERTIFICATE_PEM" \
+            -noout \
+            -fingerprint \
+            -sha1 \
+            | awk -F= '{ print toupper($2) }' \
+            | tr -d ':')"
+          test "$ACTUAL_SIGNING_CERT_SHA1" = "$EXPECTED_SIGNING_CERT_SHA1"
+          echo "Authorizing non-interactive codesign access"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: \
+            -s \
             -k "$KEYCHAIN_PASSWORD" \
             "$KEYCHAIN_PATH"
-          ACTUAL_SIGNING_CERT_SHA1="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
-            | awk 'NR == 1 { print toupper($2) }')"
-          test "$ACTUAL_SIGNING_CERT_SHA1" = "$EXPECTED_SIGNING_CERT_SHA1"
           echo "SIGN_IDENTITY=$EXPECTED_SIGNING_CERT_SHA1" >> "$GITHUB_ENV"
           echo "EXPECTED_SIGNING_CERT_SHA1=$EXPECTED_SIGNING_CERT_SHA1" >> "$GITHUB_ENV"
 
@@ -140,7 +161,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" \
             dist/OpenFind.zip \
             dist/OpenFind.zip.sha256 \
             dist/appcast.xml \
