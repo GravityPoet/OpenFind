@@ -15,11 +15,11 @@ OpenFind frees you from multi-app lag: **Zero-latency search inside ZIPs and PDF
 [Watch 60s Demo](docs/assets/OpenFind-60s-demo.mp4) ·
 [v1.1.0 Release Notes](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0)
 
-![OpenFind first-run guide showing five capabilities and their shortcuts](docs/assets/openfind-welcome.png)
+![OpenFind first-run guide showing five capabilities and their shortcuts](docs/assets/openfind-welcome-en.png)
 
 | Minimum-window search | Unified interface size |
 | :---: | :---: |
-| ![OpenFind search at its minimum window size](docs/assets/openfind-search.png) | ![OpenFind compact, default, and large interface-size settings](docs/assets/openfind-interface-size.png) |
+| ![OpenFind search at its minimum window size](docs/assets/openfind-search-en.png) | ![OpenFind compact, default, and large interface-size settings](docs/assets/openfind-interface-size-en.png) |
 
 ---
 
