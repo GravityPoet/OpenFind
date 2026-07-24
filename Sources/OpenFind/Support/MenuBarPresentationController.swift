@@ -3,10 +3,21 @@ import OSLog
 
 @MainActor
 final class MenuBarPresentationController {
+    typealias MenuPresenter = (NSMenu, NSPoint, NSView) -> Bool
+
     private let logger = Logger(subsystem: "com.openfind.app", category: "MenuBarPresentation")
+    private let menuPresenter: MenuPresenter
     private weak var statusItem: NSStatusItem?
     private var clickMonitor: Any?
     private var onClipboardModifierAction: ((ClipboardMenuBarModifierAction) -> Void)?
+
+    init(
+        menuPresenter: @escaping MenuPresenter = { menu, point, view in
+            menu.popUp(positioning: nil, at: point, in: view)
+        }
+    ) {
+        self.menuPresenter = menuPresenter
+    }
 
     func attach(
         _ statusItem: NSStatusItem,
@@ -20,7 +31,7 @@ final class MenuBarPresentationController {
 
     @discardableResult
     func present() -> Bool {
-        guard let button = statusItem?.button else {
+        guard let statusItem, let button = statusItem.button else {
             logger.error("Menu bar presentation failed because no status item is attached")
             return false
         }
@@ -30,8 +41,7 @@ final class MenuBarPresentationController {
         }
         logger.notice("Menu bar presentation requested with button state \(button.state.rawValue)")
         guard button.state == .off else { return true }
-        button.performClick(nil)
-        return true
+        return presentMenu(statusItem.menu, anchoredTo: button)
     }
 
     private func installClickMonitorIfNeeded() {
@@ -39,12 +49,40 @@ final class MenuBarPresentationController {
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) {
             [weak self] event in
             guard let self,
-                  event.window === statusItem?.button?.window,
-                  let action = ClipboardMenuBarModifierAction(
-                      modifierFlags: event.modifierFlags
-                  ) else { return event }
-            onClipboardModifierAction?(action)
-            return nil
+                  let statusItem,
+                  let button = statusItem.button,
+                  event.window === button.window else { return event }
+            if let action = ClipboardMenuBarModifierAction(
+                modifierFlags: event.modifierFlags
+            ) {
+                onClipboardModifierAction?(action)
+                return nil
+            }
+            return presentMenu(statusItem.menu, anchoredTo: button) ? nil : event
         }
+    }
+
+    private func presentMenu(_ menu: NSMenu?, anchoredTo button: NSStatusBarButton) -> Bool {
+        guard let menu else {
+            logger.notice("Menu is not attached yet; falling back to the status button action")
+            button.performClick(button)
+            return true
+        }
+        if button.state != .off {
+            menu.cancelTracking()
+            button.state = .off
+            button.isHighlighted = false
+            return true
+        }
+
+        button.state = .on
+        button.isHighlighted = true
+        defer {
+            button.state = .off
+            button.isHighlighted = false
+        }
+        let point = NSPoint(x: button.bounds.minX, y: button.bounds.minY - 4)
+        _ = menuPresenter(menu, point, button)
+        return true
     }
 }

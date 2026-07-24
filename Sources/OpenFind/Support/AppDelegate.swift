@@ -44,6 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var closedDisplayRecoveryTask: Task<Void, Never>?
     private var backgroundHibernateTask: Task<Void, Never>?
     private var isBackgroundResident = false
+    var activationPolicySetter: (NSApplication.ActivationPolicy) -> Bool = {
+        NSApp.setActivationPolicy($0)
+    }
 
     override init() {
         let hotKeyRegistry = GlobalHotKeyRegistry()
@@ -322,6 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func enterForegroundMode() {
         let wasBackgroundResident = isBackgroundResident
         isBackgroundResident = false
+        applyActivationPolicy(.regular)
         backgroundHibernateTask?.cancel()
         backgroundHibernateTask = nil
         if wasBackgroundResident {
@@ -333,10 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard !hasVisiblePrimaryWindow else { return }
         guard !isBackgroundResident else { return }
         isBackgroundResident = true
-        // OpenFind is an LSUIElement utility and remains an accessory process,
-        // like Maccy and Alfred. Reusing the same pre-rendered panel avoids
-        // invalidating AppKit text-input and WindowServer state between the
-        // primary window and the global clipboard shortcut.
+        applyActivationPolicy(.accessory)
         clipboard.prepareWindowForBackgroundResidence()
         backgroundHibernateTask?.cancel()
         backgroundHibernateTask = Task { [weak self] in
@@ -350,6 +351,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard !Task.isCancelled else { return }
             self.backgroundHibernateTask = nil
             ProcessMemoryReclaimer.schedule()
+        }
+    }
+
+    private func applyActivationPolicy(_ policy: NSApplication.ActivationPolicy) {
+        guard activationPolicySetter(policy) else {
+            lifecycleLogger.error(
+                "Failed to apply activation policy \(policy.rawValue, privacy: .public)"
+            )
+            return
         }
     }
 
