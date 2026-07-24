@@ -12,9 +12,9 @@ struct DriveAliveWriterTests {
         let writer = POSIXDriveAliveWriter()
         let marker = directory.appendingPathComponent(POSIXDriveAliveWriter.markerName)
 
-        try await writer.write(to: directory, timeout: .seconds(2))
+        try await writer.write(to: directory, timeout: POSIXDriveAliveWriter.defaultTimeout)
         let first = try Data(contentsOf: marker)
-        try await writer.write(to: directory, timeout: .seconds(2))
+        try await writer.write(to: directory, timeout: POSIXDriveAliveWriter.defaultTimeout)
         let second = try Data(contentsOf: marker)
 
         #expect(first.count == POSIXDriveAliveWriter.payloadSize)
@@ -34,7 +34,10 @@ struct DriveAliveWriterTests {
         try original.write(to: marker)
 
         do {
-            try await POSIXDriveAliveWriter().write(to: directory, timeout: .seconds(2))
+            try await POSIXDriveAliveWriter().write(
+                to: directory,
+                timeout: POSIXDriveAliveWriter.defaultTimeout
+            )
             Issue.record("A user-owned marker was unexpectedly overwritten")
         } catch let error as DriveAliveFailure {
             #expect(error == .markerConflict)
@@ -54,7 +57,10 @@ struct DriveAliveWriterTests {
         try FileManager.default.createSymbolicLink(at: marker, withDestinationURL: victim)
 
         do {
-            try await POSIXDriveAliveWriter().write(to: directory, timeout: .seconds(2))
+            try await POSIXDriveAliveWriter().write(
+                to: directory,
+                timeout: POSIXDriveAliveWriter.defaultTimeout
+            )
             Issue.record("A marker symlink was unexpectedly followed")
         } catch let error as DriveAliveFailure {
             #expect(error == .markerConflict)

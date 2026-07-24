@@ -9,19 +9,20 @@ protocol DriveAliveWriting: Sendable {
 final class POSIXDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
     static let markerName = ".openfind-drive-alive"
     static let payloadSize = 2_048
+    static let defaultTimeout: Duration = .seconds(10)
 
     private static let header = Data("OpenFind Drive Alive v1\n".utf8)
     private let operationLock = NSLock()
     private var activePaths: Set<String> = []
     private let queue = DispatchQueue(label: "com.openfind.drive-alive", qos: .utility, attributes: .concurrent)
 
-    func write(to directoryURL: URL, timeout: Duration = .seconds(3)) async throws {
+    func write(to directoryURL: URL, timeout: Duration = defaultTimeout) async throws {
         try await runWithTimeout(for: directoryURL, timeout: timeout) {
             try self.writeSynchronously(to: directoryURL)
         }
     }
 
-    func removeMarker(from directoryURL: URL, timeout: Duration = .seconds(3)) async throws {
+    func removeMarker(from directoryURL: URL, timeout: Duration = defaultTimeout) async throws {
         try await runWithTimeout(for: directoryURL, timeout: timeout) {
             try self.removeSynchronously(from: directoryURL)
         }

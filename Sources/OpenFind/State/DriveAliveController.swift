@@ -118,7 +118,10 @@ final class DriveAliveController {
                 group.addTask {
                     defer { item.resource.close() }
                     do {
-                        try await writer.write(to: item.resource.url, timeout: .seconds(3))
+                        try await writer.write(
+                            to: item.resource.url,
+                            timeout: POSIXDriveAliveWriter.defaultTimeout
+                        )
                         return (item.target.id, .success(()))
                     } catch let error as DriveAliveFailure {
                         return (item.target.id, .failure(error))
@@ -153,7 +156,10 @@ final class DriveAliveController {
         do {
             let resource = try resolver.resolve(target.bookmarkData)
             defer { resource.close() }
-            try await writer.removeMarker(from: resource.url, timeout: .seconds(3))
+            try await writer.removeMarker(
+                from: resource.url,
+                timeout: POSIXDriveAliveWriter.defaultTimeout
+            )
         } catch {
             // A disconnected/read-only target must never become impossible to
             // remove from configuration. Preserve the cleanup diagnostic, but
