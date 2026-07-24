@@ -32,6 +32,8 @@ The first-launch section must tell customers to double-click the ZIP, drag
 when macOS blocks that launch—use **System Settings → Privacy & Security → Open
 Anyway**, then confirm **Open**. It must also explain that **Open Anyway**
 appears only after one blocked launch attempt and is normally needed once.
+Checksum and appcast files remain release-verification and automatic-update
+assets; do not present them as normal customer download steps.
 
 ## Required GitHub Actions secrets
 
