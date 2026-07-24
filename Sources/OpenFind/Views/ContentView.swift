@@ -8,6 +8,9 @@ enum SearchFocusTarget: Hashable {
 struct ContentView: View {
     @Bindable var viewModel: SearchViewModel
     let quickLook: QuickLookController
+    let onShowClipboardHistory: () -> Void
+    let onShowMenuBar: () -> Void
+    let onShowSettings: () -> Void
     @FocusState private var focusedTarget: SearchFocusTarget?
     @State private var selection = Set<SearchResult.ID>()
     /// Empty means preserve engine relevance order. Once the user selects a
@@ -149,22 +152,28 @@ struct ContentView: View {
             } description: {
                 Text(readinessDescription)
             } actions: {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 14) {
-                        readinessActionContent
+                VStack(spacing: 12) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 14) {
+                            readinessActionContent
+                        }
+
+                        VStack(spacing: 10) {
+                            readinessActionContent
+                        }
                     }
 
-                    VStack(spacing: 10) {
-                        readinessActionContent
-                    }
+                    productQuickActions
                 }
             }
         } else {
-            ContentUnavailableView(
-                L("Start searching by typing a query"),
-                systemImage: "magnifyingglass",
-                description: Text(L("Names match file names by default. Use / or path: to search paths."))
-            )
+            ContentUnavailableView {
+                Label(L("Start searching by typing a query"), systemImage: "magnifyingglass")
+            } description: {
+                Text(L("Names match file names by default. Use / or path: to search paths."))
+            } actions: {
+                productQuickActions
+            }
         }
     }
 
@@ -204,17 +213,34 @@ struct ContentView: View {
 
     private var indexingInProgressView: some View {
         ContentUnavailableView {
-            Label(L("Indexing is still in progress"), systemImage: "doc.text.magnifyingglass")
+            Label(indexingInProgressTitle, systemImage: "doc.text.magnifyingglass")
         } description: {
-            Text(L("Results are still incomplete while OpenFind builds the local index. If nothing appears yet, keep typing or wait for indexing to finish."))
+            Text(indexingInProgressDescription)
         } actions: {
             HStack {
                 ProgressView()
                     .controlSize(.small)
-                Text(String(format: L("Indexing %lld items so far"), Int64(viewModel.indexStats.indexedItems)))
+                Text(String(
+                    format: viewModel.indexStats.loadedFromDisk
+                        ? L("Loaded %lld indexed items; search is ready")
+                        : L("Indexing %lld items so far"),
+                    Int64(viewModel.indexStats.indexedItems)
+                ))
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var indexingInProgressTitle: String {
+        viewModel.indexStats.loadedFromDisk
+            ? L("Updating recent file changes")
+            : L("Indexing is still in progress")
+    }
+
+    private var indexingInProgressDescription: String {
+        viewModel.indexStats.loadedFromDisk
+            ? L("Your saved index is searchable now. New or renamed files will appear as OpenFind finishes syncing.")
+            : L("Results are still incomplete while OpenFind builds the local index. If nothing appears yet, keep typing or wait for indexing to finish.")
     }
 
     private func searchErrorView(_ message: String) -> some View {
@@ -333,6 +359,14 @@ struct ContentView: View {
             return L("OpenFind is ready to search")
         }
         return L("Preparing OpenFind")
+    }
+
+    private var productQuickActions: some View {
+        ProductQuickActions(
+            onShowClipboardHistory: onShowClipboardHistory,
+            onShowMenuBar: onShowMenuBar,
+            onShowSettings: onShowSettings
+        )
     }
 
     private var sortedResults: [SearchResult] {

@@ -150,6 +150,8 @@
 "Indexing %lld items so far" = "Indexing %lld items so far";
 "Loaded %lld indexed items; search is ready" = "Loaded %lld indexed items; search is ready";
 "Indexing is still in progress" = "Indexing is still in progress";
+"Updating recent file changes" = "Updating recent file changes";
+"Your saved index is searchable now. New or renamed files will appear as OpenFind finishes syncing." = "Your saved index is searchable now. New or renamed files will appear as OpenFind finishes syncing.";
 "Results are still incomplete while OpenFind builds the local index. If nothing appears yet, keep typing or wait for indexing to finish." = "Results are still incomplete while OpenFind builds the local index. If nothing appears yet, keep typing or wait for indexing to finish.";
 "OpenFind is building its local index. Protected folders are skipped until Full Disk Access is enabled, which avoids blocking macOS permission popups." = "OpenFind is building its local index. Protected folders are skipped until Full Disk Access is enabled, which avoids blocking macOS permission popups.";
 "Enable Full Disk Access to include Desktop, Documents, Downloads, Music, Movies, Pictures, Mail, and external volumes. Until then, OpenFind skips those folders instead of showing blocking macOS permission popups." = "Enable Full Disk Access to include Desktop, Documents, Downloads, Music, Movies, Pictures, Mail, and external volumes. Until then, OpenFind skips those folders instead of showing blocking macOS permission popups.";
@@ -182,6 +184,7 @@
 
 /* Settings Window */
 "Settings" = "Settings";
+"Menu Bar Controls" = "Menu Bar Controls";
 "Default Target" = "Default Target";
 "Default Match Mode" = "Default Match Mode";
 "Max Content File Size (MB)" = "Max Content File Size";
@@ -591,6 +594,7 @@
 
 /* Keyboard Cleaning Lock */
 "Keyboard Cleaning Lock" = "Keyboard Cleaning Lock";
+"Keyboard Cleaning" = "Keyboard Cleaning";
 "Lock Keyboard" = "Start Keyboard Cleaning Lock";
 "Unlock Keyboard" = "End Keyboard Cleaning Lock";
 "Keyboard Lock" = "Keyboard Cleaning Lock";

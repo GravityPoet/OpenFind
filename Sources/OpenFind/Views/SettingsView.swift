@@ -19,38 +19,46 @@ struct SettingsView: View {
     @Bindable var powerProtect: PowerProtectController
     @Bindable var awakeSession: AwakeSessionController
     @State private var localUsageRecordCount = 0
+    @AppStorage(SettingsPane.persistenceKey)
+    private var selectedPaneValue = SettingsPane.search.rawValue
 
     var body: some View {
-        TabView {
+        TabView(selection: selectedPane) {
             searchSettings
                 .tabItem {
                     Label(L("Search"), systemImage: "magnifyingglass")
                 }
+                .tag(SettingsPane.search)
 
             awakeSettings
                 .tabItem {
                     Label(L("Keep Awake"), systemImage: "moon.zzz")
                 }
+                .tag(SettingsPane.keepAwake)
 
             triggerSettings
                 .tabItem {
                     Label(L("Triggers"), systemImage: "bolt")
                 }
+                .tag(SettingsPane.triggers)
 
             driveAliveSettings
                 .tabItem {
                     Label(L("Drive Alive"), systemImage: "externaldrive")
                 }
+                .tag(SettingsPane.driveAlive)
 
             clipboardSettings
                 .tabItem {
                     Label(L("Clipboard History"), systemImage: "doc.on.clipboard")
                 }
+                .tag(SettingsPane.clipboard)
 
             keyboardCleaningSettings
                 .tabItem {
-                    Label(L("Keyboard Cleaning Lock"), systemImage: "keyboard")
+                    Label(L("Keyboard Cleaning"), systemImage: "keyboard")
                 }
+                .tag(SettingsPane.keyboardCleaning)
         }
         .frame(minWidth: 900, minHeight: 620)
         .onAppear {
@@ -257,6 +265,13 @@ struct SettingsView: View {
         Binding(
             get: { globalHotKey.isEnabled },
             set: { globalHotKey.setEnabled($0) }
+        )
+    }
+
+    private var selectedPane: Binding<SettingsPane> {
+        Binding(
+            get: { SettingsPane.resolve(selectedPaneValue) },
+            set: { selectedPaneValue = $0.rawValue }
         )
     }
 }

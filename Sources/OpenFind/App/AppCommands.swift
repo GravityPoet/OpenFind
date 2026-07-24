@@ -78,6 +78,12 @@ struct AppCommands: Commands {
         }
 
         CommandMenu(L("Clipboard")) {
+            Button(L("Show Clipboard History")) {
+                AppDelegate.shared?.clipboard.showWindow()
+            }
+
+            Divider()
+
             Button(L("Clipboard Actions")) {
                 clipboardStore.isActionPanelPresented.toggle()
             }

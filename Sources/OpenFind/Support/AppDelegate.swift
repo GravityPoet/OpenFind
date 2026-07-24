@@ -374,7 +374,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         let hostingController = NSHostingController(
-            rootView: ContentView(viewModel: viewModel, quickLook: quickLook)
+            rootView: ContentView(
+                viewModel: viewModel,
+                quickLook: quickLook,
+                onShowClipboardHistory: { [weak self] in
+                    self?.clipboard.showWindow()
+                },
+                onShowMenuBar: { [weak self] in
+                    _ = self?.menuBarPresentation.present()
+                },
+                onShowSettings: { [weak self] in
+                    self?.showSettingsWindow(nil)
+                }
+            )
         )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
