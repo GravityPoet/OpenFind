@@ -14,7 +14,12 @@ final class POSIXDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
     private static let header = Data("OpenFind Drive Alive v1\n".utf8)
     private let operationLock = NSLock()
     private var activePaths: Set<String> = []
+    private let syncFile: @Sendable (Int32) -> Int32
     private let queue = DispatchQueue(label: "com.openfind.drive-alive", qos: .utility, attributes: .concurrent)
+
+    init(syncFile: (@Sendable (Int32) -> Int32)? = nil) {
+        self.syncFile = syncFile ?? { Darwin.fsync($0) }
+    }
 
     func write(to directoryURL: URL, timeout: Duration = defaultTimeout) async throws {
         try await runWithTimeout(for: directoryURL, timeout: timeout) {
@@ -121,7 +126,7 @@ final class POSIXDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
         guard ftruncate(fd.descriptor, off_t(payload.count)) == 0 else {
             throw DriveAliveFailure.ioFailure(errno)
         }
-        guard fsync(fd.descriptor) == 0 else {
+        guard syncFile(fd.descriptor) == 0 else {
             throw DriveAliveFailure.ioFailure(errno)
         }
     }

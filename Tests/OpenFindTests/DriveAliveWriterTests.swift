@@ -4,12 +4,16 @@ import Testing
 
 @Suite("Drive Alive Writer Tests")
 struct DriveAliveWriterTests {
+    private func makeWriter() -> POSIXDriveAliveWriter {
+        POSIXDriveAliveWriter(syncFile: { _ in 0 })
+    }
+
     @Test func repeatedWritesKeepOneBoundedMarker() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenFindDriveAlive.\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let writer = POSIXDriveAliveWriter()
+        let writer = makeWriter()
         let marker = directory.appendingPathComponent(POSIXDriveAliveWriter.markerName)
 
         try await writer.write(to: directory, timeout: POSIXDriveAliveWriter.defaultTimeout)
@@ -34,7 +38,7 @@ struct DriveAliveWriterTests {
         try original.write(to: marker)
 
         do {
-            try await POSIXDriveAliveWriter().write(
+            try await makeWriter().write(
                 to: directory,
                 timeout: POSIXDriveAliveWriter.defaultTimeout
             )
@@ -57,7 +61,7 @@ struct DriveAliveWriterTests {
         try FileManager.default.createSymbolicLink(at: marker, withDestinationURL: victim)
 
         do {
-            try await POSIXDriveAliveWriter().write(
+            try await makeWriter().write(
                 to: directory,
                 timeout: POSIXDriveAliveWriter.defaultTimeout
             )
@@ -66,5 +70,26 @@ struct DriveAliveWriterTests {
             #expect(error == .markerConflict)
         }
         #expect(try Data(contentsOf: victim) == original)
+    }
+
+    @Test func durableSyncFailureSurfacesAsIOFailure() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFindDriveAlive.\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let writer = POSIXDriveAliveWriter(syncFile: { _ in -1 })
+
+        do {
+            try await writer.write(
+                to: directory,
+                timeout: POSIXDriveAliveWriter.defaultTimeout
+            )
+            Issue.record("A failed durable sync was unexpectedly reported as successful")
+        } catch let error as DriveAliveFailure {
+            guard case .ioFailure = error else {
+                Issue.record("Expected an I/O failure, received \(error)")
+                return
+            }
+        }
     }
 }
