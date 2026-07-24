@@ -1,4 +1,4 @@
-## 🌐 [点击这里切换到：中文版 (Chinese Version)](README-zh.md)
+<h2 align="center">🌐 <a href="./README-zh.md">中文用户：点击查看中文版本</a></h2>
 
 # 🚀 OpenFind
 
@@ -11,9 +11,9 @@
 
 OpenFind unifies **Hyper-Fast File & Content Search**, **Encrypted Smart Clipboard with OCR**, **Automated Keep-Awake with Clamshell Mode**, **External Drive Keep-Alive**, and **Instant Keyboard Lock** into a single status-bar app and CLI tool.
 
-[Download the latest release](https://github.com/GravityPoet/OpenFind/releases/latest) ·
-[Watch the 60-second demo](docs/assets/OpenFind-60s-demo.mp4) ·
-[Read the v1.1.0 release notes](docs/releases/v1.1.0.md)
+[**🚀 Download OpenFind v1.1.0 for macOS**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0) ·
+[Watch 60s Demo](docs/assets/OpenFind-60s-demo.mp4) ·
+[Release Notes](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.0)
 
 ![OpenFind first-run guide showing five capabilities and their shortcuts](docs/assets/openfind-welcome.png)
 
@@ -87,6 +87,8 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 ---
 
 ## ⚡ Quick Start (60 Seconds)
+
+> **Prerequisites**: macOS 14.0+ (Sonoma or later) · Apple Silicon or Intel Mac · Swift 6.0 / Xcode 15+ (for source build)
 
 ### Run CLI Mode
 ```bash
