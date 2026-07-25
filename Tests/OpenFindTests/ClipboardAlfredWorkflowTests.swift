@@ -261,6 +261,57 @@ struct ClipboardAlfredWorkflowTests {
         #expect(!context.store.isPanelPresented)
     }
 
+    @Test func stalledActivationCannotTrapLaterClipboardShortcuts() throws {
+        let context = try makeContext()
+        let applicationActivity = ClipboardApplicationActivityProbe()
+        var activationCount = 0
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            applicationActivator: { activationCount += 1 },
+            applicationDeactivator: {},
+            applicationIsActive: { applicationActivity.isActive }
+        )
+        defer {
+            controller.close()
+            controller.panel?.orderOut(nil)
+        }
+
+        controller.handleShortcutInvocation(shortcut: ClipboardController.defaultShortcut)
+        #expect(context.store.isPanelPresented)
+        #expect(activationCount == 1)
+
+        controller.handleShortcutInvocation(shortcut: ClipboardController.defaultShortcut)
+
+        #expect(context.store.isPanelPresented)
+        #expect(activationCount == 2)
+        #expect(controller.shortcutCycleState.phase == .opening)
+    }
+
+    @Test func incompleteActivationHandoffClearsHiddenPresentationState() async throws {
+        let context = try makeContext()
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            applicationActivator: {},
+            applicationDeactivator: {},
+            applicationIsActive: { false },
+            activationHandoffTimeout: .milliseconds(20)
+        )
+        defer {
+            controller.close()
+            controller.panel?.orderOut(nil)
+        }
+
+        controller.handleShortcutInvocation(shortcut: ClipboardController.defaultShortcut)
+        #expect(context.store.isPanelPresented)
+
+        for _ in 0..<50 where context.store.isPanelPresented {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(!context.store.isPanelPresented)
+        #expect(controller.shortcutCycleState.phase == .idle)
+    }
+
     @Test func presentedClipboardPanelTargetsSearchFieldForKeyboardFocus() async throws {
         let context = try makeContext()
         let controller = ClipboardHistoryWindowController(store: context.store)
