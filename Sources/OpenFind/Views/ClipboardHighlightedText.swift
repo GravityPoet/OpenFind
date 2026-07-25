@@ -10,12 +10,26 @@ enum ClipboardHighlightedText {
             entry.displayTitle,
             showSpecialSymbols: preferences.showSpecialSymbols
         )
-        var attributed = AttributedString(title)
+        return text(
+            title,
+            query: query,
+            preferences: preferences,
+            pointSize: ClipboardTypography.rowPointSize
+        )
+    }
+
+    static func text(
+        _ text: String,
+        query: String,
+        preferences: ClipboardPreferences,
+        pointSize: CGFloat
+    ) -> AttributedString {
+        var attributed = AttributedString(text)
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedQuery.isEmpty,
               let match = ClipboardSearchEngine.match(
                 query: normalizedQuery,
-                in: title,
+                in: text,
                 mode: preferences.searchMode
               ) else { return attributed }
 
@@ -28,7 +42,7 @@ enum ClipboardHighlightedText {
             switch preferences.highlightStyle {
             case .bold:
                 attributed[attributedRange].font = .system(
-                    size: ClipboardTypography.rowPointSize,
+                    size: pointSize,
                     weight: .bold
                 )
             case .color:
@@ -36,7 +50,7 @@ enum ClipboardHighlightedText {
                 attributed[attributedRange].foregroundColor = .black
             case .italic:
                 attributed[attributedRange].font = .system(
-                    size: ClipboardTypography.rowPointSize,
+                    size: pointSize,
                     weight: .medium
                 ).italic()
             case .underline:
