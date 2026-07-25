@@ -480,6 +480,65 @@ struct ClipboardAlfredWorkflowTests {
         #expect(actionPanelToggleCount == 1)
     }
 
+    @Test func inputSourceShortcutPassesThroughWithoutCollapsingPreview() throws {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        let hostView = NSView(frame: panel.contentView?.bounds ?? .zero)
+        panel.contentView = hostView
+        panel.orderFront(nil)
+        defer { panel.orderOut(nil) }
+
+        var previewToggleCount = 0
+        let coordinator = ClipboardHistoryKeyMonitor.Coordinator()
+        coordinator.hostView = hostView
+        coordinator.handler = ClipboardHistoryKeyMonitor(
+            isPanelPresented: true,
+            isSearchPresented: true,
+            isActionPanelPresented: false,
+            pinShortcut: ClipboardPreferences.defaultPinShortcut,
+            deleteShortcut: ClipboardPreferences.defaultDeleteShortcut,
+            previewShortcut: ClipboardPreferences.defaultPreviewShortcut,
+            onMove: { _ in },
+            onSelectBoundary: { _ in },
+            onExtend: { _ in },
+            onExtendBoundary: { _ in },
+            onDefaultAction: {},
+            onPaste: { _ in },
+            onCopyPlainText: {},
+            onTogglePin: {},
+            onSaveForReuse: {},
+            onToggleActions: {},
+            onTogglePreview: { previewToggleCount += 1 },
+            onDelete: {},
+            onClear: { _ in },
+            onUndo: {},
+            onEscape: {},
+            onBeginSearch: { _ in },
+            onQuickAction: { _, _ in },
+            onPinnedAction: { _, _ in }
+        )
+
+        let controlSpace = try #require(keyEvent(
+            keyCode: kVK_Space,
+            characters: " ",
+            modifierFlags: .control
+        ))
+        let optionSpace = try #require(keyEvent(
+            keyCode: kVK_Space,
+            characters: " ",
+            modifierFlags: .option
+        ))
+
+        #expect(coordinator.handle(controlSpace) === controlSpace)
+        #expect(previewToggleCount == 0)
+        #expect(coordinator.handle(optionSpace) == nil)
+        #expect(previewToggleCount == 1)
+    }
+
     private func testWindow(identifier: String?) -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),

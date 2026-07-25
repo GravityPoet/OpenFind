@@ -131,7 +131,7 @@ struct ClipboardPreferences: Codable, Equatable, Sendable {
     )
     static let defaultPreviewShortcut = GlobalShortcut(
         keyCode: UInt32(kVK_Space),
-        modifiers: UInt32(controlKey),
+        modifiers: UInt32(optionKey),
         keyLabel: "Space"
     )
 
