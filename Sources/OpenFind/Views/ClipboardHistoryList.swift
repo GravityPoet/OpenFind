@@ -30,6 +30,7 @@ struct ClipboardHistoryList: View {
                                     sourceApplicationIcon: store.applicationIcon(for: entry),
                                     quickIndex: store.quickIndex(for: entry),
                                     selectionOrder: store.selectionOrder(for: entry),
+                                    searchPresentation: store.searchPresentation(for: entry),
                                     isSelected: index == store.selectedIndex
                                         || store.selectionOrder(for: entry) != nil,
                                     query: highlightQuery,

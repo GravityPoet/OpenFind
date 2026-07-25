@@ -6,6 +6,7 @@ struct ClipboardHistoryRow: View {
     let sourceApplicationIcon: NSImage?
     let quickIndex: Int?
     let selectionOrder: Int?
+    let searchPresentation: ClipboardSearchPresentation?
     let isSelected: Bool
     let query: String
     let preferences: ClipboardPreferences
@@ -26,7 +27,7 @@ struct ClipboardHistoryRow: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(entry.displayTitle)
-            .accessibilityValue(Text(sourceHelp))
+            .accessibilityValue(Text(accessibilityValue))
             .accessibilityHint(Text(L("Press Return to Paste Clipboard Item")))
             .accessibilityAddTraits(.isButton)
             .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -76,15 +77,38 @@ struct ClipboardHistoryRow: View {
                     }
             }
 
-            Text(ClipboardHighlightedText.title(
-                for: entry,
-                query: query,
-                preferences: preferences
-            ))
-                .font(ClipboardTypography.row)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(ClipboardHighlightedText.title(
+                    for: entry,
+                    query: query,
+                    preferences: preferences
+                ))
+                    .font(ClipboardTypography.row)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                if let searchPresentation,
+                   let context = searchPresentation.context {
+                    HStack(spacing: 5) {
+                        Text(searchPresentation.field.localizedLabel)
+                            .font(ClipboardTypography.matchLabel)
+                            .fixedSize(horizontal: true, vertical: false)
+                        Text(ClipboardHighlightedText.text(
+                            context,
+                            query: query,
+                            preferences: preferences,
+                            pointSize: ClipboardTypography.matchContextPointSize
+                        ))
+                            .font(ClipboardTypography.matchContext)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .foregroundStyle(isSelected
+                        ? Color.white.opacity(0.78)
+                        : ClipboardTypography.secondaryText)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if entry.isPinned {
                 Image(systemName: "pin.fill")
@@ -145,7 +169,9 @@ struct ClipboardHistoryRow: View {
     }
 
     private var rowHeight: CGFloat {
-        previewImage == nil ? 30 : CGFloat(preferences.imageRowHeight + 8)
+        let contentHeight: CGFloat = searchPresentation?.context == nil ? 30 : 43
+        guard previewImage != nil else { return contentHeight }
+        return max(contentHeight, CGFloat(preferences.imageRowHeight + 8))
     }
 
     @ViewBuilder
@@ -164,6 +190,12 @@ struct ClipboardHistoryRow: View {
             return entry.kind.localizedTitle
         }
         return "\(L("Source Application")): \(source)"
+    }
+
+    private var accessibilityValue: String {
+        guard let searchPresentation,
+              let context = searchPresentation.context else { return sourceHelp }
+        return "\(searchPresentation.field.localizedLabel): \(context). \(sourceHelp)"
     }
 
 }

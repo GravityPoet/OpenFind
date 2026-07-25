@@ -57,6 +57,7 @@ final class ClipboardHistoryStore {
     @ObservationIgnored var cachedQuickIndexByID: [UUID: Int] = [:]
     @ObservationIgnored var cachedQuickEntryIDs: [UUID] = []
     @ObservationIgnored var cachedHighlightQuery = ""
+    @ObservationIgnored var cachedSearchPresentationByID: [UUID: ClipboardSearchPresentation] = [:]
     @ObservationIgnored var cachedEntryByID: [UUID: ClipboardEntry] = [:]
     @ObservationIgnored var cachedSnippetKeywords: [(keyword: String, id: UUID)] = []
     @ObservationIgnored var clipboardProjectionBuildCount = 0

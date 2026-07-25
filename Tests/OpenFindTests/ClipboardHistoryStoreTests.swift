@@ -792,6 +792,104 @@ struct ClipboardHistoryStoreTests {
         ))
     }
 
+    @Test func populatedSearchRanksVisibleContentBeforeHiddenMetadataAndExplainsMatches()
+        throws {
+        let suite = "OpenFindTests.ClipboardRelevantSearch.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = Date()
+        let direct = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-400),
+            previewText: "Session notes",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("Session notes".utf8)]
+        )
+        let hidden = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-100),
+            previewText: String(repeating: "WARNING banner ", count: 12)
+                + "session details",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data([1])]
+        )
+        let image = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-200),
+            previewText: "Image",
+            kind: .image,
+            representations: ["public.png": Data([2])],
+            recognizedText: "Session shown in a screenshot"
+        )
+        let sourceOnly = ClipboardEntry(
+            createdAt: now,
+            previewText: "Unrelated clipboard entry",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data([3])],
+            sourceApplicationName: "Session"
+        )
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(
+                savedEntries: [sourceOnly, hidden, image, direct]
+            ),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+
+        store.query = "session"
+
+        #expect(store.filteredEntries.map(\.id) == [
+            direct.id,
+            hidden.id,
+            image.id,
+            sourceOnly.id,
+        ])
+        #expect(store.searchPresentation(for: direct)?.context == nil)
+        let hiddenMatch = try #require(store.searchPresentation(for: hidden))
+        #expect(hiddenMatch.field == .content)
+        #expect(hiddenMatch.context?.localizedCaseInsensitiveContains("session") == true)
+        let hiddenContext = try #require(hiddenMatch.context)
+        let visibleMatch = try #require(hiddenContext.range(
+            of: "session",
+            options: .caseInsensitive
+        ))
+        #expect(hiddenContext.distance(
+            from: hiddenContext.startIndex,
+            to: visibleMatch.lowerBound
+        ) <= 15)
+        let imageMatch = try #require(store.searchPresentation(for: image))
+        #expect(imageMatch.field == .recognizedText)
+        #expect(imageMatch.context?.localizedCaseInsensitiveContains("session") == true)
+        #expect(store.searchPresentation(for: sourceOnly)?.field == .sourceApplication)
+    }
+
+    @Test func emptySearchKeepsConfiguredPinAndRecencyOrdering() throws {
+        let suite = "OpenFindTests.ClipboardEmptySearchOrder.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = Date()
+        let pinnedOlder = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-100),
+            previewText: "Pinned",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data([1])],
+            isPinned: true
+        )
+        let recent = ClipboardEntry(
+            createdAt: now,
+            previewText: "Recent",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data([2])]
+        )
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(savedEntries: [recent, pinnedOlder]),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+
+        #expect(store.filteredEntries.map(\.id) == [pinnedOlder.id, recent.id])
+        #expect(store.searchPresentation(for: pinnedOlder) == nil)
+        store.setPinsPosition(.bottom)
+        #expect(store.filteredEntries.map(\.id) == [recent.id, pinnedOlder.id])
+    }
+
     @Test func quitPolicyClearsConfiguredHistoryAndSystemClipboard() throws {
         let suite = "OpenFindTests.ClipboardQuit.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))

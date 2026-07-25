@@ -470,6 +470,11 @@
 "Image" = "Image";
 "Clipboard Item" = "Clipboard Item";
 "Source Application" = "Application";
+"Clipboard Search Match Content" = "Content";
+"Clipboard Search Match Image Text" = "Image text";
+"Clipboard Search Match Source" = "Source";
+"Clipboard Search Match Keyword" = "Keyword";
+"Clipboard Search Match Collection" = "Collection";
 "First Copied" = "First copied";
 "Last Copied" = "Last copied";
 "Number of Copies" = "Copies";

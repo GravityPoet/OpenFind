@@ -470,6 +470,11 @@
 "Image" = "图像";
 "Clipboard Item" = "剪贴板项目";
 "Source Application" = "来源应用";
+"Clipboard Search Match Content" = "内容";
+"Clipboard Search Match Image Text" = "图片文字";
+"Clipboard Search Match Source" = "来源";
+"Clipboard Search Match Keyword" = "关键词";
+"Clipboard Search Match Collection" = "分类";
 "First Copied" = "首次复制";
 "Last Copied" = "最近复制";
 "Number of Copies" = "复制次数";
