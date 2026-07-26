@@ -6,8 +6,8 @@
 [![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS_14+-black.svg)](https://apple.com)
 [![Swift: 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 
-**Are we just simple replacements? We are creative things.**  
-*One App, 5 Creative Tools: Millisecond Deep Search, Encrypted OCR Clipboard, Lid-Closed KeepAwake, DriveAlive & KeyLock.*
+**One App, 5 Creative Tools**  
+*Millisecond Deep Search, Encrypted OCR Clipboard, Lid-Closed KeepAwake, DriveAlive & KeyLock.*
 
 OpenFind frees you from multi-app lag: **Zero-latency search inside ZIPs and PDFs**, **Instant text extraction from screenshot clipboards with AES encryption**, **Keep servers and builds running with lid closed**, and **Prevent external SSD/NAS disconnects**.
 
