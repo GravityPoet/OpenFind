@@ -6,8 +6,8 @@
 [![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS_14+-black.svg)](https://apple.com)
 [![Swift: 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 
-**我们做的只是简单的替代吗？我们是创造性的东西。**  
-*一个 App，5 个创造性的工具：毫秒级深层搜索、全加密 OCR 剪贴板、合盖防休眠、外接盘保鲜与键盘锁。*
+**一个 App，5 个创造性的工具**  
+*毫秒级深层搜索、全加密 OCR 剪贴板、合盖防休眠、外接盘保鲜与键盘锁。*
 
 OpenFind 让你不再被多工具卡顿折磨：**零延迟穿透代码与 ZIP 包**、**复制截图瞬间提取文字且全加密防护**、**合上 MacBook 屏幕编译与下载绝不断开**、**彻底解决外接硬盘与 NAS 假死掉盘**。
 
