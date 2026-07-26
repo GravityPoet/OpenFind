@@ -6,8 +6,8 @@
 [![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS_14+-black.svg)](https://apple.com)
 [![Swift: 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 
-**Stop cluttering your Mac with 5 RAM-hungry background apps.**  
-*Replace them all with one ultra-fast native Swift engine: Search, OCR Clipboard, Clamshell KeepAwake, DriveAlive & KeyLock.*
+**Are we just fucking simple replacements? We are creative things.**  
+*One App, 5 Creative Tools: Millisecond Deep Search, Encrypted OCR Clipboard, Lid-Closed KeepAwake, DriveAlive & KeyLock.*
 
 OpenFind frees you from multi-app lag: **Zero-latency search inside ZIPs and PDFs**, **Instant text extraction from screenshot clipboards with AES encryption**, **Keep servers and builds running with lid closed**, and **Prevent external SSD/NAS disconnects**.
 
@@ -25,7 +25,7 @@ OpenFind frees you from multi-app lag: **Zero-latency search inside ZIPs and PDF
 
 ## 🎯 Core Value Proposition
 
-Stop wasting system RAM on 5 separate utilities. OpenFind combines them into a single micro-native process that boosts your productivity 5x while saving 1GB+ RAM.
+This isn't just a simple replacement or bloated utility bundle. OpenFind unifies 5 creative tools into a single micro-native process that boosts your productivity 5x while saving 1GB+ RAM.
 
 ---
 
@@ -57,7 +57,7 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 
 ---
 
-## ✨ 5 Killer Toolkits in One Package
+## ✨ One App, 5 Creative Tools
 
 ### 1. ⚡ Hyper-Fast Local Engine (File & Content Search)
 * **Instant `mmap` Indexing**: Loads millions of file paths in microseconds without heap memory overhead.
