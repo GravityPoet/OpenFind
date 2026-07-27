@@ -109,7 +109,9 @@ extension ClipboardHistoryView {
             FileActions.revealInFinder(urls)
         case .quickLookFiles:
             guard let entry = store.selectedEntry else { return }
-            onClose()
+            // Keep the panel open, matching the Space-key preview: closing
+            // first hides the application, and a preview panel ordered front
+            // inside a hidden application never becomes visible.
             onQuickLook(entry)
         case .saveForReuse:
             saveSelectedForReuse()

@@ -7,6 +7,48 @@ import Testing
 @MainActor
 @Suite("Clipboard History Store Tests")
 struct ClipboardHistoryStoreTests {
+    @Test func kindFilterNarrowsTheProjectionAndComposesWithSearch() throws {
+        let persistence = MemoryClipboardPersistence()
+        let store = ClipboardHistoryStore(
+            defaults: try #require(UserDefaults(suiteName: "OpenFindTests.Clipboard.\(UUID())")),
+            persistence: persistence,
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("plain note".utf8)],
+            previewText: "plain note",
+            kind: .text
+        ))
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("https://example.com".utf8)],
+            previewText: "https://example.com",
+            kind: .url
+        ))
+        #expect(store.ingest(
+            representations: ["public.png": Data([0x89, 0x50, 0x4E, 0x47])],
+            previewText: "Image",
+            kind: .image
+        ))
+
+        #expect(store.filteredEntries.count == 3)
+
+        store.kindFilter = .link
+        #expect(store.filteredEntries.map(\.previewText) == ["https://example.com"])
+        #expect(store.selectedIndex == 0)
+
+        store.kindFilter = .image
+        #expect(store.filteredEntries.map(\.previewText) == ["Image"])
+
+        store.kindFilter = .text
+        store.query = "plain"
+        #expect(store.filteredEntries.map(\.previewText) == ["plain note"])
+        store.query = "example"
+        #expect(store.filteredEntries.isEmpty)
+
+        store.kindFilter = .all
+        #expect(store.filteredEntries.map(\.previewText) == ["https://example.com"])
+    }
+
     @Test func deduplicatesSearchesAndPreservesPinnedItems() throws {
         let persistence = MemoryClipboardPersistence()
         let store = ClipboardHistoryStore(

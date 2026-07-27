@@ -14,6 +14,15 @@ struct ClipboardHistoryList: View {
     var body: some View {
         let visibleEntries = store.filteredEntries
         let highlightQuery = store.highlightQuery
+        // Browsing keeps the store's pinned-then-recency order, so section
+        // titles are inserted at group boundaries without reordering anything:
+        // arrow-key navigation and every visible index stay untouched. A
+        // search is ranked by relevance, where date groups would only
+        // interleave noise, so it stays flat.
+        let annotatedEntries = Self.annotate(
+            visibleEntries,
+            grouped: store.query.isEmpty
+        )
         ScrollViewReader { proxy in
             Group {
                 if visibleEntries.isEmpty {
@@ -22,7 +31,11 @@ struct ClipboardHistoryList: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 1) {
-                            ForEach(visibleEntries) { entry in
+                            ForEach(annotatedEntries, id: \.entry.id) { item in
+                                if let sectionTitle = item.sectionTitle {
+                                    ClipboardSectionHeader(title: sectionTitle)
+                                }
+                                let entry = item.entry
                                 let index = store.visibleIndex(for: entry) ?? 0
                                 ClipboardHistoryRow(
                                     entry: entry,
@@ -107,6 +120,71 @@ struct ClipboardHistoryList: View {
         .background(Color.clear)
     }
 
+    private struct AnnotatedEntry {
+        let sectionTitle: String?
+        let entry: ClipboardEntry
+    }
+
+    private enum SectionKey {
+        case pinned, today, yesterday, week, earlier
+
+        var title: String {
+            switch self {
+            case .pinned: L("Pinned Section")
+            case .today: L("Today Section")
+            case .yesterday: L("Yesterday Section")
+            case .week: L("Previous Week Section")
+            case .earlier: L("Earlier Section")
+            }
+        }
+    }
+
+    private static func annotate(
+        _ entries: [ClipboardEntry],
+        grouped: Bool
+    ) -> [AnnotatedEntry] {
+        guard grouped else {
+            return entries.map { AnnotatedEntry(sectionTitle: nil, entry: $0) }
+        }
+        let calendar = Calendar.current
+        let weekCutoff = Date(timeIntervalSinceNow: -7 * 24 * 60 * 60)
+        var previousKey: SectionKey?
+        return entries.map { entry in
+            let key: SectionKey
+            if entry.isPinned {
+                key = .pinned
+            } else if calendar.isDateInToday(entry.initialCopiedAt) {
+                key = .today
+            } else if calendar.isDateInYesterday(entry.initialCopiedAt) {
+                key = .yesterday
+            } else if entry.initialCopiedAt > weekCutoff {
+                key = .week
+            } else {
+                key = .earlier
+            }
+            defer { previousKey = key }
+            return AnnotatedEntry(
+                sectionTitle: key == previousKey ? nil : key.title,
+                entry: entry
+            )
+        }
+    }
+
+}
+
+private struct ClipboardSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 9)
+            .padding(.top, 10)
+            .padding(.bottom, 3)
+            .accessibilityAddTraits(.isHeader)
+    }
 }
 
 private enum SelectionOrigin {

@@ -25,7 +25,9 @@ OpenFind frees you from multi-app lag: **Zero-latency search inside ZIPs and PDF
 
 ## 🎯 Core Value Proposition
 
-This isn't just a simple replacement or bloated utility bundle. OpenFind unifies 5 creative tools into a single micro-native process that boosts your productivity 5x while saving 1GB+ RAM.
+This isn't just a simple replacement or bloated utility bundle. OpenFind unifies 5 creative tools into a single micro-native process, so five always-on utilities stop each holding their own resident memory. Measured, not promised — one process at ~274 MB after 21 hours of uptime with live search indexes:
+
+![OpenFind in Activity Monitor: a single process at 274 MB after 21 hours of uptime](docs/assets/openfind-memory-actual.png)
 
 ---
 
@@ -48,7 +50,7 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 
 | Scenario / Feature | 5 Separate Apps (Spotlight + Paste + Amphetamine + etc.) | OpenFind Way 🚀 |
 | :--- | :--- | :--- |
-| **System Resource Impact** | 🥵 5 background processes eating 1GB+ RAM and battery. | 🍃 **One lightweight native engine** with `mmap` binary index & zero-lag. |
+| **System Resource Impact** | 🥵 5 background processes, each holding its own resident memory and battery drain. | 🍃 **One lightweight native engine** with `mmap` binary index — ~274 MB measured after 21 h uptime. |
 | **File & Content Search** | ⏱️ 5~10s disk scans; no regex, no deep search in ZIPs. | ⚡ **Instant millisecond search** across code, PDFs, Office & inside ZIPs without extracting. |
 | **Clipboard History** | 🔓 Plaintext storage, security risk for API keys. | 🔐 **Encrypted SQLite storage**, Vision OCR text recognition, Paste Stack & auto-privacy masking. |
 | **Sleep Prevention** | ☕ Manual toggles; breaks when you close the MacBook lid. | ☕ **Smart Keep-Awake**, Clamshell (Lid-Closed) Mode, and condition-based automation (App/Download). |
@@ -66,16 +68,17 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 * **Regex, Globs & Quick Look**: Complete support for `src/**/*.swift`, `regex:^Report-[0-9]+$`, and instant `Space` key Quick Look preview.
 
 ### 2. 📋 Encrypted Clipboard Manager & OCR Tool
-* **Encrypted Storage**: Secured by hardware-level AES encryption to protect your sensitive history.
+* **Encrypted Storage**: AES-GCM encryption with keys stored in the macOS Keychain to protect your sensitive history.
 * **Vision Framework OCR**: Copy any screenshot or image, and OpenFind automatically extracts and lets you search text inside images.
 * **Sequential Paste Stack**: Copy 10 items in order, then paste them sequentially with a single shortcut.
 * **Snippet Expansion & Auto-Privacy**: Pin frequent snippets and automatically ignore 1Password, Keychain, and sensitive app data.
 
 ### 3. ☕ Smart Keep-Awake & Clamshell (Lid-Closed) Mode
 * **Sleep Prevention**: Keep your Mac display or system awake for custom durations or indefinitely.
-* **Clamshell Mode**: Keep your MacBook running complex scripts or servers even when the lid is closed.
-* **Automated Condition Triggers**: Automatically activate keep-awake when specific Apps run, active downloads occur, or high network/CPU activity is detected.
+* **Clamshell Mode**: Keep your MacBook running complex scripts or servers even when the lid is closed. Toggling it runs `pmset disablesleep`, so macOS asks for an administrator password.
+* **Automated Condition Triggers**: Activate keep-awake automatically on 14 condition types — running apps, active downloads, CPU load, Wi-Fi/VPN network, connected displays, USB/Bluetooth devices, schedules, and more.
 * **Low-Battery Guard**: Automatically restores normal sleep rules when battery drops below safety thresholds.
+* **Amphetamine-Compatible AppleScript**: OpenFind implements Amphetamine's AppleScript command set, so your existing keep-awake automation scripts keep working (no affiliation with Amphetamine).
 
 ### 4. 💾 DriveAlive External Storage Protector
 * **Prevents Disconnections**: Keeps external HDDs, SSDs, and NAS volumes active using background micro-heartbeats.
@@ -88,7 +91,7 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 
 ## ⚡ Quick Start (60 Seconds)
 
-> **Prerequisites**: macOS 14.0+ (Sonoma or later) · Apple Silicon or Intel Mac · Swift 6.0 / Xcode 15+ (for source build)
+> **Prerequisites**: macOS 14.0+ (Sonoma or later) · Apple Silicon or Intel Mac · Swift 6.0 / Xcode 16+ (for source build)
 
 ### Run CLI Mode
 ```bash
@@ -98,8 +101,14 @@ git clone https://github.com/GravityPoet/OpenFind.git && cd OpenFind
 # 2. Build with macOS 14+ SDK
 xcrun --sdk macosx swift build
 
-# 3. Perform a instant search for code containing "OpenFind"
+# 3. Perform an instant search for code containing "OpenFind"
 xcrun --sdk macosx swift run OpenFind --search "ext:swift content:OpenFind"
+```
+
+### Install with Homebrew
+
+```bash
+brew install --cask GravityPoet/tap/openfind
 ```
 
 ### Install the signed GUI release
@@ -137,6 +146,8 @@ regex:^Report-[0-9]+$   # Match names using regex
 content:"API_SECRET"    # Deep text search in files, PDFs & Zipped sources
 in:/Users/me/Projects   # Search recursively inside specific directory
 tag:Project;Important  # Finder tag filtering
+size:>10mb dm:today     # Filter by size and modified (dm:) / created (dc:) date
+report AND NOT draft    # Boolean operators: AND / OR / NOT
 
 # --- SHORTCUT CHEAT SHEET ---
 ⌃⌥F                     # Toggle OpenFind Search Bar
@@ -148,9 +159,9 @@ Space (on result)       # Native Quick Look preview
 ## 🏗️ Architecture & Security First
 
 OpenFind is built using **Swift 6 & SwiftUI** with strict privacy guarantees:
-* **100% Local Execution**: No telemetry, no cloud analytics, zero external network requests.
+* **100% Local Execution**: No telemetry, no cloud analytics. The only network traffic is the Sparkle update check against GitHub Releases, and you can disable it.
 * **Unidirectional State Architecture**: Clean separation between `Views -> State -> Engine -> Models`.
-* **Process-Isolated Extraction**: Safe sandboxed decompression and text extraction for untrusted archives.
+* **Process-Isolated Extraction**: Decompression and text extraction for untrusted archives run in isolated helper processes with output and time limits.
 
 ---
 

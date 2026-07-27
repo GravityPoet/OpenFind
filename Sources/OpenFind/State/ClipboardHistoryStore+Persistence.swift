@@ -38,6 +38,11 @@ extension ClipboardHistoryStore {
 
     func persist() {
         guard isPersistenceEnabled, !requiresPersistenceMigration else { return }
+        guard !isPersistenceDegraded else {
+            lastErrorMessage = ClipboardHistoryError
+                .persistenceDesynchronized.localizedDescription
+            return
+        }
         do {
             try persistence.save(entries)
             lastErrorMessage = nil

@@ -423,6 +423,17 @@
 "Paste Plain Text" = "Paste Plain Text";
 "Plain Text" = "Plain Text";
 "Clipboard History Count" = "%lld items";
+"Kind Filter Bar" = "Content type filter";
+"Kind Filter All" = "All";
+"Kind Filter Text" = "Text";
+"Kind Filter Images" = "Images";
+"Kind Filter Links" = "Links";
+"Kind Filter Files" = "Files";
+"Pinned Section" = "Pinned";
+"Today Section" = "Today";
+"Yesterday Section" = "Yesterday";
+"Previous Week Section" = "Previous 7 Days";
+"Earlier Section" = "Earlier";
 "Clipboard Total Count" = "%lld total";
 "Clipboard Copy Count Compact" = "%lld copies";
 "Clipboard Text Statistics" = "%lld words; %lld chars";
@@ -485,6 +496,8 @@
 "Clipboard Shortcut Conflicts" = "Clipboard shortcut conflicts with another OpenFind action";
 "Clipboard Shortcut Unavailable" = "Clipboard shortcut unavailable";
 "Clear Clipboard History" = "Clear clipboard history";
+"Clear Clipboard History Confirmation Title" = "Clear all clipboard history?";
+"Clear Clipboard History Confirmation Message" = "This removes every item, including saved ones. You can undo right away with Command-Z in the history panel.";
 "Clipboard History Help" = "OpenFind records supported clipboard types locally. Saved history is encrypted; Apple-signed builds keep the key in Keychain, while this local build keeps it in a user-only file so updates do not repeatedly ask for your password. Payloads are never written to logs.";
 "Clipboard Migration Required" = "One-time clipboard history migration";
 "Clipboard Migration Help" = "Your existing encrypted history is preserved. Unlock it once to move its legacy key out of Keychain; future OpenFind updates will not ask again.";
@@ -510,6 +523,7 @@
 "Clipboard Content Too Large" = "This clipboard item is too large to retain.";
 "Clipboard Persistence Unavailable" = "Encrypted clipboard history could not be saved.";
 "Clipboard Persistence Corrupt" = "Saved clipboard history could not be read.";
+"Clipboard Persistence Desynchronized" = "Clipboard history is temporarily read-only: the saved history could not be loaded at launch, so nothing will be overwritten. Relaunch OpenFind to recover.";
 "Clipboard Pasteboard Write Failed" = "OpenFind could not place the clipboard item on the pasteboard.";
 "Clipboard Entry Missing" = "The clipboard item no longer exists.";
 "Clipboard History Full" = "Clipboard history is full because every retained item is pinned.";

@@ -7,14 +7,25 @@ struct ClipboardEntryPreviewBody: View {
 
     var body: some View {
         if let image = previewImage {
+            // Top-aligned card instead of a small image floating in the
+            // middle of the column: a bounded height, hairline border, and
+            // soft shadow give small captures a deliberate frame.
             Image(nsImage: image)
                 .resizable()
                 .interpolation(.high)
                 .antialiased(true)
                 .scaledToFit()
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .padding(18)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay {
+                    // The border and shadow must hug the fitted image, so the
+                    // bounding frame is applied only after them.
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(.separator, lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.10), radius: 12, y: 3)
+                .frame(maxHeight: 440, alignment: .top)
+                .padding(20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else if entry.kind == .file, !entry.fileURLs.isEmpty {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {

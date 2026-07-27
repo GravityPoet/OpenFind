@@ -31,6 +31,15 @@ struct TriggerWakeMonitorLifetimeTests {
     }
 
     @Test func bluetoothConnectCallbackHopsFromIOBluetoothQueueToMainActor() async throws {
+        // Registering the IOBluetooth connect notification is TCC-gated on
+        // macOS 26, and the SwiftPM test runner cannot carry
+        // NSBluetoothAlwaysUsageDescription — TCC's asynchronous verdict then
+        // aborts the whole test process (SIGABRT) after the suites finish.
+        // Opt in explicitly, matching the live trigger acceptance test.
+        guard ProcessInfo.processInfo
+            .environment["OPENFIND_LIVE_TRIGGER_ACCEPTANCE"] == "1" else {
+            return
+        }
         let monitor = BluetoothConnectionWakeMonitor()
         let device = try #require(IOBluetoothDevice(addressString: "00:11:22:33:44:55"))
         let context = BluetoothCallbackTestContext(monitor: monitor, device: device)

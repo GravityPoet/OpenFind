@@ -72,6 +72,64 @@ struct AwakeSessionControllerTests {
         #expect(assertions.deactivationCount == 1)
     }
 
+    @Test func timerDeadlineExtendsAcrossSystemSleep() async throws {
+        let assertions = FakePowerAssertionController()
+        let uptime = MutableUptime(10_000)
+        let controller = AwakeSessionController(
+            assertions: assertions,
+            uptimeProvider: { uptime.value }
+        )
+
+        try controller.start(
+            .init(endCondition: .after(0.08)),
+            at: Date(timeIntervalSince1970: 1_000)
+        )
+
+        // Wall-clock time advances well past the deadline while uptime (which
+        // pauses during system sleep) stays frozen: the session must survive.
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(controller.isActive)
+
+        uptime.value += 0.08
+        try await waitUntil { !controller.isActive }
+        #expect(assertions.deactivationCount == 1)
+    }
+
+    @Test func deadlineKeepsRetryingWhenClamshellTeardownFails() async throws {
+        let assertions = FakePowerAssertionController()
+        let closedDisplay = FakeClosedDisplayModeManager()
+        let center = NotificationCenter()
+        let start = Date(timeIntervalSince1970: 1_000)
+        let clock = MutableWallClock(start)
+        let controller = AwakeSessionController(
+            assertions: assertions,
+            closedDisplay: closedDisplay,
+            notificationCenter: center,
+            dateProvider: { clock.now },
+            systemClockPollInterval: 60,
+            deadlineRetryInterval: 0.02
+        )
+        let options = AwakeSessionOptions(
+            allowsDisplaySleep: false,
+            allowsClosedDisplaySleep: false,
+            endTimeCalculation: .systemClock
+        )
+
+        try await controller.startAsync(
+            .init(endCondition: .after(120), options: options),
+            at: start
+        )
+        closedDisplay.disableErrorsRemaining = 2
+
+        clock.now = start.addingTimeInterval(121)
+        center.post(name: .NSSystemClockDidChange, object: nil)
+
+        try await waitUntil { !controller.isActive }
+        #expect(closedDisplay.disableCount == 3)
+        #expect(assertions.deactivationCount == 1)
+        #expect(!closedDisplay.isEnabled)
+    }
+
     @Test func absoluteDateSessionUsesControllerOwnedWallClockDeadline() throws {
         let assertions = FakePowerAssertionController()
         let controller = AwakeSessionController(assertions: assertions)
@@ -526,8 +584,15 @@ private final class FakeClosedDisplayModeManager: ClosedDisplayModeManaging {
         isEnabled = true
     }
 
+    struct DisableFailure: Error {}
+    var disableErrorsRemaining = 0
+
     func disable() async throws {
         disableCount += 1
+        if disableErrorsRemaining > 0 {
+            disableErrorsRemaining -= 1
+            throw DisableFailure()
+        }
         isEnabled = false
     }
 }

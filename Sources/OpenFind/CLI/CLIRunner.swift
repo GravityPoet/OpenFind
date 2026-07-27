@@ -15,6 +15,7 @@ import Foundation
 ///   --packages   search inside .app / .bundle packages (default)
 ///   --no-packages
 ///                exclude package contents
+///   -h, --help   show usage and exit
 enum CLIRunner {
 
     static func run(arguments: [String]) async {
@@ -123,7 +124,7 @@ enum CLIRunner {
         return options
     }
 
-    private static func printUsage() {
+    static func printUsage(to handle: FileHandle = .standardError) {
         let usage = """
         Usage: OpenFind --search <query> [paths...] [options]
           --content    search file contents (default: file names)
@@ -139,8 +140,9 @@ enum CLIRunner {
                        exclude package contents
           --deep       include noisy cache/log/system locations in the index
           --refresh    rebuild the index before searching
+          -h, --help   show this help and exit
 
         """
-        FileHandle.standardError.write(Data(usage.utf8))
+        handle.write(Data(usage.utf8))
     }
 }

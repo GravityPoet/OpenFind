@@ -8,6 +8,12 @@ protocol LowBatteryPrompting: AnyObject {
 
 @MainActor
 final class LowBatteryAlertPrompt: LowBatteryPrompting {
+    /// The prompt can be invisible when the session allows display sleep, and
+    /// an unanswered modal blocks every later battery snapshot. Waiting
+    /// forever would keep draining the battery this feature exists to
+    /// protect, so an unanswered prompt defaults to ending the session.
+    private static let unansweredTimeout: TimeInterval = 60
+
     func shouldEndSession(batteryPercentage: Int) async -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
@@ -18,6 +24,18 @@ final class LowBatteryAlertPrompt: LowBatteryPrompting {
         )
         alert.addButton(withTitle: L("End Awake Session"))
         alert.addButton(withTitle: L("Continue Session"))
+        let timeout = Timer(timeInterval: Self.unansweredTimeout, repeats: false) { _ in
+            // The timer fires on the main run loop; stopModal must run
+            // synchronously here because the modal session does not drain
+            // scheduled main-actor tasks.
+            MainActor.assumeIsolated {
+                NSApp.stopModal(withCode: .alertFirstButtonReturn)
+            }
+        }
+        // .common includes the modal-panel mode; .default would never fire
+        // while runModal is active.
+        RunLoop.main.add(timeout, forMode: .common)
+        defer { timeout.invalidate() }
         return alert.runModal() == .alertFirstButtonReturn
     }
 }

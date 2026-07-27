@@ -64,9 +64,15 @@ extension ClipboardHistoryWindowController {
 
     func schedulePasteStackAdvance() {
         guard let stackID = store.pasteStack?.id else { return }
+        // The delay lets the target application read the pasteboard for the
+        // key-down it just received before the stack swaps in the next item;
+        // rescheduling on a second key-up merges rapid presses into a single
+        // advance so the stack never skips an item. Keep the window short:
+        // while it is open a repeated Command-V pastes the same item again,
+        // so every extra millisecond here widens the double-paste window.
         pasteStackAdvanceTask?.cancel()
         pasteStackAdvanceTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
+            try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled,
                   let self,
                   store.pasteStack?.id == stackID else { return }

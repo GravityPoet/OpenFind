@@ -128,6 +128,15 @@ final class EncryptedClipboardHistoryPersistence: ClipboardHistoryPersisting {
         if !database.exists, defaults.data(forKey: Self.ciphertextKey) != nil {
             _ = try load()
         }
+        // Safety valve against history wipe-out: `saveToDatabase` deletes
+        // every stored row absent from `entries`. If this session has never
+        // successfully read the store (`savedEntriesByID` is empty after a
+        // transient load failure) while rows exist on disk, writing now would
+        // permanently destroy them all — a startup hiccup must degrade to
+        // read-only, never to deletion.
+        if savedEntriesByID.isEmpty, try database.storedEntryCount() > 0 {
+            throw ClipboardHistoryError.persistenceDesynchronized
+        }
         let keyData = try keyDataForUse()
         try saveToDatabase(entries, keyData: keyData)
         defaults.removeObject(forKey: Self.ciphertextKey)

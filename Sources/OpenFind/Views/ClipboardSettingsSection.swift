@@ -3,6 +3,7 @@ import SwiftUI
 struct ClipboardSettingsSection: View {
     @Bindable var store: ClipboardHistoryStore
     @Bindable var controller: ClipboardController
+    @State private var isConfirmingClearAll = false
 
     var body: some View {
         Section {
@@ -30,9 +31,19 @@ struct ClipboardSettingsSection: View {
             }
 
             Button(L("Clear Clipboard History"), role: .destructive) {
-                store.clearAll()
+                isConfirmingClearAll = true
             }
             .disabled(store.entries.isEmpty)
+            .confirmationDialog(
+                L("Clear Clipboard History Confirmation Title"),
+                isPresented: $isConfirmingClearAll
+            ) {
+                Button(L("Clear Clipboard History"), role: .destructive) {
+                    store.clearAll()
+                }
+            } message: {
+                Text(L("Clear Clipboard History Confirmation Message"))
+            }
         } header: {
             Text(L("Clipboard History"))
         } footer: {

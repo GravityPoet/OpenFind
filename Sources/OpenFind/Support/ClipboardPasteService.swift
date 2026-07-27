@@ -32,9 +32,16 @@ enum ClipboardPasteError: Error, Equatable, LocalizedError {
 /// logged or persisted.
 @MainActor
 final class ClipboardPasteService {
+    /// How long a captured target stays trusted when the panel is reopened
+    /// from an OpenFind surface. Beyond this the previous external
+    /// application is more likely a window the user has forgotten about
+    /// than the one they expect to paste into.
+    private static let staleTargetLifetime: Duration = .seconds(120)
+
     private let workspace: NSWorkspace
     private let ownProcessIdentifier: pid_t
     private var targetApplication: NSRunningApplication?
+    private var targetCapturedAt: ContinuousClock.Instant?
 
     init(
         workspace: NSWorkspace = .shared,
@@ -49,14 +56,29 @@ final class ClipboardPasteService {
               frontmost.processIdentifier != ownProcessIdentifier,
               !frontmost.isTerminated else {
             // Opening the panel from an OpenFind menu should not erase a
-            // previously captured external application.
+            // previously captured external application — but only while that
+            // capture is still recent.
+            if let capturedAt = targetCapturedAt,
+               ContinuousClock.now - capturedAt > Self.staleTargetLifetime {
+                targetApplication = nil
+                targetCapturedAt = nil
+            }
             return
         }
         targetApplication = frontmost
+        targetCapturedAt = ContinuousClock.now
     }
 
-    func pasteIntoCapturedApplication(cursorOffsetFromEnd: Int = 0) async throws {
+    /// Activates the captured target, then asks `preparePasteboard` for the
+    /// payload and sends Command-V. The pasteboard is written only after
+    /// activation succeeds, so a failed paste never destroys what the user
+    /// had on the clipboard.
+    func pasteIntoCapturedApplication(
+        preparePasteboard: () throws -> Int
+    ) async throws {
         let targetPID = try await activateCapturedApplicationProcess()
+        await waitForPhysicalModifierRelease()
+        let cursorOffsetFromEnd = try preparePasteboard()
 
         guard let keyDown = CGEvent(
             keyboardEventSource: nil,
@@ -94,6 +116,21 @@ final class ClipboardPasteService {
 
     func activateCapturedApplication() async throws {
         _ = try await activateCapturedApplicationProcess()
+    }
+
+    /// Physical modifiers still held from the invoking shortcut (for example
+    /// Option-Return) leak into the synthetic Command-V in applications that
+    /// read live HID state, turning paste into a different command entirely
+    /// (in Finder, Command-Option-V moves files). Wait briefly for release.
+    private func waitForPhysicalModifierRelease() async {
+        let watched: CGEventFlags = [
+            .maskCommand, .maskAlternate, .maskShift, .maskControl,
+        ]
+        for _ in 0..<30 {
+            let flags = CGEventSource.flagsState(.hidSystemState)
+            if flags.intersection(watched).isEmpty { return }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
     }
 
     private func activateCapturedApplicationProcess() async throws -> pid_t {

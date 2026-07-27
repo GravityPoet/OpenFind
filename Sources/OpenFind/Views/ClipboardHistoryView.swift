@@ -25,6 +25,8 @@ struct ClipboardHistoryView: View {
                 onPerformContentAction: performContentAction
             )
 
+            ClipboardKindFilterBar(store: store)
+
             if let error = store.lastErrorMessage {
                 ClipboardErrorBanner(message: error) { store.clearError() }
             }

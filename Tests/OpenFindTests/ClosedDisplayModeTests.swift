@@ -29,7 +29,9 @@ struct ClosedDisplayModeTests {
     }
 
     @Test func enableAndDisableRestoreTheExactOriginalValue() async throws {
-        let defaults = try #require(UserDefaults(suiteName: "OpenFindTests.ClosedDisplay.\(UUID())"))
+        let suiteName = "OpenFindTests.ClosedDisplay.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let power = FakeClosedDisplayPower(initial: false)
         let controller = ClosedDisplayModeController(
             power: power,
@@ -67,6 +69,7 @@ struct ClosedDisplayModeTests {
     @Test func recoveryRestoresAStaleManagedValueAfterAProcessInterruption() async throws {
         let suiteName = "OpenFindTests.ClosedDisplay.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let power = FakeClosedDisplayPower(initial: false)
         let first = ClosedDisplayModeController(
             power: power,
@@ -90,6 +93,7 @@ struct ClosedDisplayModeTests {
     @Test func userChangeIsNotOverwrittenDuringRecovery() async throws {
         let suiteName = "OpenFindTests.ClosedDisplay.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let power = FakeClosedDisplayPower(initial: false)
         let controller = ClosedDisplayModeController(
             power: power,

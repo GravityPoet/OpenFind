@@ -69,7 +69,10 @@ extension ClipboardHistoryStore {
     private func rebuildClipboardProjection(revision: UInt64) {
         let structuredQuery = ClipboardStructuredQuery.parse(query)
         let search = structuredQuery.text
-        let sorted = sortedEntries.filter(structuredQuery.matches)
+        let kindFiltered = kindFilter == .all
+            ? sortedEntries
+            : sortedEntries.filter { kindFilter.matches($0.kind) }
+        let sorted = kindFiltered.filter(structuredQuery.matches)
         let ranked: [ClipboardRankedSearchResult]
         if search.isEmpty {
             ranked = sorted.enumerated().map {

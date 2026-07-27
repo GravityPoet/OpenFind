@@ -16,7 +16,7 @@ final class GlobalHotKeyRegistry {
     private struct Entry {
         let shortcut: GlobalShortcut
         let enabled: Bool
-        let action: @MainActor () -> Void
+        var action: @MainActor () -> Void
         let carbonID: UInt32
         var hotKey: EventHotKeyRef?
         var state: State
@@ -92,6 +92,10 @@ final class GlobalHotKeyRegistry {
         if let existing = entries[id],
            existing.shortcut == shortcut,
            existing.enabled == enabled {
+            // Callers may rebind with a fresh closure (an early setShortcut
+            // can register a placeholder action before start()); keeping the
+            // old closure here would leave the hot key firing into it forever.
+            entries[id]?.action = action
             if enabled && isStarted {
                 entries[id]?.state = existing.hotKey == nil ? registerEntry(id: id) : .registered
             } else if enabled, let installationStatus, installationStatus != noErr {

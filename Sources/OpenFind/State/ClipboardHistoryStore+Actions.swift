@@ -257,6 +257,22 @@ extension ClipboardHistoryStore {
         }
     }
 
+    /// Hot-path membership check that avoids decoding entries wholesale: the
+    /// event-tap callback for Quick Merge runs while the user's Command-C is
+    /// suspended, so candidates are discarded by stored UTF-8 byte count
+    /// before any Data-to-String conversion happens.
+    func containsPlainText(_ text: String, inFirst limit: Int) -> Bool {
+        let utf8Count = text.utf8.count
+        return entries.prefix(limit).contains { entry in
+            if let data = entry.representations[NSPasteboard.PasteboardType.string.rawValue]
+                ?? entry.representations["public.utf8-plain-text"],
+               data.count != utf8Count {
+                return false
+            }
+            return plainText(for: entry) == text
+        }
+    }
+
     func plainText(for entry: ClipboardEntry) -> String? {
         if let data = entry.representations[NSPasteboard.PasteboardType.string.rawValue]
             ?? entry.representations["public.utf8-plain-text"],
