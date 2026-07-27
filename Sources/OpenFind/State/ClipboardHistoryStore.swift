@@ -131,7 +131,9 @@ final class ClipboardHistoryStore {
         do {
             entries = try persistence.load()
             let trimmed = trimToLimits()
-            if trimmed || normalizePinnedKeys() { persist() }
+            let normalizedKinds = normalizeContentKinds()
+            let normalizedPins = normalizePinnedKeys()
+            if trimmed || normalizedKinds || normalizedPins { persist() }
             enqueueMissingImageTextRecognition()
         } catch {
             // A transient load failure must degrade this session to

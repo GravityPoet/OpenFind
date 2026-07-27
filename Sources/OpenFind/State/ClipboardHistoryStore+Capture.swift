@@ -99,6 +99,10 @@ extension ClipboardHistoryStore {
             lastErrorMessage = ClipboardHistoryError.contentTooLarge.localizedDescription
             return false
         }
+        let resolvedKind = ClipboardEntryKind.resolvingStandaloneURL(
+            kind,
+            previewText: previewText
+        )
         let retainedEntryID: UUID
         if let duplicateIndex = entries.firstIndex(where: {
             $0.retainedPasteboardItems == retainedItems
@@ -107,7 +111,7 @@ extension ClipboardHistoryStore {
             duplicate.firstCopiedAt = duplicate.initialCopiedAt
             duplicate.createdAt = createdAt
             duplicate.previewText = String(previewText.prefix(4_096))
-            duplicate.kind = kind
+            duplicate.kind = resolvedKind
             duplicate.representations = representations
             duplicate.pasteboardItems = pasteboardItems
             duplicate.copyCount = duplicate.numberOfCopies + 1
@@ -125,7 +129,7 @@ extension ClipboardHistoryStore {
             let entry = ClipboardEntry(
                 createdAt: createdAt,
                 previewText: String(previewText.prefix(4_096)),
-                kind: kind,
+                kind: resolvedKind,
                 representations: representations,
                 pasteboardItems: pasteboardItems,
                 firstCopiedAt: createdAt,
@@ -144,7 +148,7 @@ extension ClipboardHistoryStore {
         selectedIndex = 0
         clearMultiSelection()
         persist()
-        if kind == .image {
+        if resolvedKind == .image {
             enqueueImageTextRecognition(ids: [retainedEntryID])
         }
         return true

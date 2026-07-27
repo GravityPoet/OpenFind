@@ -7,6 +7,34 @@ enum ClipboardEntryKind: String, Codable, Sendable {
     case file
     case image
     case other
+
+    /// Some applications copy a visible URL as plain text without also
+    /// declaring `public.url`. Treat only a complete HTTP(S) value as a link;
+    /// ordinary prose that merely contains a URL remains text.
+    static func resolvingStandaloneURL(
+        _ declaredKind: ClipboardEntryKind,
+        previewText: String
+    ) -> ClipboardEntryKind {
+        guard declaredKind == .text || declaredKind == .richText,
+              standaloneWebURL(in: previewText) != nil else {
+            return declaredKind
+        }
+        return .url
+    }
+
+    static func standaloneWebURL(in text: String) -> URL? {
+        let candidate = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty,
+              !candidate.contains(where: \.isWhitespace),
+              let url = URL(string: candidate),
+              !url.isFileURL,
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host?.isEmpty == false else {
+            return nil
+        }
+        return url
+    }
 }
 
 /// One-tap content-type filter for the history panel, in the spirit of
