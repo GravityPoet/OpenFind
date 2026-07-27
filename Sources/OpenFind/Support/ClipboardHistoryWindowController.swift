@@ -119,6 +119,7 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     ) {
         pasteService.captureTargetApplication()
         store.query = ""
+        store.kindFilter = .all
         store.selectedIndex = 0
         store.clearMultiSelection()
         store.isSearchPresented = true
@@ -150,23 +151,15 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
 
     func paste(_ entry: ClipboardEntry, plainTextOnly: Bool = false) {
         let shouldPastePlainText = plainTextOnly || store.pasteWithoutFormatting
-        let cursorOffsetFromEnd: Int
-        do {
-            cursorOffsetFromEnd = try store.copy(
-                entry,
-                plainTextOnly: shouldPastePlainText
-            )
-        } catch {
-            store.reportError(error)
-            return
-        }
-
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await pasteService.pasteIntoCapturedApplication(
-                    cursorOffsetFromEnd: cursorOffsetFromEnd
-                )
+                // The pasteboard is written inside the closure, after target
+                // activation has succeeded: an activation failure must not
+                // overwrite what the user already had on the clipboard.
+                try await pasteService.pasteIntoCapturedApplication {
+                    try store.copy(entry, plainTextOnly: shouldPastePlainText)
+                }
                 close()
             } catch {
                 store.reportError(error)

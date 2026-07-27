@@ -590,7 +590,14 @@ enum SearchEngine {
             var inFlight = 0
 
             for item in workItems {
-                if Task.isCancelled { return }
+                // Cancellation must break to the drain loop below, not return.
+                // Returning skips `consume`, so reservations held by finished
+                // workers are never released and workers queued inside
+                // `memoryGate.acquire` hang forever: the group then never
+                // drains, `run()`'s `endSearch()` defer never executes, and
+                // every index refresh blocked on `waitForSearchesToFinish()`
+                // stalls until relaunch.
+                if Task.isCancelled { break }
 
                 while inFlight >= maxConcurrency {
                     if let outcome = await group.next() { await consume(outcome) }

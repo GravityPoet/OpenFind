@@ -56,7 +56,12 @@ struct ClipboardSnippetTypingBuffer: Equatable, Sendable {
         guard let characters,
               !characters.isEmpty,
               characters.unicodeScalars.allSatisfy({
+                  // Arrow and function keys report private-use scalars
+                  // (U+F700-U+F8FF) rather than control characters; they move
+                  // the caret, so they must reset the buffer instead of
+                  // polluting it.
                   !CharacterSet.controlCharacters.contains($0)
+                      && !(0xF700...0xF8FF).contains($0.value)
               }),
               relevantModifiers.isEmpty else {
             reset()
@@ -243,7 +248,9 @@ final class ClipboardSnippetExpansionController {
             lastErrorMessage = nil
             return
         }
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        monitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] event in
             Task { @MainActor [weak self] in self?.handle(event) }
         }
         isRunning = monitor != nil
@@ -264,6 +271,13 @@ final class ClipboardSnippetExpansionController {
     }
 
     private func handle(_ event: NSEvent) {
+        // A mouse click moves the caret, so previously typed characters no
+        // longer precede it; matching against the stale buffer would delete
+        // unrelated text at the new location.
+        guard event.type == .keyDown else {
+            buffer.reset()
+            return
+        }
         guard isRunning, !isExpanding,
               let application = workspace.frontmostApplication,
               application.processIdentifier != ownProcessIdentifier,

@@ -41,6 +41,56 @@ struct DocumentTextExtractorTests {
         try data.write(to: url)
     }
 
+    @Test func extractsVisibleTextFromHTMLOffTheMainThread() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("page.html")
+        let html = """
+        <html><head><title>t</title><style>body { color: red }</style>\
+        <script>var hiddenScriptToken = 1;</script></head>\
+        <body><p>alpha &amp; beta</p></body></html>
+        """
+        try Data(html.utf8).write(to: url)
+
+        let extracted = await Task.detached {
+            DocumentTextExtractor.extract(from: url, maxFileSize: 0)
+        }.value
+
+        let text = try #require(extracted).text
+        #expect(extracted?.source == .htmlText)
+        #expect(text.contains("alpha & beta"))
+        #expect(!text.contains("hiddenScriptToken"))
+        #expect(!text.contains("color: red"))
+    }
+
+    @Test func extractsWebarchiveMainResourceOffTheMainThread() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("saved.webarchive")
+        let html = "<html><body><p>webarchive zebra content</p></body></html>"
+        let archive: [String: Any] = [
+            "WebMainResource": [
+                "WebResourceData": Data(html.utf8),
+                "WebResourceMIMEType": "text/html",
+                "WebResourceTextEncodingName": "UTF-8",
+                "WebResourceURL": "https://example.com/",
+            ],
+        ]
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: archive,
+            format: .binary,
+            options: 0
+        )
+        try data.write(to: url)
+
+        let extracted = await Task.detached {
+            DocumentTextExtractor.extract(from: url, maxFileSize: 0)
+        }.value
+
+        let text = try #require(extracted).text
+        #expect(text.contains("webarchive zebra content"))
+    }
+
     @discardableResult
     private func run(
         _ executable: String,

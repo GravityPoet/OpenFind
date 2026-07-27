@@ -212,6 +212,26 @@ struct ClipboardSnippetTests {
         ) == "z")
     }
 
+    @Test func typingBufferResetsOnArrowKeysInsteadOfAbsorbingThem() {
+        var buffer = ClipboardSnippetTypingBuffer(maximumLength: 16, timeout: 2)
+        #expect(buffer.consume(
+            characters: "abc",
+            keyCode: 0,
+            modifiers: [],
+            processIdentifier: 10,
+            timestamp: 1
+        ) == "abc")
+        // NSEvent reports the left arrow as U+F702, a private-use scalar
+        // outside CharacterSet.controlCharacters.
+        #expect(buffer.consume(
+            characters: "\u{F702}",
+            keyCode: UInt16(kVK_LeftArrow),
+            modifiers: [],
+            processIdentifier: 10,
+            timestamp: 1.1
+        ).isEmpty)
+    }
+
     @Test func usingConfiguredSnippetRendersPlaceholdersAndReturnsCursorOffset() throws {
         let context = try makeContext()
         let snippet = try context.store.createSnippet(

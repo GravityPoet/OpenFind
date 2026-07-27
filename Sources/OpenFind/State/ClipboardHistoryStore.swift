@@ -42,12 +42,24 @@ final class ClipboardHistoryStore {
     var lastErrorMessage: String?
     var isPersistenceEnabled = true
     var requiresPersistenceMigration = false
+    /// Set when the startup load failed: capture keeps working in memory, but
+    /// writing is disabled so the on-disk history cannot be overwritten from
+    /// an empty session. Cleared only by relaunching with a successful load.
+    private(set) var isPersistenceDegraded = false
     var preferences: ClipboardPreferences {
         didSet { invalidateClipboardProjection() }
     }
     var query = "" {
         didSet {
             if query != oldValue { invalidateClipboardProjection() }
+        }
+    }
+    var kindFilter = ClipboardKindFilter.all {
+        didSet {
+            guard kindFilter != oldValue else { return }
+            selectedIndex = 0
+            clearMultiSelection()
+            invalidateClipboardProjection()
         }
     }
     private(set) var clipboardProjectionRevision: UInt64 = 0
@@ -122,7 +134,13 @@ final class ClipboardHistoryStore {
             if trimmed || normalizePinnedKeys() { persist() }
             enqueueMissingImageTextRecognition()
         } catch {
+            // A transient load failure must degrade this session to
+            // memory-only capture: any later persist would rewrite the store
+            // from the empty in-memory state and permanently delete every
+            // entry still safe on disk. The persistence layer enforces the
+            // same rule independently.
             entries = []
+            isPersistenceDegraded = true
             lastErrorMessage = error.localizedDescription
         }
     }

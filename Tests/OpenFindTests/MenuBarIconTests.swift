@@ -14,6 +14,38 @@ struct MenuBarIconTests {
         #expect(first.size == NSSize(width: 18, height: 18))
     }
 
+    @Test func activeStateSwapsBetweenTwoStableInstances() {
+        let idle = MenuBarIcon.make(sessionActive: false)
+        let active = MenuBarIcon.make(sessionActive: true)
+
+        #expect(idle === MenuBarIcon.make(sessionActive: false))
+        #expect(active === MenuBarIcon.make(sessionActive: true))
+        #expect(idle !== active)
+        #expect(active.isTemplate)
+        #expect(active.size == NSSize(width: 18, height: 18))
+    }
+
+    @Test func activeImageInvertsTheRingDotGeometry() throws {
+        let data = try #require(
+            MenuBarIcon.make(sessionActive: true).tiffRepresentation
+        )
+        let bitmap = try #require(NSBitmapImageRep(data: data))
+
+        // Punched-out center: transparent where idle has its solid dot.
+        let center = try #require(
+            bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?
+                .usingColorSpace(.deviceRGB)
+        )
+        #expect(center.alphaComponent < 0.2)
+
+        // Filled disc: opaque where idle has its transparent gap.
+        let disc = try #require(
+            bitmap.colorAt(x: bitmap.pixelsWide * 2 / 3, y: bitmap.pixelsHigh / 2)?
+                .usingColorSpace(.deviceRGB)
+        )
+        #expect(disc.alphaComponent > 0.8)
+    }
+
     @Test func imageKeepsRingDotGeometry() throws {
         let data = try #require(MenuBarIcon.make().tiffRepresentation)
         let bitmap = try #require(NSBitmapImageRep(data: data))

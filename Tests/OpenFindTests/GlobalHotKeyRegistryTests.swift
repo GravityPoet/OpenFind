@@ -134,6 +134,7 @@ struct ClipboardHotKeyControllerTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = ClipboardHistoryStore(
             defaults: defaults,
+            persistence: HotKeyMemoryPersistence(),
             pasteboard: NSPasteboard(name: .init("OpenFindTests.ClipboardHotKeys.\(UUID())"))
         )
         let controller = ClipboardController(
@@ -158,6 +159,14 @@ struct ClipboardHotKeyControllerTests {
         #expect(reloaded.shortcut == custom)
         #expect(reloaded.isShortcutEnabled)
     }
+}
+
+/// Keeps the hot-key test's store off the real on-disk history: the default
+/// `persistence` argument points at the user's encrypted database.
+private final class HotKeyMemoryPersistence: ClipboardHistoryPersisting {
+    func load() throws -> [ClipboardEntry] { [] }
+    func save(_ entries: [ClipboardEntry]) throws {}
+    func remove() throws {}
 }
 
 private final class HotKeyFakeAssertions: PowerAssertionControlling {

@@ -32,6 +32,12 @@ struct SettingsView: View {
                 }
                 .tag(SettingsPane.search)
 
+            clipboardSettings
+                .tabItem {
+                    Label(L("Clipboard History"), systemImage: "doc.on.clipboard")
+                }
+                .tag(SettingsPane.clipboard)
+
             awakeSettings
                 .tabItem {
                     Label(L("Keep Awake"), systemImage: "moon.zzz")
@@ -49,12 +55,6 @@ struct SettingsView: View {
                     Label(L("Drive Alive"), systemImage: "externaldrive")
                 }
                 .tag(SettingsPane.driveAlive)
-
-            clipboardSettings
-                .tabItem {
-                    Label(L("Clipboard History"), systemImage: "doc.on.clipboard")
-                }
-                .tag(SettingsPane.clipboard)
 
             keyboardCleaningSettings
                 .tabItem {

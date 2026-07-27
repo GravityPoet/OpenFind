@@ -10,6 +10,7 @@ struct ExtractedDocumentText: Sendable, Equatable {
         case plainText
         case pdf
         case attributedDocument
+        case htmlText
         case openXML
         case iWorkPreview
         case spotlightImporter
@@ -54,6 +55,10 @@ enum DocumentTextExtractor {
         "pptx", "rtf", "rtfd", "webarchive", "xlsm", "xlsx",
     ]
 
+    // html/htm/webarchive stay in this map so the searchable-content checks
+    // keep matching them, but extraction must intercept them first (see
+    // `htmlLikeExtensions`): their importer routes through NSHTMLReader,
+    // which throws NSDestinationInvalidException off the main thread.
     private static let attributedDocumentTypes: [String: NSAttributedString.DocumentType] = [
         "rtf": .rtf,
         "rtfd": .rtfd,
@@ -64,6 +69,8 @@ enum DocumentTextExtractor {
         "htm": .html,
         "webarchive": .webArchive,
     ]
+
+    private static let htmlLikeExtensions: Set<String> = ["html", "htm", "webarchive"]
 
     private static let iWorkExtensions: Set<String> = ["pages", "numbers", "key"]
     private static let openXMLArchiveExtensions: Set<String> = ["xlsx", "xlsm", "pptx", "pptm"]
@@ -205,6 +212,13 @@ enum DocumentTextExtractor {
         if isDirectory, extensionName == "rtfd" {
             let richTextURL = url.appendingPathComponent("TXT.rtf", isDirectory: false)
             return extract(from: richTextURL, maxFileSize: maxFileSize)
+        }
+
+        if htmlLikeExtensions.contains(extensionName), !isDirectory {
+            guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]),
+                  let text = extractHTMLLikeText(extensionName: extensionName, data: data),
+                  text.utf8.count <= extractedByteLimit else { return nil }
+            return ExtractedDocumentText(text: text, source: .htmlText)
         }
 
         if let documentType = attributedDocumentTypes[extensionName], !isDirectory {
@@ -460,6 +474,8 @@ enum DocumentTextExtractor {
             let text: String?
             if extensionName == "pdf" {
                 text = PDFDocument(data: data)?.string
+            } else if htmlLikeExtensions.contains(extensionName) {
+                text = extractHTMLLikeText(extensionName: extensionName, data: data)
             } else if let type = attributedDocumentTypes[extensionName] {
                 var attributes: NSDictionary?
                 text = try? NSAttributedString(
@@ -598,6 +614,36 @@ enum DocumentTextExtractor {
         if lowerName.hasSuffix(".gz") { return ("/usr/bin/gzip", ["-dc", "--"]) }
         if lowerName.hasSuffix(".bz2") { return ("/usr/bin/bzip2", ["-dc", "--"]) }
         return nil
+    }
+
+    /// Reduces HTML-family files to their visible text without the
+    /// NSAttributedString HTML importer: NSHTMLReader performs onto the main
+    /// thread and throws NSDestinationInvalidException when the importer runs
+    /// on a background worker (webarchives crash deterministically). Script
+    /// and style bodies are dropped to match the importer's visible-text
+    /// output.
+    private static func extractHTMLLikeText(extensionName: String, data: Data) -> String? {
+        var htmlData = data
+        if extensionName == "webarchive" {
+            guard let plist = try? PropertyListSerialization.propertyList(
+                from: data,
+                options: [],
+                format: nil
+            ), let archive = plist as? [String: Any],
+               let mainResource = archive["WebMainResource"] as? [String: Any],
+               let resource = mainResource["WebResourceData"] as? Data else { return nil }
+            htmlData = resource
+        }
+        guard var html = decodePlainText(htmlData) else { return nil }
+        for container in ["script", "style"] {
+            html = html.replacingOccurrences(
+                of: "(?is)<\(container)\\b[^>]*>.*?</\(container)\\s*>",
+                with: " ",
+                options: .regularExpression
+            )
+        }
+        let text = visibleXMLText(html)
+        return text.isEmpty ? nil : text
     }
 
     private static func visibleXMLText(_ xml: String) -> String {

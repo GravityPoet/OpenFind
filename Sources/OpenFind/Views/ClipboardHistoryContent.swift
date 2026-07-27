@@ -32,6 +32,9 @@ struct ClipboardHistoryContent: View {
                             maxWidth: .infinity,
                             maxHeight: .infinity
                         )
+                        // A slightly recessed backdrop separates the reading
+                        // pane from the list without another divider line.
+                        .background(Color(nsColor: .underPageBackgroundColor).opacity(0.55))
                         .background {
                             GeometryReader { proxy in
                                 Color.clear

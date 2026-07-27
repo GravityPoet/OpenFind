@@ -423,6 +423,17 @@
 "Paste Plain Text" = "粘贴纯文本";
 "Plain Text" = "纯文本";
 "Clipboard History Count" = "%lld 项";
+"Kind Filter Bar" = "内容类型过滤";
+"Kind Filter All" = "全部";
+"Kind Filter Text" = "文本";
+"Kind Filter Images" = "图片";
+"Kind Filter Links" = "链接";
+"Kind Filter Files" = "文件";
+"Pinned Section" = "置顶";
+"Today Section" = "今天";
+"Yesterday Section" = "昨天";
+"Previous Week Section" = "近 7 天";
+"Earlier Section" = "更早";
 "Clipboard Total Count" = "共 %lld 项";
 "Clipboard Copy Count Compact" = "复制 %lld 次";
 "Clipboard Text Statistics" = "%lld 个词；%lld 个字符";
@@ -485,6 +496,8 @@
 "Clipboard Shortcut Conflicts" = "剪贴板快捷键与 OpenFind 的其他动作冲突";
 "Clipboard Shortcut Unavailable" = "剪贴板快捷键不可用";
 "Clear Clipboard History" = "清除剪贴板历史";
+"Clear Clipboard History Confirmation Title" = "要清空全部剪贴板历史吗？";
+"Clear Clipboard History Confirmation Message" = "将移除所有条目（包括已固定项）。清空后可立即在历史面板中按 Command-Z 撤销。";
 "Clipboard History Help" = "OpenFind 会在本机记录支持的剪贴板类型，并加密保存。Apple 签名版本把密钥存入钥匙串；当前本地版本把密钥存入仅限本用户读取的文件，后续更新不会反复索要密码。剪贴板内容不会写入日志。";
 "Clipboard Migration Required" = "旧剪贴板历史需要一次性迁移";
 "Clipboard Migration Help" = "现有加密历史已保留。只需解锁一次，把旧密钥迁出钥匙串；以后更新 OpenFind 不会再询问。";
@@ -510,6 +523,7 @@
 "Clipboard Content Too Large" = "此剪贴板项目过大，无法保留。";
 "Clipboard Persistence Unavailable" = "无法保存加密剪贴板历史。";
 "Clipboard Persistence Corrupt" = "无法读取已保存的剪贴板历史。";
+"Clipboard Persistence Desynchronized" = "剪贴板历史暂为只读：启动时未能读取已保存的历史，为避免覆盖不会写入任何内容。重新启动 OpenFind 即可恢复。";
 "Clipboard Pasteboard Write Failed" = "OpenFind 无法将项目写入剪贴板。";
 "Clipboard Entry Missing" = "剪贴板项目已不存在。";
 "Clipboard History Full" = "剪贴板历史记录已满，因为所有保留项目都已固定。";

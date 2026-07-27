@@ -3,7 +3,13 @@ import AppKit
 import Dispatch
 
 let args = CommandLine.arguments
-if args.contains("--search") || args.contains("-s") {
+if args.contains("--help") || args.contains("-h") {
+    // Without this branch, unrecognized CLI flags fall through to the GUI
+    // path and the process silently starts a menu-bar instance instead of
+    // printing usage and exiting.
+    CLIRunner.printUsage(to: FileHandle.standardOutput)
+    exit(0)
+} else if args.contains("--search") || args.contains("-s") {
     // Top-level code is @MainActor-isolated, so the Task below is scheduled on
     // the main actor, whose executor is the main thread's dispatch queue. We must
     // hand the main thread to that queue for the task to run; blocking it (e.g. a

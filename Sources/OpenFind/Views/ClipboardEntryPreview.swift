@@ -23,12 +23,15 @@ struct ClipboardEntryPreview: View {
             }
             .background(Color.clear)
         } else {
-            ContentUnavailableView(
-                L("No Matching Clipboard Items"),
-                systemImage: "magnifyingglass",
-                description: Text(L("Try Another Clipboard Search"))
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // The list column already explains why nothing is selected ("No
+            // Clipboard History" / "No Results for …"); a second headline in
+            // this column repeats the same message side by side. Keep the
+            // preview column a quiet placeholder instead.
+            Image(systemName: "doc.on.clipboard")
+                .font(.system(size: 30, weight: .regular))
+                .foregroundStyle(.quaternary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityHidden(true)
         }
     }
 }

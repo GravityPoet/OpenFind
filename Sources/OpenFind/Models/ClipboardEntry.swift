@@ -9,6 +9,39 @@ enum ClipboardEntryKind: String, Codable, Sendable {
     case other
 }
 
+/// One-tap content-type filter for the history panel, in the spirit of
+/// Raycast's clipboard filters. Session-scoped on purpose: a filter that
+/// silently persists across panel openings reads as "my history vanished".
+enum ClipboardKindFilter: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case text
+    case image
+    case link
+    case file
+
+    var id: Self { self }
+
+    func matches(_ kind: ClipboardEntryKind) -> Bool {
+        switch self {
+        case .all: true
+        case .text: kind == .text || kind == .richText
+        case .image: kind == .image
+        case .link: kind == .url
+        case .file: kind == .file
+        }
+    }
+
+    var localizedTitle: String {
+        switch self {
+        case .all: L("Kind Filter All")
+        case .text: L("Kind Filter Text")
+        case .image: L("Kind Filter Images")
+        case .link: L("Kind Filter Links")
+        case .file: L("Kind Filter Files")
+        }
+    }
+}
+
 struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     var createdAt: Date
@@ -96,6 +129,7 @@ enum ClipboardHistoryError: Error, Equatable, LocalizedError {
     case contentTooLarge
     case persistenceUnavailable
     case persistenceCorrupt
+    case persistenceDesynchronized
     case pasteboardWriteFailed
     case entryNotFound
     case historyFull
@@ -111,6 +145,8 @@ enum ClipboardHistoryError: Error, Equatable, LocalizedError {
             return L("Clipboard Persistence Unavailable")
         case .persistenceCorrupt:
             return L("Clipboard Persistence Corrupt")
+        case .persistenceDesynchronized:
+            return L("Clipboard Persistence Desynchronized")
         case .pasteboardWriteFailed:
             return L("Clipboard Pasteboard Write Failed")
         case .entryNotFound:

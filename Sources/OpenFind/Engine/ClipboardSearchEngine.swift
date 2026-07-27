@@ -62,7 +62,14 @@ enum ClipboardSearchEngine {
         candidate: String
     ) -> ClipboardSearchMatch? {
         let queryCharacters = Array(query.localizedLowercase)
-        let candidate = String(candidate.prefix(10_000))
+        // Bound the scan without copying the candidate: the returned ranges
+        // are used by callers against the original string, and String.Index
+        // is only defined for the instance that produced it.
+        let searchEndIndex = candidate.index(
+            candidate.startIndex,
+            offsetBy: 10_000,
+            limitedBy: candidate.endIndex
+        ) ?? candidate.endIndex
         var queryOffset = 0
         var candidateIndex = candidate.startIndex
         var score = 0
@@ -71,7 +78,7 @@ enum ClipboardSearchEngine {
 
         while queryOffset < queryCharacters.count {
             var found: String.Index?
-            while candidateIndex < candidate.endIndex {
+            while candidateIndex < searchEndIndex {
                 if String(candidate[candidateIndex]).localizedLowercase
                     == String(queryCharacters[queryOffset]) {
                     found = candidateIndex

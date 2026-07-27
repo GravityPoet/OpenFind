@@ -41,6 +41,31 @@ final class EncryptedClipboardHistoryDatabase {
         return EncryptedClipboardHistorySnapshot(manifest: manifest, records: records)
     }
 
+    /// Number of entry rows currently stored on disk, without decrypting
+    /// anything. Zero when the database file does not exist yet.
+    func storedEntryCount() throws -> Int {
+        guard exists else { return 0 }
+        try validateDatabaseFile()
+        let database = try open(flags: SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX)
+        defer { sqlite3_close_v2(database) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "SELECT COUNT(*) FROM entries",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK, let statement else {
+            sqlite3_finalize(statement)
+            throw ClipboardHistoryError.persistenceUnavailable
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw ClipboardHistoryError.persistenceUnavailable
+        }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
     func save(
         changedRecords: [UUID: Data],
         retainingIDs: Set<UUID>,

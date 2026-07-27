@@ -155,9 +155,7 @@ final class ClipboardQuickMergeController {
 
         resetArming()
         guard let current = pasteboard.string(forType: .string),
-              store.entries.prefix(50).contains(where: {
-                  store.plainText(for: $0) == current
-              }) else {
+              store.containsPlainText(current, inFirst: 50) else {
             lastErrorMessage = ClipboardQuickMergeError.noTrackedClipboard.localizedDescription
             return false
         }

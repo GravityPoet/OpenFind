@@ -14,6 +14,7 @@ final class AwakeSessionController {
     @ObservationIgnored private let dateProvider: @MainActor () -> Date
     @ObservationIgnored private let uptimeProvider: @MainActor () -> TimeInterval
     @ObservationIgnored private let systemClockPollInterval: TimeInterval
+    @ObservationIgnored private let deadlineRetryInterval: TimeInterval
     @ObservationIgnored private let operationGate = AwakeSessionOperationGate()
     @ObservationIgnored private var deadlineTask: Task<Void, Never>?
     @ObservationIgnored private var systemClockObserver: NSObjectProtocol?
@@ -38,7 +39,8 @@ final class AwakeSessionController {
         uptimeProvider: @escaping @MainActor () -> TimeInterval = {
             ProcessInfo.processInfo.systemUptime
         },
-        systemClockPollInterval: TimeInterval = 60
+        systemClockPollInterval: TimeInterval = 60,
+        deadlineRetryInterval: TimeInterval = 30
     ) {
         self.assertions = assertions
         self.applicationMonitor = applicationMonitor
@@ -52,6 +54,9 @@ final class AwakeSessionController {
         self.systemClockPollInterval = systemClockPollInterval.isFinite
             ? max(0.01, systemClockPollInterval)
             : 60
+        self.deadlineRetryInterval = deadlineRetryInterval.isFinite
+            ? max(0.01, deadlineRetryInterval)
+            : 30
     }
 
     var isActive: Bool {
@@ -491,17 +496,49 @@ final class AwakeSessionController {
     }
 
     private func scheduleTimerDeadline(sessionID: UUID, deadlineUptime: TimeInterval) {
-        let delay = max(0, deadlineUptime - uptimeProvider())
         deadlineTask = Task { @MainActor [weak self] in
+            // Task.sleep advances during system sleep, but the timer deadline
+            // is measured in system uptime, which pauses. Re-check after every
+            // wake and keep sleeping until the uptime deadline has truly
+            // elapsed, so a "keep awake for 60 minutes" session is not ended
+            // early by a system nap in the middle.
+            while !Task.isCancelled {
+                guard let self, self.activeSession?.id == sessionID else { return }
+                let remaining = deadlineUptime - self.uptimeProvider()
+                if remaining <= 0 { break }
+                do {
+                    try await Task.sleep(for: .seconds(remaining))
+                } catch {
+                    return
+                }
+            }
+            guard !Task.isCancelled, self?.activeSession?.id == sessionID else { return }
+            await self?.endAtDeadline(sessionID: sessionID)
+        }
+    }
+
+    /// Ends an expired session, retrying with backoff while teardown fails.
+    /// Clamshell teardown can fail with nobody at the Mac — the pmset
+    /// administrator prompt times out unanswered — and a one-shot attempt
+    /// would leave the session and the system-wide `disablesleep` override
+    /// active until relaunch.
+    private func endAtDeadline(sessionID: UUID) async {
+        var retryDelay = deadlineRetryInterval
+        while !Task.isCancelled, activeSession?.id == sessionID {
             do {
-                try await Task.sleep(for: .seconds(delay))
-                guard !Task.isCancelled, self?.activeSession?.id == sessionID else { return }
-                try await self?.endAsync(reason: .deadline)
+                try await endAsync(reason: .deadline)
+                return
             } catch is CancellationError {
                 return
             } catch {
-                self?.lastErrorMessage = error.localizedDescription
+                lastErrorMessage = error.localizedDescription
             }
+            do {
+                try await Task.sleep(for: .seconds(retryDelay))
+            } catch {
+                return
+            }
+            retryDelay = min(retryDelay * 2, deadlineRetryInterval * 20)
         }
     }
 
@@ -528,17 +565,15 @@ final class AwakeSessionController {
                       self.activeSession?.id == sessionID {
                     let remaining = deadline.timeIntervalSince(self.dateProvider())
                     if remaining <= 0 {
-                        try await self.endAsync(reason: .deadline)
+                        await self.endAtDeadline(sessionID: sessionID)
                         return
                     }
                     try await Task.sleep(
                         for: .seconds(min(remaining, self.systemClockPollInterval))
                     )
                 }
-            } catch is CancellationError {
-                return
             } catch {
-                self?.lastErrorMessage = error.localizedDescription
+                return
             }
         }
     }

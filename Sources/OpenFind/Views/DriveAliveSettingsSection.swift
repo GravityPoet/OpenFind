@@ -17,6 +17,10 @@ struct DriveAliveSettingsSection: View {
                     value: intervalBinding,
                     format: .number.precision(.fractionLength(0...1))
                 )
+                // The row already carries a visible "Write Interval" label and
+                // a "Seconds" suffix; the field's own title would render as a
+                // third, cramped label inside the grouped form row.
+                .labelsHidden()
                 .multilineTextAlignment(.trailing)
                 .frame(width: 72)
                 Text(L("Seconds"))
