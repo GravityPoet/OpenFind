@@ -49,6 +49,61 @@ struct ClipboardHistoryStoreTests {
         #expect(store.filteredEntries.map(\.previewText) == ["https://example.com"])
     }
 
+    @Test func plainTextURLCaptureAppearsInTheLinkFilter() throws {
+        let suite = "OpenFindTests.Clipboard.LinkClassification.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pasteboard = NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(),
+            pasteboard: pasteboard
+        )
+        let url = "https://open.756257.xyz/open/kakao"
+        let item = NSPasteboardItem()
+        item.setString(url, forType: .string)
+        pasteboard.clearContents()
+        #expect(pasteboard.writeObjects([item]))
+
+        #expect(store.captureCurrentPasteboard())
+        #expect(store.entries.first?.kind == .url)
+
+        let prose = "Open https://example.com for details"
+        let proseItem = NSPasteboardItem()
+        proseItem.setString(prose, forType: .string)
+        pasteboard.clearContents()
+        #expect(pasteboard.writeObjects([proseItem]))
+        #expect(store.captureCurrentPasteboard())
+        #expect(store.entries.first?.kind == .text)
+
+        store.kindFilter = .link
+        #expect(store.filteredEntries.map(\.previewText) == [url])
+    }
+
+    @Test func storedPlainTextURLsAreReclassifiedForTheLinkFilter() throws {
+        let url = "https://kr.gettlj.cn/"
+        let persistence = MemoryClipboardPersistence(savedEntries: [
+            ClipboardEntry(
+                previewText: url,
+                kind: .text,
+                representations: ["public.utf8-plain-text": Data(url.utf8)]
+            ),
+        ])
+        let store = ClipboardHistoryStore(
+            defaults: try #require(UserDefaults(
+                suiteName: "OpenFindTests.Clipboard.StoredLink.\(UUID())"
+            )),
+            persistence: persistence,
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+
+        #expect(store.entries.first?.kind == .url)
+        #expect(persistence.savedEntries.first?.kind == .url)
+
+        store.kindFilter = .link
+        #expect(store.filteredEntries.map(\.previewText) == [url])
+    }
+
     @Test func deduplicatesSearchesAndPreservesPinnedItems() throws {
         let persistence = MemoryClipboardPersistence()
         let store = ClipboardHistoryStore(

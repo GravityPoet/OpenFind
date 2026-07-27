@@ -23,11 +23,12 @@ extension ClipboardHistoryStore {
         do {
             entries = try persistence.load()
             let trimmed = trimToLimits()
+            let normalizedKinds = normalizeContentKinds()
             let normalizedPins = normalizePinnedKeys()
             selectedIndex = 0
             requiresPersistenceMigration = false
             lastErrorMessage = nil
-            if trimmed || normalizedPins { persist() }
+            if trimmed || normalizedKinds || normalizedPins { persist() }
             enqueueMissingImageTextRecognition()
             return true
         } catch {
@@ -49,6 +50,21 @@ extension ClipboardHistoryStore {
         } catch {
             lastErrorMessage = error.localizedDescription
         }
+    }
+
+    @discardableResult
+    func normalizeContentKinds() -> Bool {
+        var changed = false
+        for index in entries.indices {
+            let resolved = ClipboardEntryKind.resolvingStandaloneURL(
+                entries[index].kind,
+                previewText: entries[index].previewText
+            )
+            guard resolved != entries[index].kind else { continue }
+            entries[index].kind = resolved
+            changed = true
+        }
+        return changed
     }
 
     @discardableResult
