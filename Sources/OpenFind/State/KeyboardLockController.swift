@@ -14,6 +14,7 @@ final class KeyboardLockController {
         modifiers: UInt32(cmdKey | optionKey),
         keyLabel: "K"
     )
+    nonisolated static let defaultActivationCountdownSeconds = 0
 
     enum State: Equatable {
         case disabled
@@ -82,7 +83,9 @@ final class KeyboardLockController {
         if isEngaged { disable() } else { enable() }
     }
 
-    func enable(countdownSeconds: Int = 3) {
+    func enable(
+        countdownSeconds: Int = KeyboardLockController.defaultActivationCountdownSeconds
+    ) {
         guard !isEngaged else { return }
         guard AccessibilityPermission.isTrusted else {
             state = .permissionRequired
