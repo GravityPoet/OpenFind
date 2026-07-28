@@ -9,13 +9,12 @@ extension ClipboardHistoryWindowController {
             return
         }
 
-        // Clipboard history is a transient palette. Make OpenFind active so
-        // clicking another app produces a reliable didResignActive callback,
-        // while keeping every primary/companion OpenFind window out of view.
-        // The paste target was captured before this handoff.
+        // Clipboard history is a transient non-activating palette. Do not ask
+        // macOS to switch away from a password field: Secure Input can reject
+        // that activation request even though the global Carbon hot key has
+        // already fired. The panel itself remains key and interactive.
         orderOutApplicationWindows(except: panel)
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
-        applicationActivator()
         orderOutApplicationWindows(except: panel)
     }
 
@@ -30,7 +29,7 @@ extension ClipboardHistoryWindowController {
         if let panel { return panel }
         let panel = ClipboardHistoryPanel(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 500),
-            styleMask: [.titled, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .resizable, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -45,7 +44,7 @@ extension ClipboardHistoryWindowController {
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.isFloatingPanel = true
         panel.level = .floating
-        panel.hidesOnDeactivate = true
+        panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true
         panel.animationBehavior = .none
@@ -214,7 +213,7 @@ extension ClipboardHistoryWindowController {
     func windowDidResignKey(_ notification: Notification) {
         guard store.isPanelPresented,
               !store.isActionPanelPresented,
-              hasCompletedActivationHandoff else { return }
+              isPanelInteractionReady else { return }
         close()
     }
 
