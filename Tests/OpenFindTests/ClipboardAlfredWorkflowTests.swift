@@ -179,12 +179,13 @@ struct ClipboardAlfredWorkflowTests {
         #expect(mainWindow.animationBehavior == .none)
         #expect(settingsWindow.animationBehavior == .none)
         #expect(companionWindow.animationBehavior == .none)
-        #expect(activationCount == 1)
+        #expect(activationCount == 0)
 
         let panel = controller.makePanelIfNeeded()
-        #expect(!panel.styleMask.contains(.nonactivatingPanel))
+        #expect(panel.styleMask.contains(.nonactivatingPanel))
         #expect(panel.animationBehavior == .none)
-        #expect(panel.hidesOnDeactivate)
+        #expect(!panel.hidesOnDeactivate)
+        #expect(panel.canBecomeKey)
     }
 
     @Test func preparingClipboardPanelKeepsAnImperceptibleNonInteractiveSurfaceWarm() throws {
@@ -219,15 +220,14 @@ struct ClipboardAlfredWorkflowTests {
         controller.close()
     }
 
-    @Test func firstBackgroundShortcutSurvivesActivationHandoff() throws {
+    @Test func clipboardShortcutDoesNotRequireApplicationActivation() throws {
         let context = try makeContext()
-        let applicationActivity = ClipboardApplicationActivityProbe()
+        var activationCount = 0
         let notificationCenter = NotificationCenter()
         let controller = ClipboardHistoryWindowController(
             store: context.store,
-            applicationActivator: {},
+            applicationActivator: { activationCount += 1 },
             applicationDeactivator: {},
-            applicationIsActive: { applicationActivity.isActive },
             notificationCenter: notificationCenter
         )
         defer {
@@ -238,38 +238,27 @@ struct ClipboardAlfredWorkflowTests {
         controller.handleShortcutInvocation(shortcut: ClipboardController.defaultShortcut)
         let panel = try #require(controller.panel)
         #expect(context.store.isPanelPresented)
+        #expect(activationCount == 0)
+        #expect(panel.styleMask.contains(.nonactivatingPanel))
+        #expect(!panel.hidesOnDeactivate)
+        #expect(panel.isVisible)
+        #expect(!panel.ignoresMouseEvents)
+        #expect(panel.canBecomeKey)
 
-        controller.windowDidResignKey(
-            Notification(name: NSWindow.didResignKeyNotification, object: panel)
-        )
         notificationCenter.post(
             name: NSApplication.didResignActiveNotification,
             object: NSApp
         )
-
         #expect(context.store.isPanelPresented)
-
-        applicationActivity.isActive = true
-        notificationCenter.post(
-            name: NSApplication.didBecomeActiveNotification,
-            object: NSApp
-        )
-        controller.windowDidResignKey(
-            Notification(name: NSWindow.didResignKeyNotification, object: panel)
-        )
-
-        #expect(!context.store.isPanelPresented)
     }
 
-    @Test func stalledActivationCannotTrapLaterClipboardShortcuts() throws {
+    @Test func repeatedClipboardShortcutsDoNotTrapThePanel() throws {
         let context = try makeContext()
-        let applicationActivity = ClipboardApplicationActivityProbe()
         var activationCount = 0
         let controller = ClipboardHistoryWindowController(
             store: context.store,
             applicationActivator: { activationCount += 1 },
-            applicationDeactivator: {},
-            applicationIsActive: { applicationActivity.isActive }
+            applicationDeactivator: {}
         )
         defer {
             controller.close()
@@ -278,23 +267,21 @@ struct ClipboardAlfredWorkflowTests {
 
         controller.handleShortcutInvocation(shortcut: ClipboardController.defaultShortcut)
         #expect(context.store.isPanelPresented)
-        #expect(activationCount == 1)
+        #expect(activationCount == 0)
 
         controller.handleShortcutInvocation(shortcut: ClipboardController.defaultShortcut)
 
         #expect(context.store.isPanelPresented)
-        #expect(activationCount == 2)
-        #expect(controller.shortcutCycleState.phase == .opening)
+        #expect(activationCount == 0)
+        #expect(controller.shortcutCycleState.phase == .cycling)
     }
 
-    @Test func incompleteActivationHandoffClearsHiddenPresentationState() async throws {
+    @Test func secureInputDoesNotDismissClipboardPanelAfterActivationWait() async throws {
         let context = try makeContext()
         let controller = ClipboardHistoryWindowController(
             store: context.store,
             applicationActivator: {},
-            applicationDeactivator: {},
-            applicationIsActive: { false },
-            activationHandoffTimeout: .milliseconds(20)
+            applicationDeactivator: {}
         )
         defer {
             controller.close()
@@ -304,12 +291,13 @@ struct ClipboardAlfredWorkflowTests {
         controller.handleShortcutInvocation(shortcut: ClipboardController.defaultShortcut)
         #expect(context.store.isPanelPresented)
 
-        for _ in 0..<50 where context.store.isPanelPresented {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        // Secure Input can leave OpenFind inactive. The clipboard panel must
+        // remain usable instead of being cleared by an activation timeout.
+        try await Task.sleep(for: .milliseconds(800))
 
-        #expect(!context.store.isPanelPresented)
-        #expect(controller.shortcutCycleState.phase == .idle)
+        #expect(context.store.isPanelPresented)
+        #expect(controller.panel?.isVisible == true)
+        #expect(controller.panel?.ignoresMouseEvents == false)
     }
 
     @Test func presentedClipboardPanelTargetsSearchFieldForKeyboardFocus() async throws {
@@ -690,11 +678,6 @@ struct ClipboardAlfredWorkflowTests {
 
 private final class AlwaysMarkedTextView: NSTextView {
     override func hasMarkedText() -> Bool { true }
-}
-
-@MainActor
-private final class ClipboardApplicationActivityProbe {
-    var isActive = false
 }
 
 private struct AlfredWorkflowContext {

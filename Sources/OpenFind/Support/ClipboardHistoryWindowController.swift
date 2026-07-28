@@ -8,14 +8,12 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     let frameAutosaveName: NSWindow.FrameAutosaveName
     let applicationActivator: @MainActor () -> Void
     let applicationDeactivator: @MainActor () -> Void
-    let applicationIsActive: @MainActor () -> Bool
     let pasteService = ClipboardPasteService()
     let quickLook = QuickLookController()
     private let logger = Logger(subsystem: "com.openfind.app", category: "ClipboardWindow")
-    private let activationHandoffTimeout: Duration
-    private var activationHandoffTask: Task<Void, Never>?
     var panel: NSPanel?
-    var hasCompletedActivationHandoff = false
+    var isPanelInteractionReady = false
+    private var shouldCloseWhenApplicationResigns = false
     var shortcutCycleState = ClipboardShortcutCycleState()
     var shortcutFlagsMonitor: Any?
     var shortcutModifierFlags: NSEvent.ModifierFlags = []
@@ -34,18 +32,12 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         applicationDeactivator: @escaping @MainActor () -> Void = {
             if NSApp.isActive { NSApp.hide(nil) }
         },
-        applicationIsActive: @escaping @MainActor () -> Bool = {
-            NSApp.isActive
-        },
-        notificationCenter: NotificationCenter = .default,
-        activationHandoffTimeout: Duration = .milliseconds(750)
+        notificationCenter: NotificationCenter = .default
     ) {
         self.store = store
         self.frameAutosaveName = frameAutosaveName
         self.applicationActivator = applicationActivator
         self.applicationDeactivator = applicationDeactivator
-        self.applicationIsActive = applicationIsActive
-        self.activationHandoffTimeout = activationHandoffTimeout
         super.init()
         notificationCenter.addObserver(
             self,
@@ -63,19 +55,20 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
 
     @objc private func applicationDidBecomeActive(_ notification: Notification) {
         guard store.isPanelPresented else { return }
-        activationHandoffTask?.cancel()
-        activationHandoffTask = nil
-        hasCompletedActivationHandoff = true
-        panel?.makeKeyAndOrderFront(nil)
+        isPanelInteractionReady = true
+        panel?.orderFrontRegardless()
+        panel?.makeKey()
     }
 
     @objc private func applicationDidResignActive(_ notification: Notification) {
-        guard store.isPanelPresented else { return }
-        if hasCompletedActivationHandoff {
-            close()
-        } else {
-            scheduleActivationHandoffTimeoutIfNeeded()
+        // A shortcut presentation is deliberately non-activating. Secure
+        // Input may leave OpenFind inactive, so an application-resign
+        // notification must not tear down the newly opened clipboard panel.
+        guard store.isPanelPresented, shouldCloseWhenApplicationResigns else {
+            return
         }
+        guard isPanelInteractionReady else { return }
+        close()
     }
 
     func toggle() {
@@ -124,8 +117,12 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         store.clearMultiSelection()
         store.isSearchPresented = true
         let panel = makePanelIfNeeded()
+        shouldCloseWhenApplicationResigns = !hideApplicationWindows
         activateForClipboardPanel(hideApplicationWindows: hideApplicationWindows)
-        hasCompletedActivationHandoff = applicationIsActive()
+        // The panel is non-activating by design. It can still become key and
+        // accept search input while another app owns Secure Input, so opening
+        // it never depends on NSApp becoming active.
+        isPanelInteractionReady = true
         configureMinimumSize(panel, showingPreview: store.isPreviewVisible)
         if !restoreSavedFrameIfNeeded(panel, override: positionOverride) {
             resize(panel, showingPreview: store.isPreviewVisible, animated: false)
@@ -137,12 +134,12 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         panel.hasShadow = true
         panel.level = .floating
         panel.ignoresMouseEvents = false
-        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+        panel.makeKey()
         if hideApplicationWindows {
             orderOutApplicationWindows(except: panel)
         }
         store.beginPresentation()
-        scheduleActivationHandoffTimeoutIfNeeded()
         if let searchField = firstTextField(in: panel.contentView) {
             panel.initialFirstResponder = searchField
             _ = panel.makeFirstResponder(searchField)
@@ -169,9 +166,8 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
 
     func close() {
         let shouldReturnApplicationFocus = store.isPanelPresented
-        activationHandoffTask?.cancel()
-        activationHandoffTask = nil
-        hasCompletedActivationHandoff = false
+        shouldCloseWhenApplicationResigns = false
+        isPanelInteractionReady = false
         store.endPresentation()
         if let panel {
             park(panel, keepCompositorWarm: true)
@@ -185,40 +181,12 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
 
     func reconcilePresentationBeforeShortcut() -> Bool {
         let isInteractive = store.isPanelPresented
-            && applicationIsActive()
             && panel?.isVisible == true
+            && panel?.ignoresMouseEvents == false
         guard store.isPanelPresented, !isInteractive else { return isInteractive }
         logger.notice("Resetting a stale hidden clipboard presentation before shortcut handling")
         close()
         return false
-    }
-
-    private func scheduleActivationHandoffTimeoutIfNeeded() {
-        guard store.isPanelPresented, !hasCompletedActivationHandoff else { return }
-        if applicationIsActive() {
-            hasCompletedActivationHandoff = true
-            return
-        }
-        guard activationHandoffTask == nil else { return }
-        let timeout = activationHandoffTimeout
-        activationHandoffTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: timeout)
-            } catch {
-                return
-            }
-            guard let self, self.store.isPanelPresented else { return }
-            self.activationHandoffTask = nil
-            if self.applicationIsActive() {
-                self.hasCompletedActivationHandoff = true
-                self.panel?.makeKeyAndOrderFront(nil)
-                return
-            }
-            self.logger.error(
-                "Clipboard activation handoff timed out; clearing hidden presentation state"
-            )
-            self.close()
-        }
     }
 
     private func firstTextField(in view: NSView?) -> NSTextField? {
@@ -233,6 +201,7 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     func park(_ panel: NSPanel, keepCompositorWarm: Bool) {
         panel.ignoresMouseEvents = true
         panel.contentView?.setAccessibilityHidden(true)
+        _ = panel.makeFirstResponder(nil)
         if panel.isKeyWindow {
             panel.resignKey()
         }

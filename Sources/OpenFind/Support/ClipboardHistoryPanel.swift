@@ -8,6 +8,12 @@ final class ClipboardHistoryPanel: NSPanel {
     var onUndo: (() -> Void)?
     var onClose: (() -> Void)?
 
+    // A clipboard palette must be able to receive search input even when the
+    // invoking application is in Secure Input mode (for example, a browser
+    // password field). Non-activating panels can become key without asking
+    // macOS to activate the utility application.
+    override var canBecomeKey: Bool { true }
+
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, performClipboardCommand(with: event) { return }
         super.sendEvent(event)
