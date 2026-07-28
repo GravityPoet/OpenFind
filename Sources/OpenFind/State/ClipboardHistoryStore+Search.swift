@@ -188,13 +188,25 @@ extension ClipboardHistoryStore {
             let lhsRank = pinRank(for: lhs)
             let rhsRank = pinRank(for: rhs)
             if lhsRank != rhsRank { return lhsRank < rhsRank }
-            let lhsDate = preferences.sortMode == .lastCopied
-                ? lhs.createdAt : lhs.initialCopiedAt
-            let rhsDate = preferences.sortMode == .lastCopied
-                ? rhs.createdAt : rhs.initialCopiedAt
+            let lhsDate = activityDate(for: lhs)
+            let rhsDate = activityDate(for: rhs)
             if lhsDate != rhsDate { return lhsDate > rhsDate }
+            if lhs.numberOfUses != rhs.numberOfUses {
+                return lhs.numberOfUses > rhs.numberOfUses
+            }
+            if lhs.numberOfCopies != rhs.numberOfCopies {
+                return lhs.numberOfCopies > rhs.numberOfCopies
+            }
             return lhs.id.uuidString < rhs.id.uuidString
         }
+    }
+
+    private func activityDate(for entry: ClipboardEntry) -> Date {
+        let copiedAt = preferences.sortMode == .lastCopied
+            ? entry.createdAt
+            : entry.initialCopiedAt
+        guard let lastUsedAt = entry.lastUsedAt else { return copiedAt }
+        return max(copiedAt, lastUsedAt)
     }
 
     private func pinRank(for entry: ClipboardEntry) -> Int {
@@ -259,6 +271,9 @@ extension ClipboardHistoryStore {
                         mode: mode
                     ),
                     fuzzyScore: match.score,
+                    activityDate: activityDate(for: entry),
+                    useCount: entry.numberOfUses,
+                    copyCount: entry.numberOfCopies,
                     position: candidate.text.distance(
                         from: candidate.text.startIndex,
                         to: range.lowerBound
@@ -462,6 +477,9 @@ private struct ClipboardSearchRelevance: Equatable {
     let fieldPriority: Int
     let quality: Int
     let fuzzyScore: Int
+    let activityDate: Date
+    let useCount: Int
+    let copyCount: Int
     let position: Int
     let candidateLength: Int
 
@@ -469,6 +487,11 @@ private struct ClipboardSearchRelevance: Equatable {
         if fieldPriority != other.fieldPriority { return fieldPriority > other.fieldPriority }
         if quality != other.quality { return quality > other.quality }
         if fuzzyScore != other.fuzzyScore { return fuzzyScore > other.fuzzyScore }
+        // Once two entries are equally relevant, favor recent copy/use activity,
+        // then usage and copy frequency, before tiny match-position differences.
+        if activityDate != other.activityDate { return activityDate > other.activityDate }
+        if useCount != other.useCount { return useCount > other.useCount }
+        if copyCount != other.copyCount { return copyCount > other.copyCount }
         if position != other.position { return position < other.position }
         return candidateLength < other.candidateLength
     }
