@@ -86,6 +86,8 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
     var recognizedText: String?
     var imageTextRecognitionRevision: Int?
     var copyCount: Int?
+    var lastUsedAt: Date?
+    var useCount: Int?
     var snippetCollection: String?
     var snippetKeyword: String?
     var snippetExpansionEnabled: Bool?
@@ -106,6 +108,8 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         recognizedText: String? = nil,
         imageTextRecognitionRevision: Int? = nil,
         copyCount: Int? = nil,
+        lastUsedAt: Date? = nil,
+        useCount: Int? = nil,
         snippetCollection: String? = nil,
         snippetKeyword: String? = nil,
         snippetExpansionEnabled: Bool? = nil
@@ -125,6 +129,8 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         self.recognizedText = recognizedText
         self.imageTextRecognitionRevision = imageTextRecognitionRevision
         self.copyCount = copyCount
+        self.lastUsedAt = lastUsedAt
+        self.useCount = useCount
         self.snippetCollection = snippetCollection
         self.snippetKeyword = snippetKeyword
         self.snippetExpansionEnabled = snippetExpansionEnabled
@@ -133,6 +139,8 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
     var initialCopiedAt: Date { firstCopiedAt ?? createdAt }
 
     var numberOfCopies: Int { max(1, copyCount ?? 1) }
+
+    var numberOfUses: Int { max(0, useCount ?? 0) }
 
     var expandsFromKeyword: Bool {
         isPinned && snippetExpansionEnabled == true && snippetKeyword?.isEmpty == false

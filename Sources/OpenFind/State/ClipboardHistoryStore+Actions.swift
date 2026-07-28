@@ -15,6 +15,7 @@ extension ClipboardHistoryStore {
                 clipboardText: { [pasteboard] in pasteboard.string(forType: .string) }
             )
             try writePlainText(rendered.text)
+            recordUse(of: entry.id)
             return rendered.cursorOffsetFromEnd
         }
         if plainTextOnly {
@@ -22,6 +23,7 @@ extension ClipboardHistoryStore {
                 throw ClipboardHistoryError.unsupportedContent
             }
             try writePlainText(text)
+            recordUse(of: entry.id)
             return 0
         }
         let items = entry.retainedPasteboardItems.enumerated().map { index, representations in
@@ -47,7 +49,19 @@ extension ClipboardHistoryStore {
         guard !items.isEmpty, pasteboard.writeObjects(items) else {
             throw ClipboardHistoryError.pasteboardWriteFailed
         }
+        recordUse(of: entry.id)
         return 0
+    }
+
+    private func recordUse(of id: UUID, at date: Date = Date()) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        var updated = entries[index]
+        updated.lastUsedAt = date
+        updated.useCount = updated.numberOfUses == Int.max
+            ? Int.max
+            : updated.numberOfUses + 1
+        entries[index] = updated
+        persist()
     }
 
     func canCopyPlainText(_ entry: ClipboardEntry) -> Bool {

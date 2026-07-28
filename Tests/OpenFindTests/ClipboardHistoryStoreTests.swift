@@ -262,6 +262,8 @@ struct ClipboardHistoryStoreTests {
 
         #expect(decoded.initialCopiedAt == createdAt)
         #expect(decoded.numberOfCopies == 1)
+        #expect(decoded.lastUsedAt == nil)
+        #expect(decoded.numberOfUses == 0)
         #expect(decoded.sourceApplicationName == nil)
         #expect(decoded.recognizedText == nil)
         #expect(decoded.imageTextRecognitionRevision == nil)
@@ -955,6 +957,100 @@ struct ClipboardHistoryStoreTests {
         #expect(imageMatch.field == .recognizedText)
         #expect(imageMatch.context?.localizedCaseInsensitiveContains("session") == true)
         #expect(store.searchPresentation(for: sourceOnly)?.field == .sourceApplication)
+    }
+
+    @Test func searchUsesRecentActivityAndFrequencyBeforeMatchPosition() throws {
+        let suite = "OpenFindTests.ClipboardSearchRecency.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = Date()
+        let recent = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-10),
+            previewText: "https://example.com/api/auth/session",
+            kind: .url,
+            representations: ["public.url": Data("https://example.com/api/auth/session".utf8)],
+            copyCount: 1
+        )
+        let older = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-600),
+            previewText: "old session notes",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("old session notes".utf8)],
+            copyCount: 12
+        )
+        let sameActivityMoreFrequent = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-10),
+            previewText: "new session checklist",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("new session checklist".utf8)],
+            copyCount: 8
+        )
+        let recentlyUsed = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-3_600),
+            previewText: "used session reference",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("used session reference".utf8)],
+            copyCount: 2,
+            lastUsedAt: now,
+            useCount: 5
+        )
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(
+                savedEntries: [older, recent, sameActivityMoreFrequent, recentlyUsed]
+            ),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+
+        store.query = "sess"
+
+        // Recent use or capture outranks an older match even when the older
+        // item was copied more often; frequency breaks equal activity dates.
+        #expect(store.filteredEntries.map(\.id) == [
+            recentlyUsed.id,
+            sameActivityMoreFrequent.id,
+            recent.id,
+            older.id,
+        ])
+    }
+
+    @Test func usingHistoryMovesTheEntryAheadOfOlderActivity() throws {
+        let suite = "OpenFindTests.ClipboardHistoryUsage.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = Date()
+        let used = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-3_600),
+            previewText: "shared older value",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("shared older value".utf8)]
+        )
+        let recent = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-60),
+            previewText: "shared recent value",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("shared recent value".utf8)]
+        )
+        let persistence = MemoryClipboardPersistence(savedEntries: [used, recent])
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: persistence,
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+        #expect(store.filteredEntries.first?.id == recent.id)
+
+        try store.copy(used, plainTextOnly: true)
+
+        let updated = try #require(store.entries.first(where: { $0.id == used.id }))
+        #expect(updated.lastUsedAt != nil)
+        #expect(updated.numberOfUses == 1)
+        #expect(store.filteredEntries.first?.id == used.id)
+        let reloaded = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: persistence,
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+        #expect(reloaded.entries.first(where: { $0.id == used.id })?.numberOfUses == 1)
     }
 
     @Test func emptySearchKeepsConfiguredPinAndRecencyOrdering() throws {
