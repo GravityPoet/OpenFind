@@ -6,6 +6,10 @@ import Testing
 
 @Suite("Keyboard Lock Tests")
 struct KeyboardLockTests {
+    @Test func activationStartsWithoutCountdownByDefault() {
+        #expect(KeyboardLockController.defaultActivationCountdownSeconds == 0)
+    }
+
     @Test func gateSuppressesEveryKeyIncludingTheFormerUnlockShortcut() {
         let gate = KeyboardEventGate()
         let shortcut = KeyboardLockController.defaultShortcut
