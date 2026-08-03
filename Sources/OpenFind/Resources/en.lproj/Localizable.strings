@@ -455,7 +455,8 @@
 "Add Clipboard Note" = "Add Note";
 "Edit Clipboard Note" = "Edit Note";
 "Clipboard Note" = "Note";
-"Clipboard Note Help" = "Give this item a memorable name. The original clipboard content is unchanged and remains searchable.";
+"Clipboard Note Annotation" = "Note:";
+"Clipboard Note Help" = "Add a note to identify this item. The original clipboard content stays unchanged and remains the primary searchable text.";
 "Original Clipboard Content" = "Original content";
 "Last Used" = "Last used";
 "Save for Reuse" = "Save for Reuse";
@@ -493,6 +494,7 @@
 "Clipboard Item" = "Clipboard Item";
 "Source Application" = "Application";
 "Clipboard Search Match Content" = "Content";
+"Clipboard Search Match Note" = "Note";
 "Clipboard Search Match Image Text" = "Image text";
 "Clipboard Search Match Source" = "Source";
 "Clipboard Search Match Keyword" = "Keyword";

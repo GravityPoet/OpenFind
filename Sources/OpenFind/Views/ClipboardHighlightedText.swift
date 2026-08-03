@@ -7,7 +7,7 @@ enum ClipboardHighlightedText {
         preferences: ClipboardPreferences
     ) -> AttributedString {
         let title = visibleTitle(
-            entry.displayTitle,
+            entry.previewText,
             showSpecialSymbols: preferences.showSpecialSymbols
         )
         return text(
@@ -15,6 +15,21 @@ enum ClipboardHighlightedText {
             query: query,
             preferences: preferences,
             pointSize: ClipboardTypography.rowPointSize
+        )
+    }
+
+    static func note(
+        for entry: ClipboardEntry,
+        query: String,
+        preferences: ClipboardPreferences
+    ) -> AttributedString? {
+        guard let note = entry.customTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !note.isEmpty else { return nil }
+        return text(
+            note,
+            query: query,
+            preferences: preferences,
+            pointSize: ClipboardTypography.matchContextPointSize
         )
     }
 

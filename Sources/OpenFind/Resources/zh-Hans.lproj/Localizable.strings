@@ -455,7 +455,8 @@
 "Add Clipboard Note" = "添加备注";
 "Edit Clipboard Note" = "编辑备注";
 "Clipboard Note" = "备注";
-"Clipboard Note Help" = "给这个条目起一个容易记住的名字；原剪贴板内容不会改变，并且仍可被搜索。";
+"Clipboard Note Annotation" = "备注：";
+"Clipboard Note Help" = "给这个条目添加备注；原剪贴板内容保持不变，并继续作为主要内容显示和搜索。";
 "Original Clipboard Content" = "原始内容";
 "Last Used" = "最近使用";
 "Save for Reuse" = "保存为常用条目";
@@ -493,6 +494,7 @@
 "Clipboard Item" = "剪贴板项目";
 "Source Application" = "来源应用";
 "Clipboard Search Match Content" = "内容";
+"Clipboard Search Match Note" = "备注";
 "Clipboard Search Match Image Text" = "图片文字";
 "Clipboard Search Match Source" = "来源";
 "Clipboard Search Match Keyword" = "关键词";

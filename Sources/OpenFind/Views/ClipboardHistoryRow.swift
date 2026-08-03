@@ -27,7 +27,7 @@ struct ClipboardHistoryRow: View {
                 rowContextMenu
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(entry.displayTitle)
+            .accessibilityLabel(entry.previewText)
             .accessibilityValue(Text(accessibilityValue))
             .accessibilityHint(Text(L("Press Return to Paste Clipboard Item")))
             .accessibilityAddTraits(.isButton)
@@ -91,6 +91,23 @@ struct ClipboardHistoryRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
 
+                if let note = ClipboardHighlightedText.note(
+                    for: entry,
+                    query: query,
+                    preferences: preferences
+                ) {
+                    HStack(spacing: 3) {
+                        Text(L("Clipboard Note Annotation"))
+                            .font(ClipboardTypography.matchLabel)
+                            .fixedSize(horizontal: true, vertical: false)
+                        Text(note)
+                            .font(ClipboardTypography.matchContext)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .foregroundStyle(ClipboardTypography.noteText)
+                }
+
                 if let searchPresentation,
                    let context = searchPresentation.context {
                     HStack(spacing: 5) {
@@ -110,14 +127,6 @@ struct ClipboardHistoryRow: View {
                     .foregroundStyle(isSelected
                         ? Color.white.opacity(0.78)
                         : ClipboardTypography.secondaryText)
-                } else if entry.hasCustomTitle {
-                    Text(entry.previewText)
-                        .font(ClipboardTypography.matchContext)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .foregroundStyle(isSelected
-                            ? Color.white.opacity(0.78)
-                            : ClipboardTypography.secondaryText)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -181,8 +190,13 @@ struct ClipboardHistoryRow: View {
     }
 
     private var rowHeight: CGFloat {
-        let hasSecondaryText = searchPresentation?.context != nil || entry.hasCustomTitle
-        let contentHeight: CGFloat = hasSecondaryText ? 43 : 30
+        let secondaryLineCount = (entry.hasCustomTitle ? 1 : 0)
+            + (searchPresentation?.context == nil ? 0 : 1)
+        let contentHeight: CGFloat = switch secondaryLineCount {
+        case 0: 30
+        case 1: 43
+        default: 56
+        }
         guard previewImage != nil else { return contentHeight }
         return max(contentHeight, CGFloat(preferences.imageRowHeight + 8))
     }
@@ -208,9 +222,17 @@ struct ClipboardHistoryRow: View {
     }
 
     private var accessibilityValue: String {
-        guard let searchPresentation,
-              let context = searchPresentation.context else { return sourceHelp }
-        return "\(searchPresentation.field.localizedLabel): \(context). \(sourceHelp)"
+        var components: [String] = []
+        if let note = entry.customTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !note.isEmpty {
+            components.append("\(L("Clipboard Note Annotation")) \(note)")
+        }
+        if let searchPresentation,
+           let context = searchPresentation.context {
+            components.append("\(searchPresentation.field.localizedLabel): \(context)")
+        }
+        components.append(sourceHelp)
+        return components.joined(separator: ". ")
     }
 
 }
