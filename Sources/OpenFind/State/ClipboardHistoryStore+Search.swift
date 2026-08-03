@@ -10,7 +10,8 @@ enum ClipboardSearchMatchField: Equatable, Sendable {
 
     var localizedLabel: String {
         switch self {
-        case .title, .content: L("Clipboard Search Match Content")
+        case .title: L("Clipboard Search Match Note")
+        case .content: L("Clipboard Search Match Content")
         case .recognizedText: L("Clipboard Search Match Image Text")
         case .sourceApplication: L("Clipboard Search Match Source")
         case .snippetKeyword: L("Clipboard Search Match Keyword")
@@ -502,10 +503,7 @@ extension ClipboardHistoryStore {
                 from: candidate.text.startIndex,
                 to: range.lowerBound
             )
-            let hasCustomTitle = entry.customTitle?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty == false
-            if !hasCustomTitle, position <= 42 { return nil }
+            if position <= 42 { return nil }
         case .recognizedText, .sourceApplication, .snippetKeyword, .snippetCollection:
             break
         }

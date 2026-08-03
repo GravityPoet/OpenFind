@@ -13,7 +13,7 @@ struct ClipboardMenuSection: View {
 
         if store.preferences.showRecentCopyInMenuBar, let latestEntry {
             Label {
-                Text(latestEntry.displayTitle.replacingOccurrences(of: "\n", with: " "))
+                Text(latestEntry.previewText.replacingOccurrences(of: "\n", with: " "))
                     .lineLimit(1)
             } icon: {
                 if let icon = latestEntry.sourceApplicationIcon {

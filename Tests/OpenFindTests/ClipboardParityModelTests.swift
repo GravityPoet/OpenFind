@@ -72,6 +72,18 @@ struct ClipboardParityModelTests {
         #expect(!annotated.isPinned)
         #expect(annotated.displayTitle == "Production session endpoint")
         #expect(annotated.previewText == "opaque value")
+        let preferences = ClipboardPreferences()
+        #expect(String(ClipboardHighlightedText.title(
+            for: annotated,
+            query: "",
+            preferences: preferences
+        ).characters) == "opaque value")
+        let note = try #require(ClipboardHighlightedText.note(
+            for: annotated,
+            query: "",
+            preferences: preferences
+        ))
+        #expect(String(note.characters) == "Production session endpoint")
         context.store.query = "production"
         #expect(context.store.filteredEntries.map(\.id) == [entry.id])
 

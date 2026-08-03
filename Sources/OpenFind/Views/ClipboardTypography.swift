@@ -17,4 +17,5 @@ enum ClipboardTypography {
     static let matchContextPointSize: CGFloat = 11.5
     static let primaryText = Color(nsColor: .labelColor)
     static let secondaryText = Color(nsColor: .secondaryLabelColor)
+    static let noteText = Color(nsColor: .systemRed)
 }
