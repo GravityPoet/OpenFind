@@ -98,13 +98,12 @@ struct ClipboardHistoryRow: View {
                 ) {
                     HStack(spacing: 3) {
                         Text(L("Clipboard Note Annotation"))
-                            .font(ClipboardTypography.matchLabel)
                             .fixedSize(horizontal: true, vertical: false)
                         Text(note)
-                            .font(ClipboardTypography.matchContext)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
+                    .font(ClipboardTypography.matchContext)
                     .foregroundStyle(ClipboardTypography.noteText)
                 }
 
