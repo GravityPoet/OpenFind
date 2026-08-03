@@ -6,9 +6,14 @@ extension ClipboardHistoryKeyMonitor.Coordinator {
         guard let handler,
               handler.isPanelPresented,
               hostView?.window?.isVisible == true else { return event }
+        if handler.isNoteEditorPresented { return event }
         let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
         if Int(event.keyCode) == kVK_ANSI_Z, flags == .command {
             handler.onUndo()
+            return nil
+        }
+        if Int(event.keyCode) == kVK_ANSI_E, flags == .command {
+            handler.onEditNote()
             return nil
         }
         if handler.isActionPanelPresented {

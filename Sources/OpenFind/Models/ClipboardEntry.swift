@@ -88,6 +88,7 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
     var copyCount: Int?
     var lastUsedAt: Date?
     var useCount: Int?
+    var usageScore: Double?
     var snippetCollection: String?
     var snippetKeyword: String?
     var snippetExpansionEnabled: Bool?
@@ -110,6 +111,7 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         copyCount: Int? = nil,
         lastUsedAt: Date? = nil,
         useCount: Int? = nil,
+        usageScore: Double? = nil,
         snippetCollection: String? = nil,
         snippetKeyword: String? = nil,
         snippetExpansionEnabled: Bool? = nil
@@ -131,6 +133,7 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         self.copyCount = copyCount
         self.lastUsedAt = lastUsedAt
         self.useCount = useCount
+        self.usageScore = usageScore
         self.snippetCollection = snippetCollection
         self.snippetKeyword = snippetKeyword
         self.snippetExpansionEnabled = snippetExpansionEnabled
@@ -141,6 +144,18 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
     var numberOfCopies: Int { max(1, copyCount ?? 1) }
 
     var numberOfUses: Int { max(0, useCount ?? 0) }
+
+    var hasCustomTitle: Bool {
+        customTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    func decayedUsageScore(at referenceDate: Date) -> Double {
+        guard numberOfUses > 0, let lastUsedAt else { return 0 }
+        let baseScore = max(0, usageScore ?? Double(numberOfUses))
+        let elapsed = max(0, referenceDate.timeIntervalSince(lastUsedAt))
+        let halfLives = elapsed / (14 * 24 * 60 * 60)
+        return baseScore * pow(0.5, halfLives)
+    }
 
     var expandsFromKeyword: Bool {
         isPinned && snippetExpansionEnabled == true && snippetKeyword?.isEmpty == false

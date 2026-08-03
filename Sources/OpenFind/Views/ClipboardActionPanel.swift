@@ -156,6 +156,7 @@ private extension ClipboardPanelAction {
         case .openFiles: L("Open")
         case .revealFiles: L("Reveal in Finder")
         case .quickLookFiles: L("Quick Look")
+        case .editNote: L("Edit Note")
         case .saveForReuse: L("Save for Reuse")
         case .removeFromSaved: L("Remove from Saved")
         case .delete: L("Delete")
@@ -176,6 +177,7 @@ private extension ClipboardPanelAction {
         case .openFiles: "arrow.up.forward.app"
         case .revealFiles: "folder"
         case .quickLookFiles: "eye"
+        case .editNote: "square.and.pencil"
         case .saveForReuse: "pin.fill"
         case .removeFromSaved: "pin.slash"
         case .delete: "trash"
@@ -190,6 +192,7 @@ private extension ClipboardPanelAction {
         case .pastePlainText, .pasteSelectionPlainText: "⌥⇧↩"
         case .copy: "⌘C"
         case .copyPlainText: "⇧↩"
+        case .editNote: "⌘E"
         case .saveForReuse: "⌘S"
         default: nil
         }

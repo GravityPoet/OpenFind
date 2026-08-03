@@ -14,6 +14,7 @@ struct ClipboardHistoryView: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var searchFocusTask: Task<Void, Never>?
+    @State var noteEditorRequest: ClipboardNoteEditRequest?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,6 +44,7 @@ struct ClipboardHistoryView: View {
                 onCopy: { copy($0) },
                 onPaste: { paste($0) },
                 onPastePlainText: { paste($0, plainTextOnly: true) },
+                onEditNote: beginEditingNote,
                 onPin: { store.togglePinned($0) },
                 onDelete: { store.delete($0) }
             )
@@ -82,6 +84,16 @@ struct ClipboardHistoryView: View {
         .background {
             keyMonitor.frame(width: 0, height: 0)
         }
+        .sheet(item: $noteEditorRequest, onDismiss: requestSearchFocus) { request in
+            ClipboardNoteEditor(
+                entry: request.entry,
+                onSave: { note in
+                    store.setCustomTitle(note, for: request.entry)
+                    noteEditorRequest = nil
+                },
+                onCancel: { noteEditorRequest = nil }
+            )
+        }
         .onAppear {
             store.selectedIndex = min(store.selectedIndex, max(0, store.filteredEntries.count - 1))
             requestSearchFocus()
@@ -105,6 +117,7 @@ struct ClipboardHistoryView: View {
         .onDisappear {
             searchFocusTask?.cancel()
             searchFocusTask = nil
+            noteEditorRequest = nil
             store.isActionPanelPresented = false
         }
         .openFindInterfaceSizing()
@@ -113,14 +126,17 @@ struct ClipboardHistoryView: View {
     private func requestSearchFocus() {
         searchFocusTask?.cancel()
         searchFocused = false
-        guard store.isPanelPresented, !store.isActionPanelPresented else { return }
+        guard store.isPanelPresented,
+              !store.isActionPanelPresented,
+              noteEditorRequest == nil else { return }
         let generation = store.presentationGeneration
         searchFocusTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled,
                   store.isPanelPresented,
                   store.presentationGeneration == generation,
-                  !store.isActionPanelPresented else { return }
+                  !store.isActionPanelPresented,
+                  noteEditorRequest == nil else { return }
             searchFocused = true
             searchFocusTask = nil
         }

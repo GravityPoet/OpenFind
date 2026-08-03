@@ -6,6 +6,7 @@ struct ClipboardHistoryContent: View {
     let onCopy: (ClipboardEntry) -> Void
     let onPaste: (ClipboardEntry) -> Void
     let onPastePlainText: (ClipboardEntry) -> Void
+    let onEditNote: (ClipboardEntry) -> Void
     let onPin: (ClipboardEntry) -> Void
     let onDelete: (ClipboardEntry) -> Void
 
@@ -57,6 +58,7 @@ struct ClipboardHistoryContent: View {
             onCopy: onCopy,
             onPaste: onPaste,
             onPastePlainText: onPastePlainText,
+            onEditNote: onEditNote,
             onPin: onPin,
             onDelete: onDelete
         )

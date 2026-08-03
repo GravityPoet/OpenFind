@@ -52,6 +52,14 @@ extension ClipboardHistoryStore {
         return cachedSearchPresentationByID[entry.id]
     }
 
+    func isFrequentlyUsed(_ entry: ClipboardEntry, at referenceDate: Date? = nil) -> Bool {
+        if let referenceDate {
+            return qualifiesAsFrequentlyUsed(entry, at: referenceDate)
+        }
+        _ = filteredEntries
+        return cachedFrequentEntryIDs.contains(entry.id)
+    }
+
     func quickEntry(at index: Int) -> ClipboardEntry? {
         _ = filteredEntries
         guard cachedQuickEntryIDs.indices.contains(index),
@@ -67,11 +75,19 @@ extension ClipboardHistoryStore {
     }
 
     private func rebuildClipboardProjection(revision: UInt64) {
+        let referenceDate = Date()
+        let frequentEntryIDs = frequentEntryIDs(at: referenceDate)
+        cachedFrequentEntryIDs = frequentEntryIDs
+        cachedUsageRankingDate = referenceDate
         let structuredQuery = ClipboardStructuredQuery.parse(query)
         let search = structuredQuery.text
+        let baseEntries = sortedEntries(
+            at: referenceDate,
+            frequentEntryIDs: frequentEntryIDs
+        )
         let kindFiltered = kindFilter == .all
-            ? sortedEntries
-            : sortedEntries.filter { kindFilter.matches($0.kind) }
+            ? baseEntries
+            : baseEntries.filter { kindFilter.matches($0.kind) }
         let sorted = kindFiltered.filter(structuredQuery.matches)
         let ranked: [ClipboardRankedSearchResult]
         if search.isEmpty {
@@ -86,23 +102,49 @@ extension ClipboardHistoryStore {
         } else {
             switch preferences.searchMode {
             case .exact:
-                ranked = rankedMatches(search, mode: .exact, within: sorted)
+                ranked = rankedMatches(
+                    search,
+                    mode: .exact,
+                    within: sorted,
+                    referenceDate: referenceDate
+                )
             case .fuzzy:
-                ranked = rankedMatches(search, mode: .fuzzy, within: sorted)
+                ranked = rankedMatches(
+                    search,
+                    mode: .fuzzy,
+                    within: sorted,
+                    referenceDate: referenceDate
+                )
             case .regularExpression:
-                ranked = rankedMatches(search, mode: .regularExpression, within: sorted)
+                ranked = rankedMatches(
+                    search,
+                    mode: .regularExpression,
+                    within: sorted,
+                    referenceDate: referenceDate
+                )
             case .mixed:
-                let exact = rankedMatches(search, mode: .exact, within: sorted)
+                let exact = rankedMatches(
+                    search,
+                    mode: .exact,
+                    within: sorted,
+                    referenceDate: referenceDate
+                )
                 if !exact.isEmpty {
                     ranked = exact
                 } else {
                     let regularExpression = rankedMatches(
                         search,
                         mode: .regularExpression,
-                        within: sorted
+                        within: sorted,
+                        referenceDate: referenceDate
                     )
                     ranked = regularExpression.isEmpty
-                        ? rankedMatches(search, mode: .fuzzy, within: sorted)
+                        ? rankedMatches(
+                            search,
+                            mode: .fuzzy,
+                            within: sorted,
+                            referenceDate: referenceDate
+                        )
                         : regularExpression
                 }
             }
@@ -183,17 +225,27 @@ extension ClipboardHistoryStore {
             .joined(separator: "\n")
     }
 
-    private var sortedEntries: [ClipboardEntry] {
+    private func sortedEntries(
+        at referenceDate: Date,
+        frequentEntryIDs: Set<UUID>
+    ) -> [ClipboardEntry] {
         entries.sorted { lhs, rhs in
-            let lhsRank = pinRank(for: lhs)
-            let rhsRank = pinRank(for: rhs)
+            let lhsRank = browseRank(for: lhs, frequentEntryIDs: frequentEntryIDs)
+            let rhsRank = browseRank(for: rhs, frequentEntryIDs: frequentEntryIDs)
             if lhsRank != rhsRank { return lhsRank < rhsRank }
-            let lhsDate = activityDate(for: lhs)
-            let rhsDate = activityDate(for: rhs)
-            if lhsDate != rhsDate { return lhsDate > rhsDate }
-            if lhs.numberOfUses != rhs.numberOfUses {
-                return lhs.numberOfUses > rhs.numberOfUses
+
+            if frequentEntryIDs.contains(lhs.id), frequentEntryIDs.contains(rhs.id) {
+                let lhsScore = lhs.decayedUsageScore(at: referenceDate)
+                let rhsScore = rhs.decayedUsageScore(at: referenceDate)
+                if lhsScore != rhsScore { return lhsScore > rhsScore }
+                if lhs.lastUsedAt != rhs.lastUsedAt {
+                    return (lhs.lastUsedAt ?? .distantPast) > (rhs.lastUsedAt ?? .distantPast)
+                }
             }
+
+            let lhsDate = copiedDate(for: lhs)
+            let rhsDate = copiedDate(for: rhs)
+            if lhsDate != rhsDate { return lhsDate > rhsDate }
             if lhs.numberOfCopies != rhs.numberOfCopies {
                 return lhs.numberOfCopies > rhs.numberOfCopies
             }
@@ -201,12 +253,48 @@ extension ClipboardHistoryStore {
         }
     }
 
-    private func activityDate(for entry: ClipboardEntry) -> Date {
-        let copiedAt = preferences.sortMode == .lastCopied
+    private func copiedDate(for entry: ClipboardEntry) -> Date {
+        preferences.sortMode == .lastCopied
             ? entry.createdAt
             : entry.initialCopiedAt
-        guard let lastUsedAt = entry.lastUsedAt else { return copiedAt }
-        return max(copiedAt, lastUsedAt)
+    }
+
+    private func frequentEntryIDs(at referenceDate: Date) -> Set<UUID> {
+        let candidates = entries.filter {
+            !$0.isPinned && qualifiesAsFrequentlyUsed($0, at: referenceDate)
+        }.sorted { lhs, rhs in
+            let lhsScore = lhs.decayedUsageScore(at: referenceDate)
+            let rhsScore = rhs.decayedUsageScore(at: referenceDate)
+            if lhsScore != rhsScore { return lhsScore > rhsScore }
+            if lhs.lastUsedAt != rhs.lastUsedAt {
+                return (lhs.lastUsedAt ?? .distantPast) > (rhs.lastUsedAt ?? .distantPast)
+            }
+            return copiedDate(for: lhs) > copiedDate(for: rhs)
+        }
+        return Set(candidates.prefix(5).map(\.id))
+    }
+
+    private func qualifiesAsFrequentlyUsed(
+        _ entry: ClipboardEntry,
+        at referenceDate: Date
+    ) -> Bool {
+        !entry.isPinned
+            && entry.numberOfUses >= 3
+            && entry.decayedUsageScore(at: referenceDate) >= 1.5
+    }
+
+    private func browseRank(
+        for entry: ClipboardEntry,
+        frequentEntryIDs: Set<UUID>
+    ) -> Int {
+        switch preferences.pinsPosition {
+        case .top:
+            if entry.isPinned { return 0 }
+            return frequentEntryIDs.contains(entry.id) ? 1 : 2
+        case .bottom:
+            if entry.isPinned { return 2 }
+            return frequentEntryIDs.contains(entry.id) ? 0 : 1
+        }
     }
 
     private func pinRank(for entry: ClipboardEntry) -> Int {
@@ -219,10 +307,16 @@ extension ClipboardHistoryStore {
     private func rankedMatches(
         _ query: String,
         mode: ClipboardSearchMode,
-        within entries: [ClipboardEntry]
+        within entries: [ClipboardEntry],
+        referenceDate: Date
     ) -> [ClipboardRankedSearchResult] {
         entries.enumerated().compactMap { index, entry in
-            guard let best = bestMatch(for: entry, query: query, mode: mode) else {
+            guard let best = bestMatch(
+                for: entry,
+                query: query,
+                mode: mode,
+                referenceDate: referenceDate
+            ) else {
                 return nil
             }
             return ClipboardRankedSearchResult(
@@ -239,6 +333,9 @@ extension ClipboardHistoryStore {
                 fallbackIndex: index
             )
         }.sorted { lhs, rhs in
+            let lhsPinRank = pinRank(for: lhs.entry)
+            let rhsPinRank = pinRank(for: rhs.entry)
+            if lhsPinRank != rhsPinRank { return lhsPinRank < rhsPinRank }
             guard let lhsRank = lhs.rank, let rhsRank = rhs.rank else {
                 return lhs.fallbackIndex < rhs.fallbackIndex
             }
@@ -250,7 +347,8 @@ extension ClipboardHistoryStore {
     private func bestMatch(
         for entry: ClipboardEntry,
         query: String,
-        mode: ClipboardSearchMode
+        mode: ClipboardSearchMode,
+        referenceDate: Date
     ) -> ClipboardRankedCandidate? {
         searchCandidates(for: entry).compactMap { candidate in
             guard let match = ClipboardSearchEngine.match(
@@ -271,8 +369,8 @@ extension ClipboardHistoryStore {
                         mode: mode
                     ),
                     fuzzyScore: match.score,
-                    activityDate: activityDate(for: entry),
-                    useCount: entry.numberOfUses,
+                    usageScore: entry.decayedUsageScore(at: referenceDate),
+                    copiedDate: copiedDate(for: entry),
                     copyCount: entry.numberOfCopies,
                     position: candidate.text.distance(
                         from: candidate.text.startIndex,
@@ -477,8 +575,8 @@ private struct ClipboardSearchRelevance: Equatable {
     let fieldPriority: Int
     let quality: Int
     let fuzzyScore: Int
-    let activityDate: Date
-    let useCount: Int
+    let usageScore: Double
+    let copiedDate: Date
     let copyCount: Int
     let position: Int
     let candidateLength: Int
@@ -487,10 +585,10 @@ private struct ClipboardSearchRelevance: Equatable {
         if fieldPriority != other.fieldPriority { return fieldPriority > other.fieldPriority }
         if quality != other.quality { return quality > other.quality }
         if fuzzyScore != other.fuzzyScore { return fuzzyScore > other.fuzzyScore }
-        // Once two entries are equally relevant, favor recent copy/use activity,
-        // then usage and copy frequency, before tiny match-position differences.
-        if activityDate != other.activityDate { return activityDate > other.activityDate }
-        if useCount != other.useCount { return useCount > other.useCount }
+        // Once two entries are equally relevant, favor durable reuse habits,
+        // then strict copy recency. Using an item never rewrites copied-at order.
+        if usageScore != other.usageScore { return usageScore > other.usageScore }
+        if copiedDate != other.copiedDate { return copiedDate > other.copiedDate }
         if copyCount != other.copyCount { return copyCount > other.copyCount }
         if position != other.position { return position < other.position }
         return candidateLength < other.candidateLength

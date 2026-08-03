@@ -57,6 +57,28 @@ struct ClipboardParityModelTests {
         #expect(edited.pinKey == firstPinned.pinKey)
     }
 
+    @Test func unpinnedEntriesCanBeAnnotatedAndFoundWithoutChangingContent() throws {
+        let context = try makeContext()
+        #expect(context.store.ingest(
+            representations: ["public.utf8-plain-text": Data("opaque value".utf8)],
+            previewText: "opaque value",
+            kind: .text
+        ))
+        let entry = try #require(context.store.entries.first)
+
+        context.store.setCustomTitle("Production session endpoint", for: entry)
+
+        let annotated = try #require(context.store.entries.first)
+        #expect(!annotated.isPinned)
+        #expect(annotated.displayTitle == "Production session endpoint")
+        #expect(annotated.previewText == "opaque value")
+        context.store.query = "production"
+        #expect(context.store.filteredEntries.map(\.id) == [entry.id])
+
+        context.store.setCustomTitle("   ", for: annotated)
+        #expect(context.store.entries.first?.customTitle == nil)
+    }
+
     @Test func disabledFileStorageStillRetainsAllowedTextFallback() throws {
         let context = try makeContext()
         context.store.setStorageCategory(.files, enabled: false)

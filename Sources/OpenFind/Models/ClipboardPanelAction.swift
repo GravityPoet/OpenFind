@@ -12,6 +12,7 @@ enum ClipboardPanelAction: String, Identifiable, Hashable, Sendable {
     case openFiles
     case revealFiles
     case quickLookFiles
+    case editNote
     case saveForReuse
     case removeFromSaved
     case delete
@@ -49,6 +50,7 @@ struct ClipboardPanelActionContext: Equatable, Sendable {
         if hasOpenableURL { actions.append(.openURL) }
         if hasFiles { actions.append(contentsOf: [.openFiles, .revealFiles]) }
         actions.append(.quickLookFiles)
+        actions.append(.editNote)
         actions.append(entry.isPinned ? .removeFromSaved : .saveForReuse)
         actions.append(.delete)
         return actions
