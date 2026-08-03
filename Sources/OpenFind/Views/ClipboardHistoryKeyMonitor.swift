@@ -11,6 +11,7 @@ struct ClipboardHistoryKeyMonitor: NSViewRepresentable {
     let isPanelPresented: Bool
     let isSearchPresented: Bool
     let isActionPanelPresented: Bool
+    let isNoteEditorPresented: Bool
     let pinShortcut: GlobalShortcut
     let deleteShortcut: GlobalShortcut
     let previewShortcut: GlobalShortcut
@@ -23,6 +24,7 @@ struct ClipboardHistoryKeyMonitor: NSViewRepresentable {
     let onCopyPlainText: () -> Void
     let onTogglePin: () -> Void
     let onSaveForReuse: () -> Void
+    let onEditNote: () -> Void
     let onToggleActions: () -> Void
     let onTogglePreview: () -> Void
     let onDelete: () -> Void

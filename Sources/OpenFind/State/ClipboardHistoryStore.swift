@@ -70,6 +70,8 @@ final class ClipboardHistoryStore {
     @ObservationIgnored var cachedQuickEntryIDs: [UUID] = []
     @ObservationIgnored var cachedHighlightQuery = ""
     @ObservationIgnored var cachedSearchPresentationByID: [UUID: ClipboardSearchPresentation] = [:]
+    @ObservationIgnored var cachedFrequentEntryIDs: Set<UUID> = []
+    @ObservationIgnored var cachedUsageRankingDate: Date?
     @ObservationIgnored var cachedEntryByID: [UUID: ClipboardEntry] = [:]
     @ObservationIgnored var cachedSnippetKeywords: [(keyword: String, id: UUID)] = []
     @ObservationIgnored var clipboardProjectionBuildCount = 0
@@ -210,6 +212,12 @@ final class ClipboardHistoryStore {
     }
 
     func beginPresentation() {
+        // Refresh time-decayed usage periodically without throwing away the
+        // warm projection on every open; opening the panel must stay instant.
+        if let cachedUsageRankingDate,
+           Date().timeIntervalSince(cachedUsageRankingDate) >= 60 * 60 {
+            invalidateClipboardProjection()
+        }
         isPanelPresented = true
         isPreviewVisible = true
         isActionPanelPresented = false

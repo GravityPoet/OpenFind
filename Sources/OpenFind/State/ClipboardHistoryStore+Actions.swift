@@ -56,10 +56,14 @@ extension ClipboardHistoryStore {
     private func recordUse(of id: UUID, at date: Date = Date()) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         var updated = entries[index]
+        let decayedScore = updated.lastUsedAt == nil
+            ? max(0, updated.usageScore ?? Double(updated.numberOfUses))
+            : updated.decayedUsageScore(at: date)
         updated.lastUsedAt = date
         updated.useCount = updated.numberOfUses == Int.max
             ? Int.max
             : updated.numberOfUses + 1
+        updated.usageScore = decayedScore + 1
         entries[index] = updated
         persist()
     }

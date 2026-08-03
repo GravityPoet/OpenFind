@@ -85,7 +85,7 @@ struct ClipboardAlfredWorkflowTests {
         )
         #expect(single.itemActions == [
             .paste, .pastePlainText, .copy, .copyPlainText, .quickLookFiles,
-            .saveForReuse, .delete,
+            .editNote, .saveForReuse, .delete,
         ])
 
         var savedURL = entry("https://openfind.example", kind: .url)
@@ -117,6 +117,7 @@ struct ClipboardAlfredWorkflowTests {
             .openFiles,
             .revealFiles,
             .quickLookFiles,
+            .editNote,
             .saveForReuse,
             .delete,
         ])
@@ -424,11 +425,16 @@ struct ClipboardAlfredWorkflowTests {
 
         var actionPanelToggleCount = 0
         var saveCount = 0
-        func makeHandler(isPanelPresented: Bool) -> ClipboardHistoryKeyMonitor {
+        var editNoteCount = 0
+        func makeHandler(
+            isPanelPresented: Bool,
+            isNoteEditorPresented: Bool = false
+        ) -> ClipboardHistoryKeyMonitor {
             ClipboardHistoryKeyMonitor(
                 isPanelPresented: isPanelPresented,
                 isSearchPresented: true,
                 isActionPanelPresented: false,
+                isNoteEditorPresented: isNoteEditorPresented,
                 pinShortcut: ClipboardPreferences.defaultPinShortcut,
                 deleteShortcut: ClipboardPreferences.defaultDeleteShortcut,
                 previewShortcut: ClipboardPreferences.defaultPreviewShortcut,
@@ -441,6 +447,7 @@ struct ClipboardAlfredWorkflowTests {
                 onCopyPlainText: {},
                 onTogglePin: {},
                 onSaveForReuse: { saveCount += 1 },
+                onEditNote: { editNoteCount += 1 },
                 onToggleActions: { actionPanelToggleCount += 1 },
                 onTogglePreview: {},
                 onDelete: {},
@@ -458,10 +465,20 @@ struct ClipboardAlfredWorkflowTests {
 
         let commandK = try #require(keyEvent(keyCode: kVK_ANSI_K, characters: "k"))
         let commandS = try #require(keyEvent(keyCode: kVK_ANSI_S, characters: "s"))
+        let commandE = try #require(keyEvent(keyCode: kVK_ANSI_E, characters: "e"))
         #expect(coordinator.handle(commandK) == nil)
         #expect(coordinator.handle(commandS) == nil)
+        #expect(coordinator.handle(commandE) == nil)
         #expect(actionPanelToggleCount == 1)
         #expect(saveCount == 1)
+        #expect(editNoteCount == 1)
+
+        coordinator.handler = makeHandler(
+            isPanelPresented: true,
+            isNoteEditorPresented: true
+        )
+        #expect(coordinator.handle(commandE) === commandE)
+        #expect(editNoteCount == 1)
 
         coordinator.handler = makeHandler(isPanelPresented: false)
         #expect(coordinator.handle(commandK) === commandK)
@@ -487,6 +504,7 @@ struct ClipboardAlfredWorkflowTests {
             isPanelPresented: true,
             isSearchPresented: true,
             isActionPanelPresented: false,
+            isNoteEditorPresented: false,
             pinShortcut: ClipboardPreferences.defaultPinShortcut,
             deleteShortcut: ClipboardPreferences.defaultDeleteShortcut,
             previewShortcut: ClipboardPreferences.defaultPreviewShortcut,
@@ -499,6 +517,7 @@ struct ClipboardAlfredWorkflowTests {
             onCopyPlainText: {},
             onTogglePin: {},
             onSaveForReuse: {},
+            onEditNote: {},
             onToggleActions: {},
             onTogglePreview: { previewToggleCount += 1 },
             onDelete: {},

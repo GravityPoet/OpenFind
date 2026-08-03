@@ -75,6 +75,17 @@ extension ClipboardHistoryView {
         store.saveForReuse(selected)
     }
 
+    func beginEditingNote(_ entry: ClipboardEntry) {
+        guard store.entries.contains(where: { $0.id == entry.id }) else { return }
+        store.isActionPanelPresented = false
+        noteEditorRequest = ClipboardNoteEditRequest(entry: entry)
+    }
+
+    func beginEditingSelectedNote() {
+        guard let selected = store.selectedEntry else { return }
+        beginEditingNote(selected)
+    }
+
     func performPanelAction(_ action: ClipboardPanelAction) {
         store.isActionPanelPresented = false
         switch action {
@@ -113,6 +124,8 @@ extension ClipboardHistoryView {
             // first hides the application, and a preview panel ordered front
             // inside a hidden application never becomes visible.
             onQuickLook(entry)
+        case .editNote:
+            beginEditingSelectedNote()
         case .saveForReuse:
             saveSelectedForReuse()
         case .removeFromSaved:

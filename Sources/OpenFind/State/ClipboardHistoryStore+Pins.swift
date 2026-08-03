@@ -23,9 +23,7 @@ extension ClipboardHistoryStore {
     }
 
     func setCustomTitle(_ title: String, for entry: ClipboardEntry) {
-        guard let index = entries.firstIndex(where: { $0.id == entry.id && $0.isPinned }) else {
-            return
-        }
+        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             entries[index].customTitle = nil

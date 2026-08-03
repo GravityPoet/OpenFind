@@ -16,6 +16,7 @@ struct ClipboardHistoryRow: View {
     let onCopy: () -> Void
     let onPaste: () -> Void
     let onPastePlainText: () -> Void
+    let onEditNote: () -> Void
     let onPin: () -> Void
     let onDelete: () -> Void
     @State private var isHovered = false
@@ -36,6 +37,9 @@ struct ClipboardHistoryRow: View {
             }
             .accessibilityAction(named: Text(entry.isPinned ? L("Unpin") : L("Pin"))) {
                 onPin()
+            }
+            .accessibilityAction(named: Text(entry.hasCustomTitle ? L("Edit Note") : L("Add Note"))) {
+                onEditNote()
             }
             .accessibilityAction(named: Text(L("Delete"))) {
                 onDelete()
@@ -106,6 +110,14 @@ struct ClipboardHistoryRow: View {
                     .foregroundStyle(isSelected
                         ? Color.white.opacity(0.78)
                         : ClipboardTypography.secondaryText)
+                } else if entry.hasCustomTitle {
+                    Text(entry.previewText)
+                        .font(ClipboardTypography.matchContext)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .foregroundStyle(isSelected
+                            ? Color.white.opacity(0.78)
+                            : ClipboardTypography.secondaryText)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -169,7 +181,8 @@ struct ClipboardHistoryRow: View {
     }
 
     private var rowHeight: CGFloat {
-        let contentHeight: CGFloat = searchPresentation?.context == nil ? 30 : 43
+        let hasSecondaryText = searchPresentation?.context != nil || entry.hasCustomTitle
+        let contentHeight: CGFloat = hasSecondaryText ? 43 : 30
         guard previewImage != nil else { return contentHeight }
         return max(contentHeight, CGFloat(preferences.imageRowHeight + 8))
     }
@@ -181,7 +194,9 @@ struct ClipboardHistoryRow: View {
         Button(L("Paste Plain Text"), action: onPastePlainText)
             .disabled(!canUsePlainText)
         Divider()
+        Button(entry.hasCustomTitle ? L("Edit Note") : L("Add Note"), action: onEditNote)
         Button(entry.isPinned ? L("Unpin") : L("Pin"), action: onPin)
+        Divider()
         Button(L("Delete"), role: .destructive, action: onDelete)
     }
 

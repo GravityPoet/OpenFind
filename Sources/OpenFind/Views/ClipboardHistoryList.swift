@@ -7,6 +7,7 @@ struct ClipboardHistoryList: View {
     let onCopy: (ClipboardEntry) -> Void
     let onPaste: (ClipboardEntry) -> Void
     let onPastePlainText: (ClipboardEntry) -> Void
+    let onEditNote: (ClipboardEntry) -> Void
     let onPin: (ClipboardEntry) -> Void
     let onDelete: (ClipboardEntry) -> Void
     @State private var selectionOrigin = SelectionOrigin.other
@@ -14,14 +15,15 @@ struct ClipboardHistoryList: View {
     var body: some View {
         let visibleEntries = store.filteredEntries
         let highlightQuery = store.highlightQuery
-        // Browsing keeps the store's pinned-then-recency order, so section
-        // titles are inserted at group boundaries without reordering anything:
-        // arrow-key navigation and every visible index stay untouched. A
-        // search is ranked by relevance, where date groups would only
-        // interleave noise, so it stays flat.
         let annotatedEntries = Self.annotate(
             visibleEntries,
-            grouped: store.query.isEmpty
+            isSearching: !store.query.isEmpty,
+            isFrequentlyUsed: { store.isFrequentlyUsed($0) },
+            copiedDate: { entry in
+                store.preferences.sortMode == .lastCopied
+                    ? entry.createdAt
+                    : entry.initialCopiedAt
+            }
         )
         ScrollViewReader { proxy in
             Group {
@@ -91,6 +93,10 @@ struct ClipboardHistoryList: View {
                                     onCopy: { onCopy(entry) },
                                     onPaste: { onPaste(entry) },
                                     onPastePlainText: { onPastePlainText(entry) },
+                                    onEditNote: {
+                                        store.select(entry)
+                                        onEditNote(entry)
+                                    },
                                     onPin: {
                                         store.select(entry)
                                         onPin(entry)
@@ -126,11 +132,13 @@ struct ClipboardHistoryList: View {
     }
 
     private enum SectionKey {
-        case pinned, today, yesterday, week, earlier
+        case pinned, frequent, otherResults, today, yesterday, week, earlier
 
         var title: String {
             switch self {
             case .pinned: L("Pinned Section")
+            case .frequent: L("Frequently Used Section")
+            case .otherResults: L("Other Results Section")
             case .today: L("Today Section")
             case .yesterday: L("Yesterday Section")
             case .week: L("Previous Week Section")
@@ -141,9 +149,11 @@ struct ClipboardHistoryList: View {
 
     private static func annotate(
         _ entries: [ClipboardEntry],
-        grouped: Bool
+        isSearching: Bool,
+        isFrequentlyUsed: (ClipboardEntry) -> Bool,
+        copiedDate: (ClipboardEntry) -> Date
     ) -> [AnnotatedEntry] {
-        guard grouped else {
+        if isSearching, !entries.contains(where: \.isPinned) {
             return entries.map { AnnotatedEntry(sectionTitle: nil, entry: $0) }
         }
         let calendar = Calendar.current
@@ -151,13 +161,17 @@ struct ClipboardHistoryList: View {
         var previousKey: SectionKey?
         return entries.map { entry in
             let key: SectionKey
-            if entry.isPinned {
+            if isSearching {
+                key = entry.isPinned ? .pinned : .otherResults
+            } else if entry.isPinned {
                 key = .pinned
-            } else if calendar.isDateInToday(entry.initialCopiedAt) {
+            } else if isFrequentlyUsed(entry) {
+                key = .frequent
+            } else if calendar.isDateInToday(copiedDate(entry)) {
                 key = .today
-            } else if calendar.isDateInYesterday(entry.initialCopiedAt) {
+            } else if calendar.isDateInYesterday(copiedDate(entry)) {
                 key = .yesterday
-            } else if entry.initialCopiedAt > weekCutoff {
+            } else if copiedDate(entry) > weekCutoff {
                 key = .week
             } else {
                 key = .earlier

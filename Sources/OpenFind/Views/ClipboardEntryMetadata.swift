@@ -84,6 +84,18 @@ struct ClipboardEntryMetadata: View {
                         Text(entry.initialCopiedAt.formatted(date: .abbreviated, time: .shortened))
                     }
                 }
+
+                if entry.numberOfUses > 0, let lastUsedAt = entry.lastUsedAt {
+                    HStack(spacing: 4) {
+                        Text(String(
+                            format: L("Clipboard Use Count Compact"),
+                            entry.numberOfUses
+                        ))
+                        Text("·")
+                        Text(L("Last Used"))
+                        Text(lastUsedAt.formatted(date: .abbreviated, time: .shortened))
+                    }
+                }
             }
         }
         .font(.caption)
