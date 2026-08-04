@@ -12,6 +12,10 @@ struct OpenFindApp: App {
                 appDelegate.showOpenFindWindow(nil)
             }
 
+            ClipboardMenuSection(
+                store: appDelegate.clipboardStore,
+                controller: appDelegate.clipboard
+            )
             AwakeMenuSection(
                 controller: appDelegate.awakeSession,
                 preferences: appDelegate.awakeSessionPreferences
@@ -24,26 +28,7 @@ struct OpenFindApp: App {
                 store: appDelegate.driveAliveStore,
                 controller: appDelegate.driveAlive
             )
-
-            Divider()
-
-            ClipboardMenuSection(
-                store: appDelegate.clipboardStore,
-                controller: appDelegate.clipboard
-            )
-
-            Button {
-                appDelegate.keyboardLock.toggle()
-            } label: {
-                Label(
-                    appDelegate.keyboardLock.isEngaged
-                        ? L("Unlock Keyboard")
-                        : L("Lock Keyboard"),
-                    systemImage: appDelegate.keyboardLock.isEngaged
-                        ? "keyboard.fill"
-                        : "keyboard"
-                )
-            }
+            KeyboardLockMenuSection(controller: appDelegate.keyboardLock)
 
             Divider()
 
