@@ -8,7 +8,7 @@ struct OpenFindApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            Button(L("Show OpenFind")) {
+            Button(L("File Search")) {
                 appDelegate.showOpenFindWindow(nil)
             }
 
