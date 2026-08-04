@@ -223,7 +223,7 @@ extension ClipboardHistoryStore {
             }
             recordDeletionUndo(removed, selectedEntryID: selectedEntry?.id)
         } else {
-            deletionUndo = nil
+            clearDeletionUndo()
         }
         entries.removeAll()
         selectedIndex = 0
@@ -235,7 +235,7 @@ extension ClipboardHistoryStore {
     @discardableResult
     func undoLastDeletion() -> Bool {
         guard let undo = deletionUndo else { return false }
-        deletionUndo = nil
+        clearDeletionUndo()
 
         let removedIDs = Set(undo.removedEntries.map(\.entry.id))
         let newEntries = entries.filter {
@@ -258,7 +258,7 @@ extension ClipboardHistoryStore {
     }
 
     func dismissDeletionUndo() {
-        deletionUndo = nil
+        clearDeletionUndo()
     }
 
     func clearError() {
@@ -334,5 +334,33 @@ extension ClipboardHistoryStore {
             }.map(\.id)),
             selectedEntryID: selectedEntryID
         )
+        presentDeletionUndoBanner()
+    }
+
+    private func presentDeletionUndoBanner() {
+        deletionUndoBannerDismissTask?.cancel()
+        deletionUndoBannerGeneration &+= 1
+        let generation = deletionUndoBannerGeneration
+        let duration = deletionUndoBannerDuration
+        isDeletionUndoBannerPresented = true
+        deletionUndoBannerDismissTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: duration)
+            } catch {
+                return
+            }
+            guard let self,
+                  self.deletionUndoBannerGeneration == generation else { return }
+            self.isDeletionUndoBannerPresented = false
+            self.deletionUndoBannerDismissTask = nil
+        }
+    }
+
+    private func clearDeletionUndo() {
+        deletionUndoBannerDismissTask?.cancel()
+        deletionUndoBannerDismissTask = nil
+        deletionUndoBannerGeneration &+= 1
+        isDeletionUndoBannerPresented = false
+        deletionUndo = nil
     }
 }

@@ -36,6 +36,7 @@ final class ClipboardHistoryStore {
     @ObservationIgnored let contentActionRegistry: ClipboardContentActionRegistry
     @ObservationIgnored let imageTextRecognizer: any ClipboardImageTextRecognizing
     @ObservationIgnored let imageTextRecognitionStartDelay: Duration
+    @ObservationIgnored let deletionUndoBannerDuration: Duration
     var entries: [ClipboardEntry] = [] {
         didSet { invalidateClipboardProjection() }
     }
@@ -99,11 +100,14 @@ final class ClipboardHistoryStore {
     }()
     @ObservationIgnored var pendingImageTextRecognitionIDs: Set<UUID> = []
     @ObservationIgnored var imageTextRecognitionTask: Task<Void, Never>?
+    @ObservationIgnored var deletionUndoBannerDismissTask: Task<Void, Never>?
+    @ObservationIgnored var deletionUndoBannerGeneration: UInt64 = 0
     var selectedIndex = 0
     var selectedEntryIDs: [UUID] = []
     var selectionAnchorID: UUID?
     var pasteStack: ClipboardPasteStack?
     var deletionUndo: ClipboardDeletionUndo?
+    var isDeletionUndoBannerPresented = false
     var isSearchPresented = false
     var isPreviewVisible = true
     var isActionPanelPresented = false
@@ -117,7 +121,8 @@ final class ClipboardHistoryStore {
         contentActionRegistry: ClipboardContentActionRegistry = .standard,
         imageTextRecognizer: any ClipboardImageTextRecognizing =
             VisionClipboardImageTextRecognizer(),
-        imageTextRecognitionStartDelay: Duration = .seconds(2)
+        imageTextRecognitionStartDelay: Duration = .seconds(2),
+        deletionUndoBannerDuration: Duration = .seconds(5)
     ) {
         self.defaults = defaults
         self.persistence = persistence
@@ -125,6 +130,7 @@ final class ClipboardHistoryStore {
         self.contentActionRegistry = contentActionRegistry
         self.imageTextRecognizer = imageTextRecognizer
         self.imageTextRecognitionStartDelay = imageTextRecognitionStartDelay
+        self.deletionUndoBannerDuration = deletionUndoBannerDuration
         preferences = ClipboardPreferencesPersistence.load(from: defaults)
         let enabled = defaults.object(forKey: Self.persistenceEnabledKey) as? Bool ?? true
         isPersistenceEnabled = enabled

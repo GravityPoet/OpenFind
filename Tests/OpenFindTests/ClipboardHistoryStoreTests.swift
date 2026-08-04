@@ -1463,6 +1463,37 @@ struct ClipboardHistoryStoreTests {
         ])
         #expect(!store.canUndoDeletion)
     }
+
+    @Test func deletionUndoBannerAutoDismissesWithoutDiscardingKeyboardUndo() async throws {
+        let suite = "OpenFindTests.ClipboardDeletionUndoBanner.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: MemoryClipboardPersistence(),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())")),
+            deletionUndoBannerDuration: .milliseconds(20)
+        )
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("temporary".utf8)],
+            previewText: "temporary",
+            kind: .text
+        ))
+        let entry = try #require(store.entries.first)
+
+        store.delete(entry)
+
+        #expect(store.isDeletionUndoBannerPresented)
+        #expect(store.canUndoDeletion)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while store.isDeletionUndoBannerPresented, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!store.isDeletionUndoBannerPresented)
+        #expect(store.canUndoDeletion)
+        #expect(store.undoLastDeletion())
+        #expect(store.entries.first?.id == entry.id)
+    }
 }
 
 private final class MemoryClipboardPersistence: ClipboardHistoryPersisting {

@@ -70,7 +70,7 @@ struct ClipboardHistoryView: View {
                 )
         }
         .overlay(alignment: .bottom) {
-            if store.canUndoDeletion {
+            if store.isDeletionUndoBannerPresented {
                 ClipboardUndoBanner(itemCount: store.undoDeletionCount) {
                     store.undoLastDeletion()
                 }
@@ -78,7 +78,10 @@ struct ClipboardHistoryView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: store.canUndoDeletion)
+        .animation(
+            reduceMotion ? nil : .snappy(duration: 0.2),
+            value: store.isDeletionUndoBannerPresented
+        )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .ignoresSafeArea(edges: .top)
         .background {
