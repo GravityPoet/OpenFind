@@ -272,7 +272,7 @@ extension ClipboardHistoryStore {
             }
             return copiedDate(for: lhs) > copiedDate(for: rhs)
         }
-        return Set(candidates.prefix(5).map(\.id))
+        return Set(candidates.prefix(3).map(\.id))
     }
 
     private func qualifiesAsFrequentlyUsed(
