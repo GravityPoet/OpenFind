@@ -1053,7 +1053,7 @@ struct ClipboardHistoryStoreTests {
         ])
     }
 
-    @Test func recentOrderStaysChronologicalUntilAnEntryBecomesFrequentlyUsed() throws {
+    @Test func frequentlyUsedEntriesDoNotDisruptChronologicalHistoryOrder() throws {
         let suite = "OpenFindTests.ClipboardHistoryUsage.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -1094,7 +1094,8 @@ struct ClipboardHistoryStoreTests {
         updated = try #require(store.entries.first(where: { $0.id == used.id }))
         #expect(updated.numberOfUses == 3)
         #expect(store.isFrequentlyUsed(updated))
-        #expect(store.filteredEntries.first?.id == used.id)
+        #expect(store.frequentlyUsedEntries.map(\.id) == [used.id])
+        #expect(store.filteredEntries.map(\.id) == [recent.id, used.id])
         let reloaded = ClipboardHistoryStore(
             defaults: defaults,
             persistence: persistence,
@@ -1127,7 +1128,7 @@ struct ClipboardHistoryStoreTests {
         #expect(!store.isFrequentlyUsed(stale, at: now))
     }
 
-    @Test func frequentlyUsedGroupIsLimitedToThreeHighestScoringEntries() throws {
+    @Test func frequentlyUsedPopoverIsLimitedToFiveAndExcludesPinnedEntries() throws {
         let suite = "OpenFindTests.ClipboardHistoryUsageLimit.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -1145,17 +1146,28 @@ struct ClipboardHistoryStoreTests {
             )
             candidates.append(entry)
         }
+        let pinned = ClipboardEntry(
+            createdAt: now,
+            previewText: "pinned candidate",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data([9])],
+            isPinned: true,
+            lastUsedAt: now,
+            useCount: 20,
+            usageScore: 20
+        )
         let store = ClipboardHistoryStore(
             defaults: defaults,
-            persistence: MemoryClipboardPersistence(savedEntries: candidates),
+            persistence: MemoryClipboardPersistence(savedEntries: candidates + [pinned]),
             pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
         )
 
         _ = store.filteredEntries
-        #expect(candidates.filter { store.isFrequentlyUsed($0) }.count == 3)
-        let visibleIDs = Array(store.filteredEntries.prefix(3)).map { $0.id }
-        let expectedIDs = Array(candidates.prefix(3)).map { $0.id }
-        #expect(visibleIDs == expectedIDs)
+        #expect(candidates.filter { store.isFrequentlyUsed($0) }.count == 5)
+        #expect(!store.isFrequentlyUsed(pinned))
+        let expectedIDs = Array(candidates.prefix(5)).map { $0.id }
+        #expect(store.frequentlyUsedEntries.map(\.id) == expectedIDs)
+        #expect(store.filteredEntries.first?.id == pinned.id)
     }
 
     @Test func emptySearchKeepsConfiguredPinAndRecencyOrdering() throws {
