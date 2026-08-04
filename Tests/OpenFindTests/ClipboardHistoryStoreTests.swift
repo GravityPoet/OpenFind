@@ -1127,7 +1127,7 @@ struct ClipboardHistoryStoreTests {
         #expect(!store.isFrequentlyUsed(stale, at: now))
     }
 
-    @Test func frequentlyUsedGroupIsLimitedToFiveHighestScoringEntries() throws {
+    @Test func frequentlyUsedGroupIsLimitedToThreeHighestScoringEntries() throws {
         let suite = "OpenFindTests.ClipboardHistoryUsageLimit.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -1152,9 +1152,9 @@ struct ClipboardHistoryStoreTests {
         )
 
         _ = store.filteredEntries
-        #expect(candidates.filter { store.isFrequentlyUsed($0) }.count == 5)
-        let visibleIDs = Array(store.filteredEntries.prefix(5)).map { $0.id }
-        let expectedIDs = Array(candidates.prefix(5)).map { $0.id }
+        #expect(candidates.filter { store.isFrequentlyUsed($0) }.count == 3)
+        let visibleIDs = Array(store.filteredEntries.prefix(3)).map { $0.id }
+        let expectedIDs = Array(candidates.prefix(3)).map { $0.id }
         #expect(visibleIDs == expectedIDs)
     }
 
