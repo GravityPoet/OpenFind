@@ -18,7 +18,6 @@ struct ClipboardHistoryList: View {
         let annotatedEntries = Self.annotate(
             visibleEntries,
             isSearching: !store.query.isEmpty,
-            isFrequentlyUsed: { store.isFrequentlyUsed($0) },
             copiedDate: { entry in
                 store.preferences.sortMode == .lastCopied
                     ? entry.createdAt
@@ -132,12 +131,11 @@ struct ClipboardHistoryList: View {
     }
 
     private enum SectionKey {
-        case pinned, frequent, otherResults, today, yesterday, week, earlier
+        case pinned, otherResults, today, yesterday, week, earlier
 
         var title: String {
             switch self {
             case .pinned: L("Pinned Section")
-            case .frequent: L("Frequently Used Section")
             case .otherResults: L("Other Results Section")
             case .today: L("Today Section")
             case .yesterday: L("Yesterday Section")
@@ -150,7 +148,6 @@ struct ClipboardHistoryList: View {
     private static func annotate(
         _ entries: [ClipboardEntry],
         isSearching: Bool,
-        isFrequentlyUsed: (ClipboardEntry) -> Bool,
         copiedDate: (ClipboardEntry) -> Date
     ) -> [AnnotatedEntry] {
         if isSearching, !entries.contains(where: \.isPinned) {
@@ -165,8 +162,6 @@ struct ClipboardHistoryList: View {
                 key = entry.isPinned ? .pinned : .otherResults
             } else if entry.isPinned {
                 key = .pinned
-            } else if isFrequentlyUsed(entry) {
-                key = .frequent
             } else if calendar.isDateInToday(copiedDate(entry)) {
                 key = .today
             } else if calendar.isDateInYesterday(copiedDate(entry)) {

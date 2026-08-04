@@ -23,7 +23,11 @@ struct ClipboardHistoryView: View {
                 searchFocused: $searchFocused,
                 isActionPanelPresented: $store.isActionPanelPresented,
                 onPerformAction: performPanelAction,
-                onPerformContentAction: performContentAction
+                onPerformContentAction: performContentAction,
+                onUseFrequentEntry: { entry in
+                    store.clearMultiSelection()
+                    performDefaultAction(entry)
+                }
             )
 
             ClipboardKindFilterBar(store: store)

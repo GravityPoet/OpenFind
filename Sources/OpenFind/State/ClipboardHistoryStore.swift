@@ -72,6 +72,7 @@ final class ClipboardHistoryStore {
     @ObservationIgnored var cachedHighlightQuery = ""
     @ObservationIgnored var cachedSearchPresentationByID: [UUID: ClipboardSearchPresentation] = [:]
     @ObservationIgnored var cachedFrequentEntryIDs: Set<UUID> = []
+    @ObservationIgnored var cachedFrequentEntryIDsInOrder: [UUID] = []
     @ObservationIgnored var cachedUsageRankingDate: Date?
     @ObservationIgnored var cachedEntryByID: [UUID: ClipboardEntry] = [:]
     @ObservationIgnored var cachedSnippetKeywords: [(keyword: String, id: UUID)] = []

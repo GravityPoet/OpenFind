@@ -61,6 +61,11 @@ extension ClipboardHistoryStore {
         return cachedFrequentEntryIDs.contains(entry.id)
     }
 
+    var frequentlyUsedEntries: [ClipboardEntry] {
+        _ = filteredEntries
+        return cachedFrequentEntryIDsInOrder.compactMap { cachedEntryByID[$0] }
+    }
+
     func quickEntry(at index: Int) -> ClipboardEntry? {
         _ = filteredEntries
         guard cachedQuickEntryIDs.indices.contains(index),
@@ -77,15 +82,13 @@ extension ClipboardHistoryStore {
 
     private func rebuildClipboardProjection(revision: UInt64) {
         let referenceDate = Date()
-        let frequentEntryIDs = frequentEntryIDs(at: referenceDate)
-        cachedFrequentEntryIDs = frequentEntryIDs
+        let frequentEntries = frequentEntries(at: referenceDate)
+        cachedFrequentEntryIDsInOrder = frequentEntries.map(\.id)
+        cachedFrequentEntryIDs = Set(cachedFrequentEntryIDsInOrder)
         cachedUsageRankingDate = referenceDate
         let structuredQuery = ClipboardStructuredQuery.parse(query)
         let search = structuredQuery.text
-        let baseEntries = sortedEntries(
-            at: referenceDate,
-            frequentEntryIDs: frequentEntryIDs
-        )
+        let baseEntries = sortedEntries()
         let kindFiltered = kindFilter == .all
             ? baseEntries
             : baseEntries.filter { kindFilter.matches($0.kind) }
@@ -226,23 +229,11 @@ extension ClipboardHistoryStore {
             .joined(separator: "\n")
     }
 
-    private func sortedEntries(
-        at referenceDate: Date,
-        frequentEntryIDs: Set<UUID>
-    ) -> [ClipboardEntry] {
+    private func sortedEntries() -> [ClipboardEntry] {
         entries.sorted { lhs, rhs in
-            let lhsRank = browseRank(for: lhs, frequentEntryIDs: frequentEntryIDs)
-            let rhsRank = browseRank(for: rhs, frequentEntryIDs: frequentEntryIDs)
+            let lhsRank = pinRank(for: lhs)
+            let rhsRank = pinRank(for: rhs)
             if lhsRank != rhsRank { return lhsRank < rhsRank }
-
-            if frequentEntryIDs.contains(lhs.id), frequentEntryIDs.contains(rhs.id) {
-                let lhsScore = lhs.decayedUsageScore(at: referenceDate)
-                let rhsScore = rhs.decayedUsageScore(at: referenceDate)
-                if lhsScore != rhsScore { return lhsScore > rhsScore }
-                if lhs.lastUsedAt != rhs.lastUsedAt {
-                    return (lhs.lastUsedAt ?? .distantPast) > (rhs.lastUsedAt ?? .distantPast)
-                }
-            }
 
             let lhsDate = copiedDate(for: lhs)
             let rhsDate = copiedDate(for: rhs)
@@ -260,7 +251,7 @@ extension ClipboardHistoryStore {
             : entry.initialCopiedAt
     }
 
-    private func frequentEntryIDs(at referenceDate: Date) -> Set<UUID> {
+    private func frequentEntries(at referenceDate: Date) -> [ClipboardEntry] {
         let candidates = entries.filter {
             !$0.isPinned && qualifiesAsFrequentlyUsed($0, at: referenceDate)
         }.sorted { lhs, rhs in
@@ -272,7 +263,7 @@ extension ClipboardHistoryStore {
             }
             return copiedDate(for: lhs) > copiedDate(for: rhs)
         }
-        return Set(candidates.prefix(3).map(\.id))
+        return Array(candidates.prefix(5))
     }
 
     private func qualifiesAsFrequentlyUsed(
@@ -282,20 +273,6 @@ extension ClipboardHistoryStore {
         !entry.isPinned
             && entry.numberOfUses >= 3
             && entry.decayedUsageScore(at: referenceDate) >= 1.5
-    }
-
-    private func browseRank(
-        for entry: ClipboardEntry,
-        frequentEntryIDs: Set<UUID>
-    ) -> Int {
-        switch preferences.pinsPosition {
-        case .top:
-            if entry.isPinned { return 0 }
-            return frequentEntryIDs.contains(entry.id) ? 1 : 2
-        case .bottom:
-            if entry.isPinned { return 2 }
-            return frequentEntryIDs.contains(entry.id) ? 0 : 1
-        }
     }
 
     private func pinRank(for entry: ClipboardEntry) -> Int {

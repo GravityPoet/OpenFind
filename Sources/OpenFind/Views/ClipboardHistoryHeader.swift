@@ -6,13 +6,24 @@ struct ClipboardHistoryHeader: View {
     @Binding var isActionPanelPresented: Bool
     let onPerformAction: (ClipboardPanelAction) -> Void
     let onPerformContentAction: (ClipboardContentActionDescriptor) -> Void
+    let onUseFrequentEntry: (ClipboardEntry) -> Void
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @State private var isFrequentPopoverPresented = false
+    @State private var isFrequentPopoverLocked = false
+    @State private var isFrequentTriggerHovered = false
+    @State private var isFrequentPopoverHovered = false
+    @State private var frequentPopoverTask: Task<Void, Never>?
 
     var body: some View {
         HStack(spacing: 8) {
             searchControls
 
+            if !store.frequentlyUsedEntries.isEmpty {
+                frequentItemsButton
+            }
+
             Button {
+                dismissFrequentPopover()
                 isActionPanelPresented.toggle()
             } label: {
                 Image(systemName: "ellipsis")
@@ -39,6 +50,131 @@ struct ClipboardHistoryHeader: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
+        .onChange(of: isActionPanelPresented) {
+            if isActionPanelPresented {
+                dismissFrequentPopover()
+            }
+        }
+        .onChange(of: store.frequentlyUsedEntries.map(\.id)) {
+            if store.frequentlyUsedEntries.isEmpty {
+                dismissFrequentPopover()
+            }
+        }
+        .onDisappear {
+            frequentPopoverTask?.cancel()
+            frequentPopoverTask = nil
+        }
+    }
+
+    private var frequentItemsButton: some View {
+        Button(action: toggleFrequentPopoverLock) {
+            Label(L("Frequently Used Section"), systemImage: "bolt.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isFrequentPopoverPresented ? Color.accentColor : Color.secondary)
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(.regularMaterial, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .strokeBorder(
+                            Color.primary.opacity(
+                                colorSchemeContrast == .increased ? 0.34 : 0.10
+                            ),
+                            lineWidth: colorSchemeContrast == .increased ? 1.1 : 0.7
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .contentShape(Capsule())
+        .accessibilityLabel(Text(L("Frequently Used Section")))
+        .accessibilityIdentifier("clipboard.frequent-items")
+        .onHover(perform: frequentTriggerHoverChanged)
+        .popover(isPresented: $isFrequentPopoverPresented, arrowEdge: .top) {
+            ClipboardFrequentItemsPopover(
+                store: store,
+                entries: store.frequentlyUsedEntries,
+                onUse: { entry in
+                    dismissFrequentPopover()
+                    onUseFrequentEntry(entry)
+                },
+                onHoverChange: frequentPopoverHoverChanged,
+                onDismiss: dismissFrequentPopover
+            )
+        }
+        .onChange(of: isFrequentPopoverPresented) {
+            guard !isFrequentPopoverPresented else { return }
+            isFrequentPopoverLocked = false
+            isFrequentPopoverHovered = false
+            frequentPopoverTask?.cancel()
+            frequentPopoverTask = nil
+        }
+    }
+
+    private func frequentTriggerHoverChanged(_ hovering: Bool) {
+        isFrequentTriggerHovered = hovering
+        if hovering {
+            scheduleFrequentPopoverPresentation()
+        } else {
+            scheduleFrequentPopoverDismissal()
+        }
+    }
+
+    private func frequentPopoverHoverChanged(_ hovering: Bool) {
+        isFrequentPopoverHovered = hovering
+        if hovering {
+            frequentPopoverTask?.cancel()
+            frequentPopoverTask = nil
+        } else {
+            scheduleFrequentPopoverDismissal()
+        }
+    }
+
+    private func scheduleFrequentPopoverPresentation() {
+        frequentPopoverTask?.cancel()
+        guard !isFrequentPopoverPresented else { return }
+        frequentPopoverTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(275))
+            guard !Task.isCancelled,
+                  isFrequentTriggerHovered,
+                  !store.frequentlyUsedEntries.isEmpty else { return }
+            isActionPanelPresented = false
+            isFrequentPopoverPresented = true
+            frequentPopoverTask = nil
+        }
+    }
+
+    private func scheduleFrequentPopoverDismissal() {
+        frequentPopoverTask?.cancel()
+        guard isFrequentPopoverPresented, !isFrequentPopoverLocked else { return }
+        frequentPopoverTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled,
+                  !isFrequentTriggerHovered,
+                  !isFrequentPopoverHovered,
+                  !isFrequentPopoverLocked else { return }
+            isFrequentPopoverPresented = false
+            frequentPopoverTask = nil
+        }
+    }
+
+    private func toggleFrequentPopoverLock() {
+        frequentPopoverTask?.cancel()
+        frequentPopoverTask = nil
+        if isFrequentPopoverPresented, isFrequentPopoverLocked {
+            dismissFrequentPopover()
+        } else {
+            isActionPanelPresented = false
+            isFrequentPopoverLocked = true
+            isFrequentPopoverPresented = true
+        }
+    }
+
+    private func dismissFrequentPopover() {
+        frequentPopoverTask?.cancel()
+        frequentPopoverTask = nil
+        isFrequentPopoverLocked = false
+        isFrequentPopoverPresented = false
     }
 
     private var contentActions: [ClipboardContentActionDescriptor] {
