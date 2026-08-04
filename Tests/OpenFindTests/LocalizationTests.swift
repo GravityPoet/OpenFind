@@ -89,10 +89,12 @@ struct LocalizationTests {
             #expect(keys.count == Set(keys).count)
 
             if identifier == "en" {
+                #expect(strings["File Search"] == "File Search")
                 #expect(strings["New Trigger"] == "New Trigger")
                 #expect(strings["Keyboard Cleaning Lock"] == "Keyboard Cleaning Lock")
                 #expect(strings["Keyboard Lock"] == "Keyboard Cleaning Lock")
             } else if identifier == "zh-Hans" {
+                #expect(strings["File Search"] == "文件搜索")
                 #expect(strings["New Trigger"] == "新建触发器")
                 #expect(strings["Keyboard Cleaning Lock"] == "键盘清洁锁定")
                 #expect(strings["Keyboard Lock"] == "键盘清洁锁定")
