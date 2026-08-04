@@ -60,9 +60,14 @@ struct ClipboardHistoryHeader: View {
                 dismissFrequentPopover()
             }
         }
+        .onChange(of: store.isPanelPresented) {
+            guard !store.isPanelPresented else { return }
+            isFrequentTriggerHovered = false
+            isFrequentPopoverHovered = false
+            dismissFrequentPopover()
+        }
         .onDisappear {
-            frequentPopoverTask?.cancel()
-            frequentPopoverTask = nil
+            dismissFrequentPopover()
         }
     }
 
@@ -112,6 +117,11 @@ struct ClipboardHistoryHeader: View {
     }
 
     private func frequentTriggerHoverChanged(_ hovering: Bool) {
+        guard store.isPanelPresented else {
+            isFrequentTriggerHovered = false
+            dismissFrequentPopover()
+            return
+        }
         isFrequentTriggerHovered = hovering
         if hovering {
             scheduleFrequentPopoverPresentation()
@@ -121,6 +131,11 @@ struct ClipboardHistoryHeader: View {
     }
 
     private func frequentPopoverHoverChanged(_ hovering: Bool) {
+        guard store.isPanelPresented else {
+            isFrequentPopoverHovered = false
+            dismissFrequentPopover()
+            return
+        }
         isFrequentPopoverHovered = hovering
         if hovering {
             frequentPopoverTask?.cancel()
@@ -132,12 +147,20 @@ struct ClipboardHistoryHeader: View {
 
     private func scheduleFrequentPopoverPresentation() {
         frequentPopoverTask?.cancel()
-        guard !isFrequentPopoverPresented else { return }
+        guard !isFrequentPopoverPresented,
+              ClipboardFrequentPopoverPresentationGate.allowsHoverPresentation(
+                isPanelPresented: store.isPanelPresented,
+                isTriggerHovered: isFrequentTriggerHovered,
+                hasEntries: !store.frequentlyUsedEntries.isEmpty
+              ) else { return }
         frequentPopoverTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(275))
             guard !Task.isCancelled,
-                  isFrequentTriggerHovered,
-                  !store.frequentlyUsedEntries.isEmpty else { return }
+                  ClipboardFrequentPopoverPresentationGate.allowsHoverPresentation(
+                    isPanelPresented: store.isPanelPresented,
+                    isTriggerHovered: isFrequentTriggerHovered,
+                    hasEntries: !store.frequentlyUsedEntries.isEmpty
+                  ) else { return }
             isActionPanelPresented = false
             isFrequentPopoverPresented = true
             frequentPopoverTask = nil
@@ -159,6 +182,13 @@ struct ClipboardHistoryHeader: View {
     }
 
     private func toggleFrequentPopoverLock() {
+        guard ClipboardFrequentPopoverPresentationGate.allowsPresentation(
+            isPanelPresented: store.isPanelPresented,
+            hasEntries: !store.frequentlyUsedEntries.isEmpty
+        ) else {
+            dismissFrequentPopover()
+            return
+        }
         frequentPopoverTask?.cancel()
         frequentPopoverTask = nil
         if isFrequentPopoverPresented, isFrequentPopoverLocked {
@@ -312,6 +342,26 @@ struct ClipboardHistoryHeader: View {
         .fixedSize()
         .help(L("Clipboard Search Filter Help"))
         .accessibilityLabel(Text(L("Clipboard Search Filters")))
+    }
+}
+
+enum ClipboardFrequentPopoverPresentationGate {
+    static func allowsPresentation(
+        isPanelPresented: Bool,
+        hasEntries: Bool
+    ) -> Bool {
+        isPanelPresented && hasEntries
+    }
+
+    static func allowsHoverPresentation(
+        isPanelPresented: Bool,
+        isTriggerHovered: Bool,
+        hasEntries: Bool
+    ) -> Bool {
+        allowsPresentation(
+            isPanelPresented: isPanelPresented,
+            hasEntries: hasEntries
+        ) && isTriggerHovered
     }
 }
 
