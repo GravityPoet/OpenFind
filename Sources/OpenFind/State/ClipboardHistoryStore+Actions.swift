@@ -168,6 +168,16 @@ extension ClipboardHistoryStore {
         persist()
     }
 
+    func toggleFrequentlyUsed(_ entry: ClipboardEntry, at date: Date = Date()) {
+        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return }
+        let current = entries[index]
+        let shouldRemove = current.frequentOverride == true || isFrequentlyUsed(current)
+        entries[index].frequentOverride = shouldRemove ? false : true
+        entries[index].frequentOverrideAt = shouldRemove ? nil : date
+        restoreSelection(id: entry.id)
+        persist()
+    }
+
     @discardableResult
     func saveForReuse(_ entry: ClipboardEntry) -> Bool {
         guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return false }

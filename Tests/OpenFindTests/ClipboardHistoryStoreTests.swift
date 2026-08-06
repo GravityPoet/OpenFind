@@ -265,6 +265,8 @@ struct ClipboardHistoryStoreTests {
         #expect(decoded.lastUsedAt == nil)
         #expect(decoded.numberOfUses == 0)
         #expect(decoded.usageScore == nil)
+        #expect(decoded.frequentOverride == nil)
+        #expect(decoded.frequentOverrideAt == nil)
         #expect(decoded.sourceApplicationName == nil)
         #expect(decoded.recognizedText == nil)
         #expect(decoded.imageTextRecognitionRevision == nil)
@@ -1168,6 +1170,77 @@ struct ClipboardHistoryStoreTests {
         let expectedIDs = Array(candidates.prefix(5)).map { $0.id }
         #expect(store.frequentlyUsedEntries.map(\.id) == expectedIDs)
         #expect(store.filteredEntries.first?.id == pinned.id)
+
+        store.togglePinned(candidates[0])
+
+        let promoted = try #require(store.entries.first { $0.id == candidates[0].id })
+        #expect(promoted.isPinned)
+        #expect(!store.isFrequentlyUsed(promoted))
+        #expect(store.frequentlyUsedEntries.map(\.id) == Array(candidates[1...5]).map(\.id))
+        let firstUnpinnedIndex = store.filteredEntries.firstIndex { !$0.isPinned }
+            ?? store.filteredEntries.endIndex
+        let promotedIndex = try #require(store.filteredEntries.firstIndex { $0.id == promoted.id })
+        #expect(promotedIndex < firstUnpinnedIndex)
+    }
+
+    @Test func manualFrequentlyUsedOverrideIsReversiblePersistentAndDoesNotForgeUsage() throws {
+        let suite = "OpenFindTests.ClipboardManualFrequent.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = Date()
+        let manualDate = now.addingTimeInterval(10)
+        let pinned = ClipboardEntry(
+            createdAt: now,
+            previewText: "manual frequent pinned value",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data([1])],
+            isPinned: true
+        )
+        let automatic = ClipboardEntry(
+            createdAt: now.addingTimeInterval(-1),
+            previewText: "automatic frequent value",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data([2])],
+            lastUsedAt: now,
+            useCount: 5,
+            usageScore: 5
+        )
+        let persistence = MemoryClipboardPersistence(savedEntries: [pinned, automatic])
+        var store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: persistence,
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+
+        store.toggleFrequentlyUsed(pinned, at: manualDate)
+        #expect(store.frequentlyUsedEntries.map(\.id) == [pinned.id, automatic.id])
+        store.toggleFrequentlyUsed(automatic, at: manualDate.addingTimeInterval(1))
+
+        var updatedPinned = try #require(store.entries.first { $0.id == pinned.id })
+        let updatedAutomatic = try #require(store.entries.first { $0.id == automatic.id })
+        #expect(updatedPinned.isPinned)
+        #expect(updatedPinned.frequentOverride == true)
+        #expect(updatedPinned.frequentOverrideAt == manualDate)
+        #expect(updatedPinned.numberOfUses == 0)
+        #expect(updatedPinned.usageScore == nil)
+        #expect(updatedAutomatic.frequentOverride == false)
+        #expect(store.frequentlyUsedEntries.map(\.id) == [pinned.id])
+
+        store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: persistence,
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        )
+        updatedPinned = try #require(store.entries.first { $0.id == pinned.id })
+        #expect(updatedPinned.frequentOverride == true)
+        #expect(store.frequentlyUsedEntries.map(\.id) == [pinned.id])
+
+        store.toggleFrequentlyUsed(updatedPinned, at: manualDate.addingTimeInterval(2))
+
+        updatedPinned = try #require(store.entries.first { $0.id == pinned.id })
+        #expect(updatedPinned.frequentOverride == false)
+        #expect(updatedPinned.frequentOverrideAt == nil)
+        #expect(store.frequentlyUsedEntries.isEmpty)
     }
 
     @Test func emptySearchKeepsConfiguredPinAndRecencyOrdering() throws {

@@ -253,8 +253,15 @@ extension ClipboardHistoryStore {
 
     private func frequentEntries(at referenceDate: Date) -> [ClipboardEntry] {
         let candidates = entries.filter {
-            !$0.isPinned && qualifiesAsFrequentlyUsed($0, at: referenceDate)
+            qualifiesAsFrequentlyUsed($0, at: referenceDate)
         }.sorted { lhs, rhs in
+            let lhsIsManual = lhs.frequentOverride == true
+            let rhsIsManual = rhs.frequentOverride == true
+            if lhsIsManual != rhsIsManual { return lhsIsManual }
+            if lhsIsManual, lhs.frequentOverrideAt != rhs.frequentOverrideAt {
+                return (lhs.frequentOverrideAt ?? .distantPast)
+                    > (rhs.frequentOverrideAt ?? .distantPast)
+            }
             let lhsScore = lhs.decayedUsageScore(at: referenceDate)
             let rhsScore = rhs.decayedUsageScore(at: referenceDate)
             if lhsScore != rhsScore { return lhsScore > rhsScore }
@@ -270,7 +277,8 @@ extension ClipboardHistoryStore {
         _ entry: ClipboardEntry,
         at referenceDate: Date
     ) -> Bool {
-        !entry.isPinned
+        if let frequentOverride = entry.frequentOverride { return frequentOverride }
+        return !entry.isPinned
             && entry.numberOfUses >= 3
             && entry.decayedUsageScore(at: referenceDate) >= 1.5
     }

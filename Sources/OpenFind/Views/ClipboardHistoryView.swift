@@ -49,6 +49,7 @@ struct ClipboardHistoryView: View {
                 onPaste: { paste($0) },
                 onPastePlainText: { paste($0, plainTextOnly: true) },
                 onEditNote: beginEditingNote,
+                onToggleFrequentlyUsed: { store.toggleFrequentlyUsed($0) },
                 onPin: { store.togglePinned($0) },
                 onDelete: { store.delete($0) }
             )

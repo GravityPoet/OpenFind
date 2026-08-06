@@ -89,6 +89,8 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
     var lastUsedAt: Date?
     var useCount: Int?
     var usageScore: Double?
+    var frequentOverride: Bool?
+    var frequentOverrideAt: Date?
     var snippetCollection: String?
     var snippetKeyword: String?
     var snippetExpansionEnabled: Bool?
@@ -112,6 +114,8 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         lastUsedAt: Date? = nil,
         useCount: Int? = nil,
         usageScore: Double? = nil,
+        frequentOverride: Bool? = nil,
+        frequentOverrideAt: Date? = nil,
         snippetCollection: String? = nil,
         snippetKeyword: String? = nil,
         snippetExpansionEnabled: Bool? = nil
@@ -134,6 +138,8 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         self.lastUsedAt = lastUsedAt
         self.useCount = useCount
         self.usageScore = usageScore
+        self.frequentOverride = frequentOverride
+        self.frequentOverrideAt = frequentOverrideAt
         self.snippetCollection = snippetCollection
         self.snippetKeyword = snippetKeyword
         self.snippetExpansionEnabled = snippetExpansionEnabled

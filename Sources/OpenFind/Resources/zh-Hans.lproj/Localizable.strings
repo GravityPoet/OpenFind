@@ -432,6 +432,8 @@
 "Kind Filter Files" = "文件";
 "Pinned Section" = "置顶";
 "Frequently Used Section" = "常用";
+"Add to Frequently Used" = "加入常用";
+"Remove from Frequently Used" = "从常用移除";
 "Other Results Section" = "其他结果";
 "Today Section" = "今天";
 "Yesterday Section" = "昨天";
