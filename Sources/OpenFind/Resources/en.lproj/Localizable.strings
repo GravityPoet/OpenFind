@@ -432,6 +432,8 @@
 "Kind Filter Files" = "Files";
 "Pinned Section" = "Pinned";
 "Frequently Used Section" = "Frequently Used";
+"Add to Frequently Used" = "Add to Frequently Used";
+"Remove from Frequently Used" = "Remove from Frequently Used";
 "Other Results Section" = "Other Results";
 "Today Section" = "Today";
 "Yesterday Section" = "Yesterday";

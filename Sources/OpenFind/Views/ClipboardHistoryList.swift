@@ -8,6 +8,7 @@ struct ClipboardHistoryList: View {
     let onPaste: (ClipboardEntry) -> Void
     let onPastePlainText: (ClipboardEntry) -> Void
     let onEditNote: (ClipboardEntry) -> Void
+    let onToggleFrequentlyUsed: (ClipboardEntry) -> Void
     let onPin: (ClipboardEntry) -> Void
     let onDelete: (ClipboardEntry) -> Void
     @State private var selectionOrigin = SelectionOrigin.other
@@ -50,6 +51,8 @@ struct ClipboardHistoryList: View {
                                     query: highlightQuery,
                                     preferences: store.preferences,
                                     canUsePlainText: store.canCopyPlainText(entry),
+                                    isFrequentlyUsed: entry.frequentOverride == true
+                                        || store.isFrequentlyUsed(entry),
                                     onUse: {
                                         let modifiers = NSEvent.modifierFlags.intersection([
                                             .command, .control, .option, .shift,
@@ -95,6 +98,10 @@ struct ClipboardHistoryList: View {
                                     onEditNote: {
                                         store.select(entry)
                                         onEditNote(entry)
+                                    },
+                                    onToggleFrequentlyUsed: {
+                                        store.select(entry)
+                                        onToggleFrequentlyUsed(entry)
                                     },
                                     onPin: {
                                         store.select(entry)

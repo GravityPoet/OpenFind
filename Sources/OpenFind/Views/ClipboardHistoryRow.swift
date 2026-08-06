@@ -11,12 +11,14 @@ struct ClipboardHistoryRow: View {
     let query: String
     let preferences: ClipboardPreferences
     let canUsePlainText: Bool
+    let isFrequentlyUsed: Bool
     let onUse: () -> Void
     let onHoverSelection: () -> Void
     let onCopy: () -> Void
     let onPaste: () -> Void
     let onPastePlainText: () -> Void
     let onEditNote: () -> Void
+    let onToggleFrequentlyUsed: () -> Void
     let onPin: () -> Void
     let onDelete: () -> Void
     @State private var isHovered = false
@@ -40,6 +42,9 @@ struct ClipboardHistoryRow: View {
             }
             .accessibilityAction(named: Text(entry.hasCustomTitle ? L("Edit Note") : L("Add Note"))) {
                 onEditNote()
+            }
+            .accessibilityAction(named: Text(frequentlyUsedActionTitle)) {
+                onToggleFrequentlyUsed()
             }
             .accessibilityAction(named: Text(L("Delete"))) {
                 onDelete()
@@ -208,9 +213,14 @@ struct ClipboardHistoryRow: View {
             .disabled(!canUsePlainText)
         Divider()
         Button(entry.hasCustomTitle ? L("Edit Note") : L("Add Note"), action: onEditNote)
+        Button(frequentlyUsedActionTitle, action: onToggleFrequentlyUsed)
         Button(entry.isPinned ? L("Unpin") : L("Pin"), action: onPin)
         Divider()
         Button(L("Delete"), role: .destructive, action: onDelete)
+    }
+
+    private var frequentlyUsedActionTitle: String {
+        isFrequentlyUsed ? L("Remove from Frequently Used") : L("Add to Frequently Used")
     }
 
     private var sourceHelp: String {

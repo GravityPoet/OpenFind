@@ -103,6 +103,9 @@ struct ClipboardHistoryHeader: View {
                     dismissFrequentPopover()
                     onUseFrequentEntry(entry)
                 },
+                onPin: { entry in
+                    store.togglePinned(entry)
+                },
                 onHoverChange: frequentPopoverHoverChanged,
                 onDismiss: dismissFrequentPopover
             )
