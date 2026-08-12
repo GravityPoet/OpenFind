@@ -15,41 +15,32 @@ struct ClipboardHistoryHeader: View {
     @State private var frequentPopoverTask: Task<Void, Never>?
 
     var body: some View {
-        HStack(spacing: 8) {
-            searchControls
+        VStack(spacing: 8) {
+            OpenFindGlassContainer {
+                HStack(spacing: 8) {
+                    searchControls
 
-            if !store.frequentlyUsedEntries.isEmpty {
-                frequentItemsButton
+                    if !store.frequentlyUsedEntries.isEmpty {
+                        frequentItemsButton
+                    }
+
+                    actionsButton
+                }
             }
 
-            Button {
-                dismissFrequentPopover()
-                isActionPanelPresented.toggle()
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
-                    .background(.regularMaterial, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .fixedSize()
-            .help(L("Clipboard History Actions"))
-            .accessibilityLabel(Text(L("Clipboard Actions")))
-            .accessibilityIdentifier("clipboard.actions")
-            .popover(isPresented: $isActionPanelPresented, arrowEdge: .top) {
-                ClipboardActionPanel(
-                    itemActions: actionContext.itemActions,
-                    contentActions: contentActions,
-                    historyActions: ClipboardPanelActionContext.historyActions,
-                    onPerform: onPerformAction,
-                    onPerformContentAction: onPerformContentAction,
-                    onDismiss: { isActionPanelPresented = false }
-                )
+            HStack(spacing: 0) {
+                ClipboardKindFilterBar(store: store)
+                Spacer(minLength: 12)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 9)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.28))
+        .overlay(alignment: .bottom) {
+            Divider()
+                .opacity(0.72)
+        }
         .onChange(of: isActionPanelPresented) {
             if isActionPanelPresented {
                 dismissFrequentPopover()
@@ -77,10 +68,10 @@ struct ClipboardHistoryHeader: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(isFrequentPopoverPresented ? Color.accentColor : Color.secondary)
                 .padding(.horizontal, 10)
-                .frame(height: 30)
-                .background(.regularMaterial, in: Capsule())
+                .frame(height: 32)
+                .openFindInteractiveGlassRoundedRectangle(cornerRadius: 10)
                 .overlay {
-                    Capsule()
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .strokeBorder(
                             Color.primary.opacity(
                                 colorSchemeContrast == .increased ? 0.34 : 0.10
@@ -91,7 +82,7 @@ struct ClipboardHistoryHeader: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
-        .contentShape(Capsule())
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityLabel(Text(L("Frequently Used Section")))
         .accessibilityIdentifier("clipboard.frequent-items")
         .onHover(perform: frequentTriggerHoverChanged)
@@ -116,6 +107,43 @@ struct ClipboardHistoryHeader: View {
             isFrequentPopoverHovered = false
             frequentPopoverTask?.cancel()
             frequentPopoverTask = nil
+        }
+    }
+
+    private var actionsButton: some View {
+        Button {
+            dismissFrequentPopover()
+            isActionPanelPresented.toggle()
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isActionPanelPresented ? Color.accentColor : Color.secondary)
+                .frame(width: 32, height: 32)
+                .openFindInteractiveGlassRoundedRectangle(cornerRadius: 10)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(
+                            Color.primary.opacity(
+                                colorSchemeContrast == .increased ? 0.34 : 0.10
+                            ),
+                            lineWidth: colorSchemeContrast == .increased ? 1.1 : 0.7
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .help(L("Clipboard History Actions"))
+        .accessibilityLabel(Text(L("Clipboard Actions")))
+        .accessibilityIdentifier("clipboard.actions")
+        .popover(isPresented: $isActionPanelPresented, arrowEdge: .top) {
+            ClipboardActionPanel(
+                itemActions: actionContext.itemActions,
+                contentActions: contentActions,
+                historyActions: ClipboardPanelActionContext.historyActions,
+                onPerform: onPerformAction,
+                onPerformContentAction: onPerformContentAction,
+                onDismiss: { isActionPanelPresented = false }
+            )
         }
     }
 
@@ -259,19 +287,25 @@ struct ClipboardHistoryHeader: View {
                 .help(L("Clear Search"))
             }
         }
-        .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity, minHeight: 36)
-        .background(
-            .regularMaterial,
-            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-        )
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 40)
+        .openFindGlassRoundedRectangle(cornerRadius: 12)
         .overlay {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(
-                    Color.primary.opacity(colorSchemeContrast == .increased ? 0.35 : 0.12),
-                    lineWidth: colorSchemeContrast == .increased ? 1.1 : 0.7
+                    searchFocused
+                        ? Color.accentColor.opacity(0.58)
+                        : Color.primary.opacity(
+                            colorSchemeContrast == .increased ? 0.35 : 0.11
+                        ),
+                    lineWidth: searchFocused || colorSchemeContrast == .increased ? 1.1 : 0.7
                 )
         }
+        .shadow(
+            color: searchFocused ? Color.accentColor.opacity(0.10) : .clear,
+            radius: 4,
+            y: 1
+        )
         .contentShape(Rectangle())
         .onTapGesture {
             if !searchFocused {

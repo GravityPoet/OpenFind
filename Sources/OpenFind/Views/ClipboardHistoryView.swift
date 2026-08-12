@@ -30,8 +30,6 @@ struct ClipboardHistoryView: View {
                 }
             )
 
-            ClipboardKindFilterBar(store: store)
-
             if let error = store.lastErrorMessage {
                 ClipboardErrorBanner(message: error) { store.clearError() }
             }
@@ -59,16 +57,16 @@ struct ClipboardHistoryView: View {
         }
         .frame(
             minWidth: store.isPreviewVisible ? 680 : 420,
-            idealWidth: store.isPreviewVisible ? 760 : 450,
+            idealWidth: store.isPreviewVisible ? 820 : 450,
             minHeight: 440,
-            idealHeight: 500
+            idealHeight: 520
         )
         .background(
             panelSurface,
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(
                     Color.primary.opacity(colorSchemeContrast == .increased ? 0.34 : 0.12),
                     lineWidth: colorSchemeContrast == .increased ? 1.2 : 0.8
@@ -79,7 +77,7 @@ struct ClipboardHistoryView: View {
                 ClipboardUndoBanner(itemCount: store.undoDeletionCount) {
                     store.undoLastDeletion()
                 }
-                .padding(.bottom, store.preferences.showFooter ? 45 : 10)
+                .padding(.bottom, store.preferences.showFooter ? 42 : 10)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -87,7 +85,7 @@ struct ClipboardHistoryView: View {
             reduceMotion ? nil : .snappy(duration: 0.2),
             value: store.isDeletionUndoBannerPresented
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .ignoresSafeArea(edges: .top)
         .background {
             keyMonitor.frame(width: 0, height: 0)

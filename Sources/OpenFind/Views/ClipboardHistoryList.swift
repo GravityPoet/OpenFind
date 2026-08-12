@@ -32,7 +32,7 @@ struct ClipboardHistoryList: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 1) {
+                        LazyVStack(spacing: 2) {
                             ForEach(annotatedEntries, id: \.entry.id) { item in
                                 if let sectionTitle = item.sectionTitle {
                                     ClipboardSectionHeader(title: sectionTitle)
@@ -115,8 +115,9 @@ struct ClipboardHistoryList: View {
                                 .id(entry.id)
                             }
                         }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, 8)
+                        .padding(.top, 5)
+                        .padding(.bottom, 8)
                     }
                 }
             }
@@ -193,12 +194,12 @@ private struct ClipboardSectionHeader: View {
 
     var body: some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: 11.5, weight: .semibold))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 9)
-            .padding(.top, 10)
-            .padding(.bottom, 3)
+            .padding(.horizontal, 10)
+            .padding(.top, 9)
+            .padding(.bottom, 4)
             .accessibilityAddTraits(.isHeader)
     }
 }
