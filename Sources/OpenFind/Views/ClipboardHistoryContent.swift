@@ -33,7 +33,6 @@ struct ClipboardHistoryContent: View {
                     ClipboardEntryPreview(
                         store: store,
                         onCopy: onCopy,
-                        onPaste: onPaste,
                         onTogglePin: onPin
                     )
                         .frame(

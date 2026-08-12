@@ -12,6 +12,7 @@ struct ClipboardHistoryView: View {
     @FocusState var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var searchFocusTask: Task<Void, Never>?
     @State var noteEditorRequest: ClipboardNoteEditRequest?
@@ -61,10 +62,14 @@ struct ClipboardHistoryView: View {
             minHeight: 440,
             idealHeight: 520
         )
-        .background(
-            panelSurface,
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-        )
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(panelSurface)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(panelAmbientGradient)
+                }
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(
@@ -153,5 +158,31 @@ struct ClipboardHistoryView: View {
             return AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
         }
         return AnyShapeStyle(Material.ultraThinMaterial)
+    }
+
+    private var panelAmbientGradient: LinearGradient {
+        let blueOpacity: Double
+        let neutralOpacity: Double
+        if colorSchemeContrast == .increased {
+            blueOpacity = 0
+            neutralOpacity = 0
+        } else if colorScheme == .dark {
+            blueOpacity = 0.028
+            neutralOpacity = 0.010
+        } else {
+            blueOpacity = 0.016
+            neutralOpacity = 0.005
+        }
+
+        return LinearGradient(
+            stops: [
+                .init(color: Color.accentColor.opacity(blueOpacity), location: 0),
+                .init(color: Color.accentColor.opacity(blueOpacity * 0.28), location: 0.24),
+                .init(color: Color.clear, location: 0.54),
+                .init(color: Color.primary.opacity(neutralOpacity), location: 1)
+            ],
+            startPoint: .topTrailing,
+            endPoint: .bottomLeading
+        )
     }
 }

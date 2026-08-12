@@ -3,7 +3,6 @@ import SwiftUI
 struct ClipboardEntryPreview: View {
     @Bindable var store: ClipboardHistoryStore
     let onCopy: (ClipboardEntry) -> Void
-    let onPaste: (ClipboardEntry) -> Void
     let onTogglePin: (ClipboardEntry) -> Void
 
     var body: some View {
@@ -68,24 +67,21 @@ struct ClipboardEntryPreview: View {
                 onTogglePin(entry)
             }
 
-            previewActionButton(
-                systemImage: "doc.on.doc",
-                title: L("Copy"),
-                identifier: "clipboard.preview.copy"
-            ) {
-                onCopy(entry)
-            }
-
             Button {
-                onPaste(entry)
+                onCopy(entry)
             } label: {
-                Label(L("Paste"), systemImage: "return")
-                    .font(.system(size: 11.5, weight: .semibold))
+                Label(L("Copy"), systemImage: "square.on.square")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
+                    .openFindInteractiveGlassRoundedRectangle(cornerRadius: 9)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .help(L("Paste"))
-            .accessibilityIdentifier("clipboard.preview.paste")
+            .buttonStyle(.plain)
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .help(L("Copy"))
+            .accessibilityIdentifier("clipboard.preview.copy")
         }
         .padding(.horizontal, 14)
         .frame(height: 46)
@@ -102,13 +98,11 @@ struct ClipboardEntryPreview: View {
             Image(systemName: systemImage)
                 .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 28, height: 28)
-                .background(
-                    Color.primary.opacity(0.055),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                )
+                .frame(width: 30, height: 30)
+                .openFindInteractiveGlassRoundedRectangle(cornerRadius: 9)
         }
         .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .help(title)
         .accessibilityLabel(Text(title))
         .accessibilityIdentifier(identifier)
