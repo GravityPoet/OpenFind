@@ -26,17 +26,23 @@ struct ClipboardHistoryContent: View {
                 HSplitView {
                     historyList
                         .frame(minWidth: 310, idealWidth: 350, maxWidth: 410)
+                        .background(
+                            Color(nsColor: .controlBackgroundColor).opacity(0.18)
+                        )
 
-                    ClipboardEntryPreview(store: store)
+                    ClipboardEntryPreview(
+                        store: store,
+                        onCopy: onCopy,
+                        onPaste: onPaste,
+                        onTogglePin: onPin
+                    )
                         .frame(
                             minWidth: 300,
                             idealWidth: store.preferences.previewWidth,
                             maxWidth: .infinity,
                             maxHeight: .infinity
                         )
-                        // A slightly recessed backdrop separates the reading
-                        // pane from the list without another divider line.
-                        .background(Color(nsColor: .underPageBackgroundColor).opacity(0.55))
+                        .background(Color(nsColor: .underPageBackgroundColor).opacity(0.42))
                         .background {
                             GeometryReader { proxy in
                                 Color.clear

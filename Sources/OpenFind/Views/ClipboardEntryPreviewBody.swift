@@ -7,24 +7,19 @@ struct ClipboardEntryPreviewBody: View {
 
     var body: some View {
         if let image = previewImage {
-            // Top-aligned card instead of a small image floating in the
-            // middle of the column: a bounded height, hairline border, and
-            // soft shadow give small captures a deliberate frame.
             Image(nsImage: image)
                 .resizable()
                 .interpolation(.high)
                 .antialiased(true)
                 .scaledToFit()
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
-                    // The border and shadow must hug the fitted image, so the
-                    // bounding frame is applied only after them.
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(.separator, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
                 }
-                .shadow(color: .black.opacity(0.10), radius: 12, y: 3)
+                .shadow(color: .black.opacity(0.11), radius: 14, y: 4)
                 .frame(maxHeight: 440, alignment: .top)
-                .padding(20)
+                .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else if entry.kind == .file, !entry.fileURLs.isEmpty {
             ScrollView {
@@ -46,21 +41,79 @@ struct ClipboardEntryPreviewBody: View {
                                     .textSelection(.enabled)
                             }
                         }
+                        .padding(10)
+                        .background(
+                            Color.primary.opacity(0.035),
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        )
                     }
                 }
-                .padding(20)
+                .padding(18)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let url = entry.webURL {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "link")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 36, height: 36)
+                            .background(
+                                Color.accentColor.opacity(0.11),
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            )
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(linkTitle(for: url))
+                                .font(.system(size: 17, weight: .semibold))
+                                .lineLimit(1)
+                            Text(url.scheme?.uppercased() ?? L("Link"))
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+
+                    Divider()
+
+                    Text(url.absoluteString)
+                        .font(.system(size: 15.5, weight: .medium))
+                        .foregroundStyle(ClipboardTypography.primaryText)
+                        .lineSpacing(4)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
         } else {
             ScrollView {
-                Text(entry.fullPreviewText)
-                    .font(ClipboardTypography.preview)
-                    .foregroundStyle(ClipboardTypography.primaryText)
-                    .lineSpacing(4)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(20)
+                VStack(alignment: .leading, spacing: 12) {
+                    if entry.hasCustomTitle {
+                        Text(entry.displayTitle)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(ClipboardTypography.primaryText)
+
+                        Divider()
+                    }
+
+                    Text(entry.fullPreviewText)
+                        .font(ClipboardTypography.preview)
+                        .foregroundStyle(ClipboardTypography.primaryText)
+                        .lineSpacing(4)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
+    }
+
+    private func linkTitle(for url: URL) -> String {
+        if entry.hasCustomTitle { return entry.displayTitle }
+        return url.host ?? entry.kind.localizedTitle
     }
 }

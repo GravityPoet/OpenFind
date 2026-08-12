@@ -74,6 +74,10 @@ struct ClipboardHistoryRow: View {
                         maxHeight: CGFloat(preferences.imageRowHeight)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.6)
+                    }
             }
 
             if preferences.showHexColorSwatch, let color = entry.hexColor {
@@ -92,7 +96,9 @@ struct ClipboardHistoryRow: View {
                     query: query,
                     preferences: preferences
                 ))
-                    .font(ClipboardTypography.row)
+                    .font(isSelected
+                        ? ClipboardTypography.selectedRow
+                        : ClipboardTypography.row)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -138,26 +144,19 @@ struct ClipboardHistoryRow: View {
             if entry.isPinned {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 9, weight: .semibold))
-                    .opacity(isSelected ? 0.9 : 0.48)
+                    .foregroundStyle(isSelected
+                        ? Color.white.opacity(0.90)
+                        : Color.accentColor.opacity(0.68))
                 if let pin = ClipboardPinKey.normalize(entry.pinKey) {
-                    Text("⌘\(pin.uppercased())")
-                        .font(ClipboardTypography.shortcut)
-                        .foregroundStyle(isSelected
-                            ? Color.white.opacity(0.96)
-                            : ClipboardTypography.secondaryText)
+                    shortcutChip("⌘\(pin.uppercased())")
                 }
             }
 
             if let quickIndex {
-                Text("⌘\(quickIndex)")
-                    .font(ClipboardTypography.shortcut)
-                    .monospacedDigit()
-                    .foregroundStyle(isSelected
-                        ? Color.white.opacity(0.96)
-                        : ClipboardTypography.secondaryText)
+                shortcutChip("⌘\(quickIndex)")
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 9)
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .foregroundStyle(isSelected ? Color.white : ClipboardTypography.primaryText)
         .modifier(ClipboardHistoryRowSurface(
@@ -179,8 +178,8 @@ struct ClipboardHistoryRow: View {
             Image(nsImage: icon)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 21, height: 21)
-                .frame(width: 24, height: 24)
+                .frame(width: 22, height: 22)
+                .frame(width: 26, height: 26)
         } else if previewImage == nil {
             Image(systemName: entry.kind.systemImage)
                 .font(.system(size: 12, weight: .medium))
@@ -191,6 +190,21 @@ struct ClipboardHistoryRow: View {
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
         }
+    }
+
+    private func shortcutChip(_ text: String) -> some View {
+        Text(text)
+            .font(ClipboardTypography.shortcut)
+            .monospacedDigit()
+            .foregroundStyle(isSelected
+                ? Color.white.opacity(0.96)
+                : ClipboardTypography.secondaryText)
+            .padding(.horizontal, 5)
+            .frame(minWidth: 24, minHeight: 18)
+            .background(
+                isSelected ? Color.white.opacity(0.13) : Color.primary.opacity(0.05),
+                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+            )
     }
 
     private var rowHeight: CGFloat {
@@ -257,20 +271,20 @@ private struct ClipboardHistoryRowSurface: ViewModifier {
             content
                 .background(
                     Color.accentColor.opacity(
-                        colorSchemeContrast == .increased ? 0.96 : 0.88
+                        colorSchemeContrast == .increased ? 0.96 : 0.86
                     ),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .strokeBorder(
-                            Color.white.opacity(colorSchemeContrast == .increased ? 0.72 : 0.22),
+                            Color.white.opacity(colorSchemeContrast == .increased ? 0.72 : 0.24),
                             lineWidth: colorSchemeContrast == .increased ? 1.2 : 0.7
                         )
                 }
         } else {
             content.background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(isHovered
                         ? Color.primary.opacity(colorSchemeContrast == .increased ? 0.12 : 0.055)
                         : .clear)

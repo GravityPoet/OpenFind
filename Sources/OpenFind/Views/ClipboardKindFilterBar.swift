@@ -7,14 +7,17 @@ struct ClipboardKindFilterBar: View {
     @Bindable var store: ClipboardHistoryStore
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 2) {
             ForEach(ClipboardKindFilter.allCases) { filter in
                 chip(for: filter)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 7)
+        .padding(3)
+        .background(
+            Color.primary.opacity(0.055),
+            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+        )
+        .fixedSize(horizontal: true, vertical: false)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(L("Kind Filter Bar")))
     }
@@ -26,17 +29,18 @@ struct ClipboardKindFilterBar: View {
         } label: {
             Text(filter.localizedTitle)
                 .font(.system(size: 11, weight: isOn ? .semibold : .regular))
-                .padding(.horizontal, 9)
-                .padding(.vertical, 3.5)
+                .padding(.horizontal, 10)
+                .frame(height: 24)
                 .background(
                     isOn
-                        ? AnyShapeStyle(Color.accentColor.opacity(0.92))
-                        : AnyShapeStyle(.quaternary.opacity(0.55)),
-                    in: Capsule()
+                        ? AnyShapeStyle(Color.accentColor.opacity(0.14))
+                        : AnyShapeStyle(Color.clear),
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
                 )
-                .foregroundStyle(isOn ? Color.white : Color.primary.opacity(0.72))
+                .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
         }
         .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 }

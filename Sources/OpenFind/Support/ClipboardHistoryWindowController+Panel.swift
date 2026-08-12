@@ -67,7 +67,7 @@ extension ClipboardHistoryWindowController {
         }
         let hostingView = NSHostingView(rootView: makeHistoryView())
         hostingView.wantsLayer = true
-        hostingView.layer?.cornerRadius = 16
+        hostingView.layer?.cornerRadius = 18
         hostingView.layer?.cornerCurve = .continuous
         hostingView.layer?.masksToBounds = true
         panel.contentView = hostingView
