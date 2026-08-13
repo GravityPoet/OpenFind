@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var backgroundHibernateTask: Task<Void, Never>?
     private var isBackgroundResident = false
     var activationPolicySetter: (NSApplication.ActivationPolicy) -> Bool = {
-        NSApp.setActivationPolicy($0)
+        NSApp.activationPolicy() == $0 || NSApp.setActivationPolicy($0)
     }
 
     override init() {
@@ -102,13 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         launchAtLogin.enableByDefaultIfNeeded()
         configureUpdaterIfAvailable()
-        if Self.isLoginItemLaunch(
-            event: NSAppleEventManager.shared().currentAppleEvent
-        ) {
-            enterBackgroundMode()
-        } else {
-            showMainWindow()
-        }
+        presentInitialInterface()
         startRuntimeServices(includeTriggerScheduler: false)
         closedDisplayRecoveryTask = Task { [weak self] in
             guard let self else { return }
@@ -216,8 +210,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
 
-    static func isLoginItemLaunch(event: NSAppleEventDescriptor?) -> Bool {
-        event?.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem) != nil
+    func presentInitialInterface() {
+        enterBackgroundMode()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -333,7 +327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func enterForegroundMode() {
         let wasBackgroundResident = isBackgroundResident
         isBackgroundResident = false
-        applyActivationPolicy(.regular)
+        applyActivationPolicy(.accessory)
         backgroundHibernateTask?.cancel()
         backgroundHibernateTask = nil
         if wasBackgroundResident {

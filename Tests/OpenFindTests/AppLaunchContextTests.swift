@@ -5,28 +5,32 @@ import Testing
 @MainActor
 @Suite("App Launch Context Tests", .serialized)
 struct AppLaunchContextTests {
-    @Test func loginItemAppleEventStartsInTheBackground() {
-        let event = NSAppleEventDescriptor(
-            eventClass: AEEventClass(kCoreEventClass),
-            eventID: AEEventID(kAEOpenApplication),
-            targetDescriptor: nil,
-            returnID: AEReturnID(kAutoGenerateReturnID),
-            transactionID: AETransactionID(kAnyTransactionID)
-        )
-        event.setParam(
-            NSAppleEventDescriptor(boolean: true),
-            forKeyword: keyAELaunchedAsLogInItem
-        )
+    @Test func initialLaunchStaysInTheMenuBarWithoutCreatingTheMainWindow() {
+        let application = NSApplication.shared
+        let existingWindows = Set(application.windows.map(ObjectIdentifier.init))
+        let delegate = AppDelegate()
+        var appliedPolicies: [NSApplication.ActivationPolicy] = []
+        delegate.activationPolicySetter = { policy in
+            appliedPolicies.append(policy)
+            return true
+        }
+        defer {
+            application.windows
+                .filter { !existingWindows.contains(ObjectIdentifier($0)) }
+                .forEach { $0.orderOut(nil) }
+        }
 
-        #expect(AppDelegate.isLoginItemLaunch(event: event))
+        delegate.presentInitialInterface()
+
+        let newMainWindow = application.windows.first {
+            !existingWindows.contains(ObjectIdentifier($0))
+                && $0.identifier?.rawValue == "OpenFind.main"
+        }
+        #expect(newMainWindow == nil)
+        #expect(appliedPolicies.last == .accessory)
     }
 
-    @Test func ordinaryLaunchStillOpensTheMainWindow() {
-        #expect(!AppDelegate.isLoginItemLaunch(event: nil))
-        #expect(!AppDelegate.isLoginItemLaunch(event: NSAppleEventDescriptor.null()))
-    }
-
-    @Test func primaryWindowUsesTheDockUntilTheLastVisibleWindowCloses() throws {
+    @Test func primaryWindowStaysOutOfTheDockWhileVisible() throws {
         let application = NSApplication.shared
         let existingWindows = Set(application.windows.map(ObjectIdentifier.init))
         let delegate = AppDelegate()
@@ -47,7 +51,7 @@ struct AppLaunchContextTests {
             $0.identifier?.rawValue == "OpenFind.main"
         })
         #expect(window.isVisible)
-        #expect(appliedPolicies.last == .regular)
+        #expect(appliedPolicies.last == .accessory)
 
         #expect(!delegate.windowShouldClose(window))
         #expect(!window.isVisible)
