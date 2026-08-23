@@ -287,7 +287,7 @@ private struct ClipboardHistoryRowSurface: ViewModifier {
             content
                 .openFindSelectedGlassRoundedRectangle(
                     cornerRadius: 9,
-                    tintOpacity: colorSchemeContrast == .increased ? 0 : 0.08
+                    tintOpacity: colorSchemeContrast == .increased ? 0 : 0.05
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)

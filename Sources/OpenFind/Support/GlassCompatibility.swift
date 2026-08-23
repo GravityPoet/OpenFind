@@ -51,15 +51,16 @@ extension View {
     @ViewBuilder
     func openFindSelectedGlassRoundedRectangle(
         cornerRadius: CGFloat,
-        tintOpacity: Double = 0.08
+        tintOpacity: Double = 0.05
     ) -> some View {
         if #available(macOS 26.0, *) {
             glassEffect(
                 // A selected row is an information state, not a primary CTA.
                 // Keep the accent as a translucent tint so the row remains
                 // legible over the panel's material instead of becoming a
-                // solid system-blue block.
-                .regular.tint(Color.accentColor.opacity(tintOpacity)).interactive(),
+                // solid system-blue block. This is a selection state, not a
+                // button, so don't add interactive glass sheen or bounce.
+                .regular.tint(Color.accentColor.opacity(tintOpacity)),
                 in: .rect(cornerRadius: cornerRadius)
             )
         } else {
