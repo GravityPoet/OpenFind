@@ -1,0 +1,9 @@
+/* macOS privacy permission prompts */
+"NSDesktopFolderUsageDescription" = "OpenFind needs access to your Desktop folder to search files there.";
+"NSDocumentsFolderUsageDescription" = "OpenFind needs access to your Documents folder to search files there.";
+"NSDownloadsFolderUsageDescription" = "OpenFind needs access to your Downloads folder to search files there.";
+"NSLocationUsageDescription" = "OpenFind uses your location only when you enable a Wi-Fi trigger, to identify the current Wi-Fi network.";
+"NSLocationWhenInUseUsageDescription" = "OpenFind uses your location only when you enable a Wi-Fi trigger, to identify the current Wi-Fi network.";
+"NSBluetoothAlwaysUsageDescription" = "OpenFind accesses paired Bluetooth devices only when you enable a Bluetooth trigger, to detect whether the selected device is connected.";
+"NSRemovableVolumesUsageDescription" = "OpenFind needs access to removable volumes when you include them in your search scope.";
+"NSNetworkVolumesUsageDescription" = "OpenFind needs access to network volumes when you include them in your search scope.";

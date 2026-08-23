@@ -69,11 +69,11 @@ Run every command from the repository root.
 
    ```bash
    swift package resolve
-   swift test --no-parallel
+   bash Scripts/test.sh
    OPENFIND_RUN_DRIVE_ALIVE_INTEGRATION=1 \
-     swift test --no-parallel --filter DriveAliveIntegrationTests
+     bash Scripts/test.sh --filter DriveAliveIntegrationTests
    OPENFIND_RUN_VISUAL_REGRESSION=1 \
-     swift test --filter VisualRegressionTests
+     bash Scripts/test.sh --filter VisualRegressionTests
    FILES=8000 BODY_KB=16 COPIES=4 bash Scripts/benchmark_content_index.sh
    FILES=600 MATCH_EVERY=60 bash Scripts/benchmark_index.sh
    NODES=250000 bash Scripts/benchmark_name_index.sh

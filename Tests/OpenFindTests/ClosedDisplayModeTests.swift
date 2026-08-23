@@ -189,6 +189,40 @@ struct ClosedDisplayModeTests {
         #expect(PMSetOutputParser.sleepDisabled(from: "nothing\n") == nil)
     }
 
+    @Test func testRuntimePolicyBlocksSystemPowerAccessUnlessExplicitlyOptedIn() {
+        let productionURL = URL(fileURLWithPath: "/Applications/OpenFind.app")
+        let testURL = URL(fileURLWithPath: "/tmp/OpenFindPackageTests.xctest")
+
+        #expect(!ClosedDisplayPowerAccessPolicy.isAllowed(
+            environment: [ClosedDisplayPowerAccessPolicy.explicitTestModeKey: "1"],
+            mainBundleURL: productionURL,
+            executablePath: "/Applications/OpenFind.app/Contents/MacOS/OpenFind"
+        ))
+        #expect(!ClosedDisplayPowerAccessPolicy.isAllowed(
+            environment: [:],
+            mainBundleURL: testURL,
+            executablePath: "/tmp/OpenFindPackageTests"
+        ))
+        #expect(!ClosedDisplayPowerAccessPolicy.isAllowed(
+            environment: [:],
+            mainBundleURL: productionURL,
+            executablePath: "/tmp/OpenFindPackageTests.xctest/Contents/MacOS/OpenFindPackageTests"
+        ))
+        #expect(ClosedDisplayPowerAccessPolicy.isAllowed(
+            environment: [ClosedDisplayPowerAccessPolicy.testIntegrationOptInKey: "1"],
+            mainBundleURL: testURL,
+            executablePath: "/tmp/OpenFindPackageTests.xctest/Contents/MacOS/OpenFindPackageTests"
+        ))
+    }
+
+    @Test func blockedTestClientNeverLaunchesSystemPowerCommands() async {
+        let client = PMSetClosedDisplayPowerClient(systemPowerAccessAllowed: { false })
+
+        await expectTestAccessBlocked { try await client.readSleepDisabled() }
+        await expectTestAccessBlocked { try await client.setSleepDisabled(true) }
+        await expectTestAccessBlocked { try await client.setSleepDisabledWithoutPrompt(true) }
+    }
+
     @Test func supportRequiresBothAnInternalBatteryAndAClamshellProperty() {
         #expect(BatteryBasedClosedDisplaySupportDetector(
             hardware: FakeClosedDisplayHardware(hasBattery: true, state: .open)
@@ -226,6 +260,20 @@ struct ClosedDisplayModeTests {
             object: nil
         )
         #expect(states == [.closed, .open])
+    }
+}
+
+@MainActor
+private func expectTestAccessBlocked<T>(
+    _ operation: () async throws -> T
+) async {
+    do {
+        _ = try await operation()
+        Issue.record("Test-mode power access unexpectedly reached the system client")
+    } catch let error as ClosedDisplayPowerError {
+        #expect(error == .testAccessBlocked)
+    } catch {
+        Issue.record("Unexpected test-mode power error: \(error)")
     }
 }
 

@@ -66,20 +66,20 @@
 "Event" = "事件";
 "Filename" = "文件名";
 "Path" = "路径";
-"Created" = "Created";
-"Removed" = "Removed";
-"Renamed" = "Renamed";
-"Modified" = "Modified";
-"InodeMetaMod" = "InodeMetaMod";
-"FinderInfoMod" = "FinderInfoMod";
-"ChangeOwner" = "ChangeOwner";
-"XattrMod" = "XattrMod";
-"Cloned" = "Cloned";
-"MustScanSubDirs" = "MustScanSubDirs";
-"EventsDropped" = "EventsDropped";
-"RootChanged" = "RootChanged";
-"HistoryDone" = "HistoryDone";
-"Changed" = "Changed";
+"Created" = "已创建";
+"Removed" = "已移除";
+"Renamed" = "已重命名";
+"Modified" = "已修改";
+"InodeMetaMod" = "索引元数据变更";
+"FinderInfoMod" = "Finder 信息变更";
+"ChangeOwner" = "所有者变更";
+"XattrMod" = "扩展属性变更";
+"Cloned" = "已克隆";
+"MustScanSubDirs" = "需要扫描子目录";
+"EventsDropped" = "事件丢失";
+"RootChanged" = "根目录变更";
+"HistoryDone" = "历史记录完成";
+"Changed" = "已变更";
 "Updating" = "正在更新";
 "Ready" = "就绪";
 "Updating Compact" = "更新";
@@ -214,9 +214,9 @@
 
 /* Awake Sessions */
 "Keep Awake" = "保持唤醒";
-"Start Awake Session" = "开始唤醒会话";
-"End Awake Session" = "结束唤醒会话";
-"Awake Session Active" = "唤醒会话进行中";
+"Start Awake Session" = "让 Mac 保持唤醒";
+"End Awake Session" = "停止保持唤醒";
+"Awake Session Active" = "Mac 正在保持唤醒";
 "Awake Until %@" = "保持唤醒至 %@";
 "Allow Display Sleep" = "允许显示器休眠";
 "Indefinitely" = "无限期";
@@ -225,8 +225,8 @@
 "1 Hour" = "1 小时";
 "2 Hours" = "2 小时";
 "Dismiss Error" = "忽略错误";
-"Extend Awake Session" = "延长唤醒会话…";
-"Disable Triggers and End Session" = "停用触发器并结束会话";
+"Extend Awake Session" = "延长保持唤醒时间…";
+"Disable Triggers and End Session" = "停用触发器并停止保持唤醒";
 "End Time Calculation" = "结束时间计算方式";
 "Timer" = "定时器";
 "System Clock" = "系统时钟";
@@ -239,6 +239,10 @@
 "Include Seconds" = "显示秒数";
 "Menu Bar Session Time Help" = "状态圆点始终表示会话是否活动；定时会话还可显示剩余时间或结束时间。";
 "OpenFind Session Time Accessibility Format" = "OpenFind，会话时间 %@";
+"OpenFind Idle Accessibility" = "OpenFind，空闲，当前未保持 Mac 唤醒";
+"OpenFind Keeping Awake Accessibility" = "OpenFind，正在保持 Mac 唤醒";
+"OpenFind Remaining Time Accessibility Format" = "OpenFind，正在保持 Mac 唤醒，剩余时间 %@";
+"OpenFind End Time Accessibility Format" = "OpenFind，正在保持 Mac 唤醒，结束时间 %@";
 "Statistics" = "统计";
 "Enable Statistics Collection" = "启用统计收集";
 "Total Awake Time" = "累计唤醒时长";
@@ -297,7 +301,7 @@
 "Allow Location" = "允许定位";
 "Open Location Settings" = "打开定位设置";
 "Trigger Session Options" = "会话选项";
-"Allow Closed Display Sleep" = "允许闭盖睡眠";
+"Allow Closed Display Sleep" = "合盖后仍保持唤醒";
 "Allow Screen Saver" = "允许屏幕保护程序";
 "While File Is Downloading" = "文件下载期间…";
 "30 Second Timeout" = "30 秒无变化后结束";
@@ -307,8 +311,8 @@
 "Monitor File" = "监控";
 "Awake While Application Runs" = "应用运行期间保持唤醒";
 "Awake While File Downloads" = "文件下载期间保持唤醒";
-"Next Session Options" = "下次会话选项";
-"Awake Session Defaults" = "保持唤醒会话默认值";
+"Next Session Options" = "下次保持唤醒选项";
+"Awake Session Defaults" = "保持唤醒默认设置";
 "Awake Session Defaults Help" = "这些选项用于手动会话和会话快捷键；每个触发器保留独立选项。";
 "Minutes Format" = "%lld 分钟";
 "Custom Duration" = "自定义时长…";
@@ -404,13 +408,13 @@
 "Any Requirement (OR)" = "任一条件（OR）";
 "Awake Session Hotkeys" = "保持唤醒快捷键";
 "Awake Session Hotkeys Help" = "每个动作独立注册；遇到重复或不可用快捷键时，OpenFind 不会替换仍可用的绑定。";
-"Hotkey Start Awake Session" = "开始会话";
-"Hotkey End Awake Session" = "结束会话";
-"Hotkey Toggle Awake Session" = "开始 / 结束会话";
+"Hotkey Start Awake Session" = "让 Mac 保持唤醒";
+"Hotkey End Awake Session" = "停止保持唤醒";
+"Hotkey Toggle Awake Session" = "开始 / 停止保持唤醒";
 "Hotkey Open Menu" = "打开菜单";
 "Hotkey Toggle Display Sleep" = "切换显示器睡眠";
 "Hotkey Toggle Screen Saver" = "切换屏幕保护程序";
-"Hotkey Toggle Closed Display Sleep" = "切换闭盖睡眠";
+"Hotkey Toggle Closed Display Sleep" = "切换合盖后保持唤醒";
 
 /* Clipboard History */
 "Clipboard History" = "剪贴板历史";
@@ -571,6 +575,11 @@
 "Pause Clipboard Capture" = "暂停记录剪贴板";
 "Ignore Next Clipboard Copy" = "忽略下一次复制";
 "Waiting for Next Clipboard Copy" = "正在等待下一次复制";
+"Clipboard Capture Paused Status" = "剪贴板记录已暂停";
+"Clipboard Capture Paused Description" = "新复制内容暂时不会加入历史记录。";
+"Clipboard Ignore Next Copy Status" = "正在等待忽略下一次复制";
+"Clipboard Ignore Next Copy Description" = "OpenFind 将忽略下一次复制，随后自动恢复记录。";
+"Resume Clipboard Capture" = "恢复记录";
 "Manage Clipboard Ignore Rules" = "管理忽略规则…";
 "Clipboard Storage Settings" = "存储";
 "Clipboard Behavior Settings" = "行为与快捷键";
@@ -703,11 +712,11 @@
 "Notifications and Sounds Help" = "OpenFind 会自动使用当前构建支持的通知通道。通知正文不会包含路径、进程名、网络名称或剪贴板内容。";
 "Dismiss Notification" = "关闭通知";
 "Notification Permission Denied" = "通知权限已在系统设置中被拒绝。";
-"Awake Session Started" = "保持唤醒会话已开始";
+"Awake Session Started" = "Mac 已开始保持唤醒";
 "OpenFind Is Keeping Mac Awake" = "OpenFind 正在阻止 Mac 休眠。";
-"Awake Session Ended" = "保持唤醒会话已结束";
+"Awake Session Ended" = "Mac 已停止保持唤醒";
 "Mac Will Use Normal Sleep Schedule" = "Mac 将恢复正常睡眠计划。";
-"Awake Session Reminder" = "保持唤醒会话提醒";
+"Awake Session Reminder" = "保持唤醒提醒";
 "OpenFind Is Still Keeping Mac Awake" = "OpenFind 仍在阻止 Mac 休眠。";
 "Move Cursor During Awake Sessions" = "保持唤醒会话期间移动光标";
 "Move Cursor Every" = "每隔多久移动光标";

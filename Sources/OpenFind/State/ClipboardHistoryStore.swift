@@ -101,6 +101,7 @@ final class ClipboardHistoryStore {
     }()
     @ObservationIgnored var pendingImageTextRecognitionIDs: Set<UUID> = []
     @ObservationIgnored var imageTextRecognitionTask: Task<Void, Never>?
+    @ObservationIgnored var previewPresentationTask: Task<Void, Never>?
     @ObservationIgnored var deletionUndoBannerDismissTask: Task<Void, Never>?
     @ObservationIgnored var deletionUndoBannerGeneration: UInt64 = 0
     var selectedIndex = 0
@@ -219,6 +220,8 @@ final class ClipboardHistoryStore {
     }
 
     func beginPresentation() {
+        previewPresentationTask?.cancel()
+        previewPresentationTask = nil
         // Refresh time-decayed usage periodically without throwing away the
         // warm projection on every open; opening the panel must stay instant.
         if let cachedUsageRankingDate,
@@ -226,12 +229,28 @@ final class ClipboardHistoryStore {
             invalidateClipboardProjection()
         }
         isPanelPresented = true
-        isPreviewVisible = true
+        isPreviewVisible = false
         isActionPanelPresented = false
         presentationGeneration &+= 1
+
+        guard preferences.openPreviewAutomatically else { return }
+        let generation = presentationGeneration
+        let delay = max(0, preferences.previewDelayMilliseconds)
+        previewPresentationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(delay))
+            guard let self,
+                  !Task.isCancelled,
+                  self.isPanelPresented,
+                  self.presentationGeneration == generation else { return }
+            self.isPreviewVisible = true
+            self.previewPresentationTask = nil
+            self.presentationGeneration &+= 1
+        }
     }
 
     func endPresentation() {
+        previewPresentationTask?.cancel()
+        previewPresentationTask = nil
         isPanelPresented = false
         isActionPanelPresented = false
         presentationGeneration &+= 1

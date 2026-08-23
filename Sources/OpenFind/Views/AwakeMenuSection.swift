@@ -52,8 +52,8 @@ struct AwakeMenuSection: View {
                     Toggle(
                         L("Allow Closed Display Sleep"),
                         isOn: Binding(
-                            get: { controller.allowsClosedDisplaySleep },
-                            set: { controller.requestClosedDisplaySleepAllowed($0) }
+                            get: { !controller.allowsClosedDisplaySleep },
+                            set: { controller.requestClosedDisplaySleepAllowed(!$0) }
                         )
                     )
                 }
@@ -95,8 +95,8 @@ struct AwakeMenuSection: View {
                         ))
                         if controller.closedDisplayModeSupported {
                             Toggle(L("Allow Closed Display Sleep"), isOn: Binding(
-                                get: { preferences.allowsClosedDisplaySleep },
-                                set: { preferences.setAllowsClosedDisplaySleep($0) }
+                                get: { !preferences.allowsClosedDisplaySleep },
+                                set: { preferences.setAllowsClosedDisplaySleep(!$0) }
                             ))
                         }
                     }

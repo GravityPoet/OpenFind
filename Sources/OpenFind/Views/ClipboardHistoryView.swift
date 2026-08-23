@@ -31,6 +31,16 @@ struct ClipboardHistoryView: View {
                 }
             )
 
+            let captureStatus = ClipboardCaptureStatus.resolve(
+                capturePaused: store.preferences.capturePaused,
+                ignoreOnlyNextCapture: store.preferences.ignoreOnlyNextCapture
+            )
+            if captureStatus != .active {
+                ClipboardCaptureStatusBanner(status: captureStatus) {
+                    store.setCapturePaused(false)
+                }
+            }
+
             if let error = store.lastErrorMessage {
                 ClipboardErrorBanner(message: error) { store.clearError() }
             }
@@ -120,6 +130,9 @@ struct ClipboardHistoryView: View {
             onActionPanelVisibilityChange(store.isActionPanelPresented)
             guard !store.isActionPanelPresented else { return }
             requestSearchFocus()
+        }
+        .onChange(of: store.isPreviewVisible) {
+            onPreviewVisibilityChange(store.isPreviewVisible)
         }
         .onChange(of: store.presentationGeneration) {
             guard store.isPanelPresented else { return }

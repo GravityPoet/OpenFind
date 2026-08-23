@@ -3302,6 +3302,7 @@ actor SearchIndexStore {
             deepIndex: deepIndex,
             hasFullDiskAccess: hasFullDiskAccess
         )
+        await contentSearchIndex.configure(for: signature)
         guard !signature.scopes.isEmpty else {
             cancelPipeline()
             index = SearchIndex(signature: signature, nodes: [])
@@ -3335,6 +3336,7 @@ actor SearchIndexStore {
             deepIndex: deepIndex,
             hasFullDiskAccess: hasFullDiskAccess
         )
+        await contentSearchIndex.configure(for: signature)
         guard !signature.scopes.isEmpty else {
             cancelPipeline()
             index = SearchIndex(signature: signature, nodes: [])
@@ -6728,6 +6730,50 @@ enum SearchIndexPersistence {
     private static let maximumDeltaPaths = 500_000
     private static let nameIndexPersistenceLock = NSLock()
 
+    /// Search caches are rebuildable, but they can contain private file names
+    /// and paths. Reject links/foreign-owned targets and keep the directory and
+    /// every persisted artifact private to the current user.
+    static func preparePrivateCacheDirectory(for targetURL: URL) -> Bool {
+        let directory = targetURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: NSNumber(value: 0o700)]
+            )
+        } catch {
+            return false
+        }
+
+        let descriptor = Darwin.open(
+            directory.path,
+            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+        )
+        guard descriptor >= 0 else { return false }
+        defer { Darwin.close(descriptor) }
+        var information = stat()
+        guard fstat(descriptor, &information) == 0,
+              information.st_uid == geteuid(),
+              information.st_mode & mode_t(S_IFMT) == mode_t(S_IFDIR) else {
+            return false
+        }
+        return information.st_mode & mode_t(0o077) == 0
+            || fchmod(descriptor, mode_t(0o700)) == 0
+    }
+
+    static func enforcePrivateFile(at url: URL, required: Bool) -> Bool {
+        var information = stat()
+        guard lstat(url.path, &information) == 0 else {
+            return !required && errno == ENOENT
+        }
+        guard information.st_uid == geteuid(),
+              information.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG) else {
+            return false
+        }
+        return information.st_mode & mode_t(0o077) == 0
+            || chmod(url.path, mode_t(0o600)) == 0
+    }
+
     struct Delta: Sendable {
         let subtreePaths: [String]
         let exactPaths: [String]
@@ -6879,6 +6925,12 @@ enum SearchIndexPersistence {
 
     static func load(signature: SearchIndexSignature, from url: URL? = nil) -> SearchIndex? {
         let targetURL = url ?? cacheURL
+        guard preparePrivateCacheDirectory(for: targetURL),
+              enforcePrivateFile(at: targetURL, required: true),
+              enforcePrivateFile(at: nameIndexURL(for: targetURL), required: false),
+              enforcePrivateFile(at: deltaURL(for: targetURL), required: false) else {
+            return nil
+        }
         guard let storedData = try? Data(contentsOf: targetURL, options: .mappedIfSafe) else { return nil }
         let baseDigest = Data(SHA256.hash(data: storedData))
         if storedData.starts(with: compressedMagic.utf8) {
@@ -6906,7 +6958,9 @@ enum SearchIndexPersistence {
         from url: URL? = nil
     ) -> Delta? {
         let targetURL = deltaURL(for: url)
-        guard let data = try? Data(contentsOf: targetURL, options: .mappedIfSafe),
+        guard preparePrivateCacheDirectory(for: targetURL),
+              enforcePrivateFile(at: targetURL, required: true),
+              let data = try? Data(contentsOf: targetURL, options: .mappedIfSafe),
               data.count <= maximumDeltaBytes,
               let persisted = try? PropertyListDecoder().decode(PersistedDelta.self, from: data),
               persisted.version == deltaVersion,
@@ -7045,11 +7099,15 @@ enum SearchIndexPersistence {
 
         let targetURL = deltaURL(for: url)
         do {
-            try FileManager.default.createDirectory(
-                at: targetURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
+            guard preparePrivateCacheDirectory(for: targetURL),
+                  enforcePrivateFile(at: targetURL, required: false) else {
+                throw CocoaError(.fileWriteNoPermission)
+            }
             try data.write(to: targetURL, options: .atomic)
+            guard enforcePrivateFile(at: targetURL, required: true) else {
+                try? FileManager.default.removeItem(at: targetURL)
+                throw CocoaError(.fileWriteNoPermission)
+            }
         } catch {
             // A stale journal only causes safe event replay on the next launch.
         }
@@ -7097,6 +7155,12 @@ enum SearchIndexPersistence {
         removeDelta: Bool = true
     ) {
         let targetURL = url ?? cacheURL
+        guard preparePrivateCacheDirectory(for: targetURL),
+              enforcePrivateFile(at: targetURL, required: false),
+              enforcePrivateFile(at: nameIndexURL(for: targetURL), required: false),
+              enforcePrivateFile(at: deltaURL(for: targetURL), required: false) else {
+            return
+        }
         let persisted: (baseDigest: Data, wroteNameIndex: Bool)? = autoreleasepool {
             let rawData = encode(index)
             let data = compress(rawData) ?? rawData
@@ -7107,13 +7171,18 @@ enum SearchIndexPersistence {
             nameIndexPersistenceLock.lock()
             defer { nameIndexPersistenceLock.unlock() }
             do {
-                try FileManager.default.createDirectory(
-                    at: targetURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
                 try data.write(to: targetURL, options: .atomic)
+                guard enforcePrivateFile(at: targetURL, required: true) else {
+                    try? FileManager.default.removeItem(at: targetURL)
+                    throw CocoaError(.fileWriteNoPermission)
+                }
                 if let nameIndexData {
-                    try nameIndexData.write(to: nameIndexURL(for: targetURL), options: .atomic)
+                    let sidecarURL = nameIndexURL(for: targetURL)
+                    try nameIndexData.write(to: sidecarURL, options: .atomic)
+                    guard enforcePrivateFile(at: sidecarURL, required: true) else {
+                        try? FileManager.default.removeItem(at: sidecarURL)
+                        throw CocoaError(.fileWriteNoPermission)
+                    }
                 } else {
                     try? FileManager.default.removeItem(at: nameIndexURL(for: targetURL))
                 }
@@ -7172,10 +7241,18 @@ enum SearchIndexPersistence {
         let wroteSidecar: Bool = {
             nameIndexPersistenceLock.lock()
             defer { nameIndexPersistenceLock.unlock() }
-            guard let currentBase = try? Data(contentsOf: baseURL, options: .mappedIfSafe),
+            guard preparePrivateCacheDirectory(for: baseURL),
+                  enforcePrivateFile(at: baseURL, required: true),
+                  enforcePrivateFile(at: nameIndexURL(for: baseURL), required: false),
+                  let currentBase = try? Data(contentsOf: baseURL, options: .mappedIfSafe),
                   Data(SHA256.hash(data: currentBase)) == baseDigest else { return false }
             do {
-                try sidecarData.write(to: nameIndexURL(for: baseURL), options: .atomic)
+                let sidecarURL = nameIndexURL(for: baseURL)
+                try sidecarData.write(to: sidecarURL, options: .atomic)
+                guard enforcePrivateFile(at: sidecarURL, required: true) else {
+                    try? FileManager.default.removeItem(at: sidecarURL)
+                    return false
+                }
                 return true
             } catch {
                 return false

@@ -68,8 +68,9 @@ struct LocalizationTests {
         }
 
         for identifier in AppLocalization.supportedIdentifiers {
-            let stringsURL = repositoryRoot
+            let resourcesRoot = repositoryRoot
                 .appendingPathComponent("Sources/OpenFind/Resources")
+            let stringsURL = resourcesRoot
                 .appendingPathComponent("\(identifier).lproj/Localizable.strings")
             let stringsData = try Data(contentsOf: stringsURL)
             let stringsSource = try String(contentsOf: stringsURL, encoding: .utf8)
@@ -80,6 +81,28 @@ struct LocalizationTests {
                 ) as? [String: String]
             )
             #expect(strings["Settings"] != nil)
+
+            let infoPlistStringsURL = resourcesRoot
+                .appendingPathComponent("\(identifier).lproj/InfoPlist.strings")
+            let infoPlistStringsData = try Data(contentsOf: infoPlistStringsURL)
+            let infoPlistStrings = try #require(
+                PropertyListSerialization.propertyList(
+                    from: infoPlistStringsData,
+                    format: nil
+                ) as? [String: String]
+            )
+            for key in [
+                "NSDesktopFolderUsageDescription",
+                "NSDocumentsFolderUsageDescription",
+                "NSDownloadsFolderUsageDescription",
+                "NSLocationUsageDescription",
+                "NSLocationWhenInUseUsageDescription",
+                "NSBluetoothAlwaysUsageDescription",
+                "NSRemovableVolumesUsageDescription",
+                "NSNetworkVolumesUsageDescription",
+            ] {
+                #expect(infoPlistStrings[key]?.isEmpty == false)
+            }
 
             let expression = try NSRegularExpression(pattern: #"(?m)^\s*\"([^\"]+)\"\s*="#)
             let range = NSRange(stringsSource.startIndex..., in: stringsSource)

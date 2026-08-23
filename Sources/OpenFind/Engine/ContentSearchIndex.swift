@@ -102,7 +102,10 @@ actor ContentSearchIndex {
         }
     }
 
-    private static let schemaVersion: Int32 = 4
+    /// v5 intentionally rebuilds every older cache. Previous schemas could
+    /// retain TCC-protected paths and trigram postings after the authorized
+    /// search scope changed.
+    private static let schemaVersion: Int32 = 5
     private static let queryChunkSize = 256
     /// FTS5 trigram postings can expand a single very large body by orders of
     /// magnitude while the row is inserted. Files above this cache threshold
@@ -128,6 +131,7 @@ actor ContentSearchIndex {
     private var budgetStopCount = 0
     private var sourceIdentityReuseCount = 0
     private var lastCheckpoint = ContinuousClock.now
+    private var configuredScopeDigest: Data?
 
     init(databaseURL: URL, legacyDatabaseURL: URL? = nil) {
         self.databaseURL = databaseURL
@@ -153,6 +157,22 @@ actor ContentSearchIndex {
         }
     }
 
+    /// Binds the rebuildable content accelerator to the exact authorization
+    /// boundary that produced it. Changing scopes, bookmarks, deep-index mode,
+    /// or Full Disk Access discards the old database before it can answer a
+    /// query for the new boundary.
+    func configure(for signature: SearchIndexSignature) {
+        let digest = Self.scopeDigest(for: signature)
+        configuredScopeDigest = digest
+        removeLegacyDatabaseFiles()
+        guard openIfNeeded(), let database else { return }
+        if storedScopeDigest(in: database) != digest {
+            invalidateAll()
+            guard let refreshedDatabase = self.database else { return }
+            _ = storeScopeDigest(digest, in: refreshedDatabase)
+        }
+    }
+
     func plan(
         candidates: [ContentIndexCandidate],
         requiredLiteral: String?
@@ -164,14 +184,24 @@ actor ContentSearchIndex {
               Self.isSafeTrigramLiteral(requiredLiteral),
               openIfNeeded() else {
             return ContentIndexPlan(
-                workItems: candidates.map { ContentIndexWorkItem(node: $0.node, shouldRecord: true) },
+                workItems: candidates.map {
+                    ContentIndexWorkItem(
+                        node: $0.node,
+                        shouldRecord: !Self.isPrivacyProtectedPath($0.node.path)
+                    )
+                },
                 skippedFreshNonMatches: 0
             )
         }
 
         guard let matchQuery = Self.trigramMatchQuery(requiredLiteral) else {
             return ContentIndexPlan(
-                workItems: candidates.map { ContentIndexWorkItem(node: $0.node, shouldRecord: true) },
+                workItems: candidates.map {
+                    ContentIndexWorkItem(
+                        node: $0.node,
+                        shouldRecord: !Self.isPrivacyProtectedPath($0.node.path)
+                    )
+                },
                 skippedFreshNonMatches: 0
             )
         }
@@ -187,7 +217,12 @@ actor ContentSearchIndex {
                 matchQuery: matchQuery
             ) else {
                 return ContentIndexPlan(
-                    workItems: candidates.map { ContentIndexWorkItem(node: $0.node, shouldRecord: true) },
+                    workItems: candidates.map {
+                        ContentIndexWorkItem(
+                            node: $0.node,
+                            shouldRecord: !Self.isPrivacyProtectedPath($0.node.path)
+                        )
+                    },
                     skippedFreshNonMatches: 0
                 )
             }
@@ -197,6 +232,13 @@ actor ContentSearchIndex {
             ) ?? [:]
 
             for candidate in chunk {
+                if Self.isPrivacyProtectedPath(candidate.node.path) {
+                    // Protected files remain fully searchable through the
+                    // authoritative raw-file path, but their paths and body
+                    // trigrams never enter this persistent accelerator.
+                    workItems.append(ContentIndexWorkItem(node: candidate.node, shouldRecord: false))
+                    continue
+                }
                 if candidate.forceRefresh {
                     workItems.append(ContentIndexWorkItem(node: candidate.node, shouldRecord: true))
                     continue
@@ -248,7 +290,10 @@ actor ContentSearchIndex {
 
         for start in stride(from: 0, to: candidates.count, by: Self.queryChunkSize) {
             let end = min(start + Self.queryChunkSize, candidates.count)
-            let chunk = candidates[start..<end]
+            let chunk = candidates[start..<end].filter {
+                !Self.isPrivacyProtectedPath($0.path)
+            }
+            guard !chunk.isEmpty else { continue }
             guard let metadata = metadataFingerprintsByPath(
                 paths: chunk.map(\.path)
             ) else { return [] }
@@ -270,8 +315,15 @@ actor ContentSearchIndex {
         _ records: [ContentIndexRecord],
         maximumDatabaseBytes: Int64 = 0
     ) -> Bool {
+        let protectedPaths = records.compactMap { record in
+            Self.isPrivacyProtectedPath(record.node.path) ? record.node.path : nil
+        }
+        if !protectedPaths.isEmpty {
+            invalidate(exactPaths: protectedPaths, subtreePaths: [])
+        }
         let preparedRecords = records.compactMap {
             record -> (record: ContentIndexRecord, digest: Data?, byteCount: Int, persistsBody: Bool)? in
+            guard !Self.isPrivacyProtectedPath(record.node.path) else { return nil }
             let byteCount = record.text?.utf8.count ?? 0
             guard byteCount <= Int(Int32.max) else { return nil }
             let persistsBody = record.text == nil || byteCount <= Self.maximumPersistedBodyBytes
@@ -523,6 +575,9 @@ actor ContentSearchIndex {
         connection = nil
         removeDatabaseFiles()
         _ = openDatabase(allowEmptyRebuild: false)
+        if let configuredScopeDigest, let database {
+            _ = storeScopeDigest(configuredScopeDigest, in: database)
+        }
     }
 
     func flush() {
@@ -926,14 +981,8 @@ actor ContentSearchIndex {
     }
 
     private func openDatabase(allowEmptyRebuild: Bool = true) -> Bool {
-        do {
-            try FileManager.default.createDirectory(
-                at: databaseURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-        } catch {
-            return false
-        }
+        guard SearchIndexPersistence.preparePrivateCacheDirectory(for: databaseURL),
+              validateDatabaseTargetIfPresent() else { return false }
 
         var handle: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
@@ -952,7 +1001,16 @@ actor ContentSearchIndex {
               execute("PRAGMA journal_size_limit=67108864", in: handle),
               execute("PRAGMA auto_vacuum=INCREMENTAL", in: handle),
               quickCheck(handle),
-              initializeSchema(handle) else {
+              initializeSchema(handle),
+              SearchIndexPersistence.enforcePrivateFile(at: databaseURL, required: true),
+              SearchIndexPersistence.enforcePrivateFile(
+                  at: URL(fileURLWithPath: databaseURL.path + "-wal"),
+                  required: false
+              ),
+              SearchIndexPersistence.enforcePrivateFile(
+                  at: URL(fileURLWithPath: databaseURL.path + "-shm"),
+                  required: false
+              ) else {
             sqlite3_close_v2(handle)
             return false
         }
@@ -1005,6 +1063,14 @@ actor ContentSearchIndex {
             in: database
         ) && execute(
             """
+            CREATE TABLE IF NOT EXISTS cache_metadata(
+                key TEXT PRIMARY KEY,
+                value BLOB NOT NULL
+            )
+            """,
+            in: database
+        ) && execute(
+            """
             CREATE TABLE IF NOT EXISTS content_bodies(
                 id INTEGER PRIMARY KEY,
                 digest BLOB NOT NULL,
@@ -1035,6 +1101,71 @@ actor ContentSearchIndex {
             && execute("INSERT INTO content_fts(content_fts, rank) VALUES('crisismerge', 64)", in: database)
             && execute("INSERT INTO content_fts(content_fts, rank) VALUES('usermerge', 8)", in: database)
             && execute("PRAGMA user_version=\(Self.schemaVersion)", in: database)
+    }
+
+    private static func isPrivacyProtectedPath(_ path: String) -> Bool {
+        let canonicalPath = SearchPath.canonicalAliasPath(path)
+        return SearchPath.protectedPrivacyPaths.contains {
+            SearchPath.hasNormalizedPrefix(canonicalPath, of: $0)
+        }
+    }
+
+    private static func scopeDigest(for signature: SearchIndexSignature) -> Data {
+        var components = [
+            "content-scope-v1",
+            signature.deepIndex ? "deep" : "normal",
+            signature.hasFullDiskAccess ? "fda" : "limited",
+        ]
+        components.append(contentsOf: signature.scopes.map { "scope:\($0)" })
+        components.append(contentsOf: signature.scopeAliases.map { "alias:\($0)" })
+        components.append(contentsOf: signature.authorizedScopePaths.map { "authorized:\($0)" })
+        return Data(SHA256.hash(data: Data(components.joined(separator: "\0").utf8)))
+    }
+
+    private func storedScopeDigest(in database: OpaquePointer) -> Data? {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "SELECT value FROM cache_metadata WHERE key='scope-digest-v1'",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            sqlite3_finalize(statement)
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        let count = Int(sqlite3_column_bytes(statement, 0))
+        guard count > 0, let bytes = sqlite3_column_blob(statement, 0) else { return nil }
+        return Data(bytes: bytes, count: count)
+    }
+
+    private func storeScopeDigest(_ digest: Data, in database: OpaquePointer) -> Bool {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "INSERT INTO cache_metadata(key,value) VALUES('scope-digest-v1',?) "
+                + "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            sqlite3_finalize(statement)
+            return false
+        }
+        defer { sqlite3_finalize(statement) }
+        return bind(digest, to: statement, at: 1)
+            && sqlite3_step(statement) == SQLITE_DONE
+    }
+
+    private func validateDatabaseTargetIfPresent() -> Bool {
+        var information = stat()
+        if lstat(databaseURL.path, &information) != 0 {
+            return errno == ENOENT
+        }
+        return information.st_uid == geteuid()
+            && information.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG)
     }
 
     private func quickCheck(_ database: OpaquePointer) -> Bool {

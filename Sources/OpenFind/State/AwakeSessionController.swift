@@ -31,7 +31,7 @@ final class AwakeSessionController {
         assertions: any PowerAssertionControlling = PowerAssertionEngine(),
         applicationMonitor: any ApplicationConditionMonitoring = WorkspaceApplicationConditionMonitor(),
         downloadMonitor: any FileDownloadConditionMonitoring = PollingFileDownloadConditionMonitor(),
-        closedDisplay: any ClosedDisplayModeManaging = ClosedDisplayModeController(),
+        closedDisplay: any ClosedDisplayModeManaging = ClosedDisplayModeController.defaultInstance(),
         closedDisplayPowerMonitor: any PowerSourceMonitoring = SystemPowerSourceMonitor(),
         screenSaver: any ScreenSaverControlling = ScreenSaverSessionController(),
         notificationCenter: NotificationCenter = .default,

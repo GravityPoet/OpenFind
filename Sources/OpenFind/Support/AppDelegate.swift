@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private(set) static weak var shared: AppDelegate?
 
     private let lifecycleLogger = Logger(subsystem: "com.openfind.app", category: "Lifecycle")
-    let viewModel = SearchViewModel()
+    let viewModel: SearchViewModel
     let hotKeyRegistry: GlobalHotKeyRegistry
     let globalHotKey: GlobalHotKeyController
     let clipboardStore: ClipboardHistoryStore
@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let driveAlive: DriveAliveController
     let triggerCoordinator: TriggerCoordinator
     let triggerScheduler: TriggerMonitorScheduler
+    private let shouldPresentFirstRunGuide: Bool
     let quickLook = QuickLookController()
     private let mainWindowFrameAutosaveName = NSWindow.FrameAutosaveName("OpenFind.mainWindow")
     private let settingsWindowFrameAutosaveName =
@@ -48,32 +49,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.activationPolicy() == $0 || NSApp.setActivationPolicy($0)
     }
 
-    override init() {
+    override convenience init() {
+        self.init(
+            viewModel: SearchViewModel(),
+            clipboardStore: ClipboardHistoryStore(),
+            defaults: .standard,
+            launchAtLoginService: MainAppLaunchAtLoginService()
+        )
+    }
+
+    init(
+        viewModel: SearchViewModel,
+        clipboardStore: ClipboardHistoryStore,
+        defaults: UserDefaults,
+        launchAtLoginService: any LaunchAtLoginServicing
+    ) {
+        self.viewModel = viewModel
+        shouldPresentFirstRunGuide = FirstRunGuideStore.shouldPresent(defaults: defaults)
         let hotKeyRegistry = GlobalHotKeyRegistry()
         self.hotKeyRegistry = hotKeyRegistry
-        self.globalHotKey = GlobalHotKeyController(registry: hotKeyRegistry)
-        let clipboardStore = ClipboardHistoryStore()
+        self.globalHotKey = GlobalHotKeyController(defaults: defaults, registry: hotKeyRegistry)
         self.clipboardStore = clipboardStore
-        self.clipboard = ClipboardController(registry: hotKeyRegistry, store: clipboardStore)
-        self.keyboardLock = KeyboardLockController(registry: hotKeyRegistry)
-        let awakeSession = AwakeSessionController()
-        let awakeSessionPreferences = AwakeSessionPreferences()
-        let triggerStore = TriggerStore()
-        let driveAliveStore = DriveAliveStore()
+        self.clipboard = ClipboardController(
+            registry: hotKeyRegistry,
+            store: clipboardStore,
+            defaults: defaults
+        )
+        self.keyboardLock = KeyboardLockController(registry: hotKeyRegistry, defaults: defaults)
+        let awakeSession = AwakeSessionController(
+            closedDisplay: ClosedDisplayModeController(defaults: defaults)
+        )
+        let awakeSessionPreferences = AwakeSessionPreferences(defaults: defaults)
+        let triggerStore = TriggerStore(defaults: defaults)
+        let driveAliveStore = DriveAliveStore(defaults: defaults)
         self.awakeSession = awakeSession
         self.awakeSessionPreferences = awakeSessionPreferences
         self.awakeAutomation = AwakeAutomationController(
             sessions: awakeSession,
             preferences: awakeSessionPreferences
         )
-        self.awakeNotifications = AwakeNotificationController(sessions: awakeSession)
-        self.awakeStatistics = AwakeStatisticsController(sessions: awakeSession)
+        self.awakeNotifications = AwakeNotificationController(
+            sessions: awakeSession,
+            defaults: defaults
+        )
+        self.awakeStatistics = AwakeStatisticsController(sessions: awakeSession, defaults: defaults)
         self.sessionActivity = SessionActivityController(
             sessions: awakeSession,
             preferences: awakeSessionPreferences
         )
         self.powerProtect = PowerProtectController()
-        self.launchAtLogin = LaunchAtLoginController()
+        self.launchAtLogin = LaunchAtLoginController(
+            service: launchAtLoginService,
+            defaults: defaults
+        )
         let menuBarPresentation = MenuBarPresentationController()
         self.menuBarPresentation = menuBarPresentation
         self.awakeHotKeys = AwakeHotKeyController(
@@ -82,7 +110,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             preferences: awakeSessionPreferences,
             openMenu: {
                 _ = menuBarPresentation.present()
-            }
+            },
+            defaults: defaults
         )
         self.triggerStore = triggerStore
         self.driveAliveStore = driveAliveStore
@@ -211,7 +240,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func presentInitialInterface() {
-        enterBackgroundMode()
+        if shouldPresentFirstRunGuide {
+            showMainWindow()
+        } else {
+            enterBackgroundMode()
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -305,9 +338,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private var availableMainWindow: NSWindow? {
-        mainWindow ?? NSApp.windows.first { window in
-            window.identifier?.rawValue == "OpenFind.main"
-        }
+        // Keep ownership local to this delegate. Reusing an arbitrary window
+        // with the same identifier can bind a stale SwiftUI window from a
+        // previous delegate instance and route close/focus events elsewhere.
+        mainWindow
     }
 
     private func showMainWindow(_ window: NSWindow? = nil) {
@@ -390,7 +424,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 },
                 firstRunCapabilities: { [weak self] in
                     self?.makeFirstRunCapabilities() ?? []
-                }
+                },
+                shouldPresentFirstRunGuide: shouldPresentFirstRunGuide
             )
         )
         let window = NSWindow(

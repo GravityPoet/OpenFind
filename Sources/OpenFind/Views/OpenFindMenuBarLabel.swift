@@ -1,5 +1,29 @@
 import SwiftUI
 
+enum OpenFindMenuBarAccessibility {
+    static func label(
+        isActive: Bool,
+        timeText: String?,
+        timeStyle: AwakeMenuBarTimeStyle
+    ) -> String {
+        guard isActive else { return L("OpenFind Idle Accessibility") }
+        guard let timeText else { return L("OpenFind Keeping Awake Accessibility") }
+
+        switch timeStyle {
+        case .remaining:
+            return String(
+                format: L("OpenFind Remaining Time Accessibility Format"),
+                timeText
+            )
+        case .endTime:
+            return String(
+                format: L("OpenFind End Time Accessibility Format"),
+                timeText
+            )
+        }
+    }
+}
+
 struct OpenFindMenuBarLabel: View {
     @Bindable var controller: AwakeSessionController
     @Bindable var preferences: AwakeSessionPreferences
@@ -25,7 +49,11 @@ struct OpenFindMenuBarLabel: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel(timeText: timeText))
+        .accessibilityLabel(OpenFindMenuBarAccessibility.label(
+            isActive: controller.isActive,
+            timeText: timeText,
+            timeStyle: preferences.menuBarTimeStyle
+        ))
     }
 
     private var refreshInterval: TimeInterval {
@@ -43,10 +71,5 @@ struct OpenFindMenuBarLabel: View {
             uses24HourClock: preferences.uses24HourClock,
             includesSeconds: preferences.includesSecondsInMenuBar
         )
-    }
-
-    private func accessibilityLabel(timeText: String?) -> String {
-        guard let timeText else { return "OpenFind" }
-        return String(format: L("OpenFind Session Time Accessibility Format"), timeText)
     }
 }

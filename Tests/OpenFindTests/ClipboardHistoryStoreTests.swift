@@ -294,6 +294,35 @@ struct ClipboardHistoryStoreTests {
         #expect(persistence.removeCount == 1)
     }
 
+    @Test func failedPersistenceDeleteKeepsPersistenceEnabledForRetry() throws {
+        let suite = "OpenFindTests.Clipboard.PersistenceDeleteFailure.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let persistence = MemoryClipboardPersistence(
+            savedEntries: [ClipboardEntry(
+                previewText: "retained",
+                kind: .text,
+                representations: ["public.utf8-plain-text": Data("retained".utf8)]
+            )],
+            removeError: ClipboardHistoryError.persistenceUnavailable
+        )
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: persistence,
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.PersistenceDeleteFailure"))
+        )
+
+        store.setPersistenceEnabled(false)
+
+        #expect(store.isPersistenceEnabled)
+        #expect(defaults.bool(forKey: ClipboardHistoryStore.persistenceEnabledKey))
+        #expect(!store.entries.isEmpty)
+        #expect(
+            store.lastErrorMessage
+                == ClipboardHistoryError.persistenceUnavailable.localizedDescription
+        )
+    }
+
     @Test func legacyHistoryWaitsForExplicitMigrationWithoutBeingOverwritten() throws {
         let suite = "OpenFindTests.ClipboardMigrationStore.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -1587,13 +1616,16 @@ private final class MemoryClipboardPersistence: ClipboardHistoryPersisting {
     private(set) var loadCount = 0
     private(set) var saveCount = 0
     var requiresExplicitMigration: Bool
+    private let removeError: Error?
 
     init(
         savedEntries: [ClipboardEntry] = [],
-        requiresExplicitMigration: Bool = false
+        requiresExplicitMigration: Bool = false,
+        removeError: Error? = nil
     ) {
         self.savedEntries = savedEntries
         self.requiresExplicitMigration = requiresExplicitMigration
+        self.removeError = removeError
     }
 
     func load() throws -> [ClipboardEntry] {
@@ -1608,6 +1640,7 @@ private final class MemoryClipboardPersistence: ClipboardHistoryPersisting {
     }
 
     func remove() throws {
+        if let removeError { throw removeError }
         savedEntries = []
         removeCount += 1
     }

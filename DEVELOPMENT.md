@@ -1,6 +1,6 @@
 # OpenFind — Development Document
 
-A local, real-time, developer-friendly advanced file search tool for macOS 26+,
+A local, real-time, developer-friendly advanced file search tool for macOS 14+,
 backed by a persistent path/name index and on-demand content matching.
 
 **Product principle:** fast, focused, and quiet. Do one thing — find files — and
@@ -41,6 +41,11 @@ Single SwiftUI executable (SPM), split by concern:
 
 Build note: local `swift build` mis-infers the SDK; always use
 `xcrun --sdk macosx swift build`. `Scripts/build_app.sh` bakes this in.
+
+Test note: run the main test suite with `bash Scripts/test.sh`. The wrapper
+serializes the suite and isolates `HOME`, `CFFIXED_USER_HOME`, and `TMPDIR` so
+tests cannot read or write the installed app's preferences, indexes, or
+clipboard history. Pass normal `swift test` filters after the script name.
 
 ---
 

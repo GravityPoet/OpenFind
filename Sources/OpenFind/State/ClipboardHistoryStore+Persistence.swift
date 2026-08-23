@@ -2,17 +2,25 @@ import Foundation
 
 extension ClipboardHistoryStore {
     func setPersistenceEnabled(_ enabled: Bool) {
-        isPersistenceEnabled = enabled
-        defaults.set(enabled, forKey: Self.persistenceEnabledKey)
         guard !enabled else {
+            isPersistenceEnabled = true
+            defaults.set(true, forKey: Self.persistenceEnabledKey)
             requiresPersistenceMigration = persistence.requiresExplicitMigration
             persist()
             return
         }
         do {
+            // Keep the persisted preference enabled until the durable delete
+            // succeeds, otherwise a failed delete is silently skipped on the
+            // next launch while ciphertext remains on disk.
             try persistence.remove()
+            isPersistenceEnabled = false
+            defaults.set(false, forKey: Self.persistenceEnabledKey)
             requiresPersistenceMigration = false
+            lastErrorMessage = nil
         } catch {
+            isPersistenceEnabled = true
+            defaults.set(true, forKey: Self.persistenceEnabledKey)
             lastErrorMessage = error.localizedDescription
         }
     }

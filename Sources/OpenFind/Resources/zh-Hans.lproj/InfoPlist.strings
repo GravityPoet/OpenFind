@@ -1,0 +1,9 @@
+/* macOS privacy permission prompts */
+"NSDesktopFolderUsageDescription" = "OpenFind 需要访问桌面文件夹，才能搜索其中的文件。";
+"NSDocumentsFolderUsageDescription" = "OpenFind 需要访问文稿文件夹，才能搜索其中的文件。";
+"NSDownloadsFolderUsageDescription" = "OpenFind 需要访问下载文件夹，才能搜索其中的文件。";
+"NSLocationUsageDescription" = "只有在你启用 Wi-Fi 触发器时，OpenFind 才会使用定位来识别当前 Wi-Fi 网络。";
+"NSLocationWhenInUseUsageDescription" = "只有在你启用 Wi-Fi 触发器时，OpenFind 才会使用定位来识别当前 Wi-Fi 网络。";
+"NSBluetoothAlwaysUsageDescription" = "只有在你启用蓝牙触发器时，OpenFind 才会访问已配对的蓝牙设备，以检测所选设备是否已连接。";
+"NSRemovableVolumesUsageDescription" = "只有在你将可移动磁盘加入搜索范围时，OpenFind 才需要访问它们。";
+"NSNetworkVolumesUsageDescription" = "只有在你将网络磁盘加入搜索范围时，OpenFind 才需要访问它们。";

@@ -42,7 +42,7 @@ xcrun --sdk macosx swift build
 When changing behavior, add or update focused tests and run:
 
 ```bash
-xcrun --sdk macosx swift test
+bash Scripts/test.sh
 ```
 
 ## License and Brand Boundaries

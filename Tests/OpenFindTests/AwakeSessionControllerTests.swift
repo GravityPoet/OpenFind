@@ -10,7 +10,7 @@ struct AwakeSessionControllerTests {
         let controller = AwakeSessionController(assertions: assertions)
         let start = Date(timeIntervalSince1970: 1_000)
 
-        try controller.start(.init(), at: start)
+        try controller.start(ordinaryRequest(), at: start)
 
         #expect(controller.isActive)
         #expect(controller.activeSession?.startedAt == start)
@@ -23,7 +23,7 @@ struct AwakeSessionControllerTests {
         let controller = AwakeSessionController(assertions: assertions)
         let start = Date(timeIntervalSince1970: 1_000)
 
-        try controller.start(.init(endCondition: .after(120)), at: start)
+        try controller.start(ordinaryRequest(endCondition: .after(120)), at: start)
 
         #expect(assertions.activations.last?.timeout == 120)
         #expect(controller.remainingTime(at: start.addingTimeInterval(30)) == 90)
@@ -38,7 +38,7 @@ struct AwakeSessionControllerTests {
         )
         let start = Date(timeIntervalSince1970: 1_000)
 
-        try controller.start(.init(endCondition: .after(120)), at: start)
+        try controller.start(ordinaryRequest(endCondition: .after(120)), at: start)
         uptime.value += 45
 
         #expect(controller.remainingTime() == 75)
@@ -58,6 +58,7 @@ struct AwakeSessionControllerTests {
         )
         let options = AwakeSessionOptions(
             allowsDisplaySleep: false,
+            allowsClosedDisplaySleep: true,
             endTimeCalculation: .systemClock
         )
 
@@ -81,7 +82,7 @@ struct AwakeSessionControllerTests {
         )
 
         try controller.start(
-            .init(endCondition: .after(0.08)),
+            ordinaryRequest(endCondition: .after(0.08)),
             at: Date(timeIntervalSince1970: 1_000)
         )
 
@@ -135,7 +136,10 @@ struct AwakeSessionControllerTests {
         let controller = AwakeSessionController(assertions: assertions)
         let start = Date(timeIntervalSince1970: 1_000)
 
-        try controller.start(.init(endCondition: .at(start.addingTimeInterval(120))), at: start)
+        try controller.start(
+            ordinaryRequest(endCondition: .at(start.addingTimeInterval(120))),
+            at: start
+        )
 
         #expect(assertions.activations.last?.timeout == 0)
         #expect(controller.remainingTime(at: start.addingTimeInterval(30)) == 90)
@@ -145,7 +149,7 @@ struct AwakeSessionControllerTests {
         let assertions = FakePowerAssertionController()
         let controller = AwakeSessionController(assertions: assertions)
         let start = Date(timeIntervalSince1970: 1_000)
-        try controller.start(.init(endCondition: .after(120)), at: start)
+        try controller.start(ordinaryRequest(endCondition: .after(120)), at: start)
         let originalID = try #require(controller.activeSession?.id)
 
         try controller.extend(by: 60, at: start.addingTimeInterval(30))
@@ -159,7 +163,7 @@ struct AwakeSessionControllerTests {
         let assertions = FakePowerAssertionController()
         let controller = AwakeSessionController(assertions: assertions)
         let start = Date(timeIntervalSince1970: 1_000)
-        try controller.start(.init(endCondition: .after(120)), at: start)
+        try controller.start(ordinaryRequest(endCondition: .after(120)), at: start)
         let existing = try #require(controller.activeSession)
         assertions.activationError = .invalidTimeout
 
@@ -171,7 +175,7 @@ struct AwakeSessionControllerTests {
 
     @Test func onlyTimedSessionsCanBeExtended() throws {
         let controller = AwakeSessionController(assertions: FakePowerAssertionController())
-        try controller.start(.init())
+        try controller.start(ordinaryRequest())
 
         #expect(throws: AwakeSessionValidationError.sessionCannotBeExtended) {
             try controller.extend(by: 60)
@@ -181,12 +185,12 @@ struct AwakeSessionControllerTests {
     @Test func failedReplacementLeavesTheExistingSessionUntouched() throws {
         let assertions = FakePowerAssertionController()
         let controller = AwakeSessionController(assertions: assertions)
-        try controller.start(.init())
+        try controller.start(ordinaryRequest())
         let existing = try #require(controller.activeSession)
         assertions.activationError = .invalidTimeout
 
         #expect(throws: PowerAssertionError.invalidTimeout) {
-            try controller.start(.init(endCondition: .after(10)))
+            try controller.start(ordinaryRequest(endCondition: .after(10)))
         }
         #expect(controller.activeSession == existing)
     }
@@ -199,10 +203,12 @@ struct AwakeSessionControllerTests {
         )
 
         #expect(throws: AwakeSessionValidationError.conditionNotMet) {
-            try controller.start(.init(endCondition: .whileApplicationRuns(bundleIdentifier: "com.apple.TextEdit")))
+            try controller.start(ordinaryRequest(
+                endCondition: .whileApplicationRuns(bundleIdentifier: "com.apple.TextEdit")
+            ))
         }
         #expect(throws: AwakeSessionValidationError.conditionNotMet) {
-            try controller.start(.init(endCondition: .whileFileDownloads(
+            try controller.start(ordinaryRequest(endCondition: .whileFileDownloads(
                 URL(fileURLWithPath: "/tmp/OpenFind-missing-\(UUID())"),
                 inactivityTimeout: 60
             )))
@@ -218,7 +224,7 @@ struct AwakeSessionControllerTests {
         let assertions = FakePowerAssertionController()
         let controller = AwakeSessionController(assertions: assertions)
 
-        try controller.start(.init(endCondition: .whileFileDownloads(
+        try controller.start(ordinaryRequest(endCondition: .whileFileDownloads(
             url,
             inactivityTimeout: 0.03
         )))
@@ -239,7 +245,7 @@ struct AwakeSessionControllerTests {
         )
 
         try controller.start(
-            .init(endCondition: .whileApplicationRuns(bundleIdentifier: "com.apple.TextEdit"))
+            ordinaryRequest(endCondition: .whileApplicationRuns(bundleIdentifier: "com.apple.TextEdit"))
         )
         #expect(controller.isActive)
 
@@ -261,7 +267,7 @@ struct AwakeSessionControllerTests {
             assertions: FakePowerAssertionController(),
             applicationMonitor: monitor
         )
-        try controller.start(.init(
+        try controller.start(ordinaryRequest(
             endCondition: .whileApplicationRuns(bundleIdentifier: identifier)
         ))
         #expect(controller.isActive)
@@ -274,7 +280,7 @@ struct AwakeSessionControllerTests {
     @Test func timedSessionEndsAutomatically() async throws {
         let assertions = FakePowerAssertionController()
         let controller = AwakeSessionController(assertions: assertions)
-        try controller.start(.init(endCondition: .after(0.01)))
+        try controller.start(ordinaryRequest(endCondition: .after(0.01)))
 
         try await waitUntil { !controller.isActive }
 
@@ -286,7 +292,7 @@ struct AwakeSessionControllerTests {
         let assertions = FakePowerAssertionController()
         let controller = AwakeSessionController(assertions: assertions)
         let start = Date(timeIntervalSince1970: 1_000)
-        try controller.start(.init(endCondition: .after(120)), at: start)
+        try controller.start(ordinaryRequest(endCondition: .after(120)), at: start)
 
         try controller.setDisplaySleepAllowed(true, at: start.addingTimeInterval(45))
 
@@ -304,7 +310,8 @@ struct AwakeSessionControllerTests {
 
         try controller.start(.init(options: .init(
             allowsDisplaySleep: false,
-            screenSaverPolicy: initialPolicy
+            screenSaverPolicy: initialPolicy,
+            allowsClosedDisplaySleep: true
         )))
         #expect(screenSaver.startedPolicies == [initialPolicy])
         #expect(controller.allowsScreenSaver)
@@ -320,7 +327,7 @@ struct AwakeSessionControllerTests {
     @Test func releaseFailureKeepsTheSessionVisibleAndRetryable() throws {
         let assertions = FakePowerAssertionController()
         let controller = AwakeSessionController(assertions: assertions)
-        try controller.start(.init())
+        try controller.start(ordinaryRequest())
         assertions.deactivationError = .releaseFailed([])
 
         #expect(throws: PowerAssertionError.self) { try controller.end() }
@@ -334,11 +341,11 @@ struct AwakeSessionControllerTests {
     @Test func menuCommandsExposeErrorsWithoutDiscardingTheActiveSession() throws {
         let assertions = FakePowerAssertionController()
         let controller = AwakeSessionController(assertions: assertions)
-        try controller.start(.init())
+        try controller.start(ordinaryRequest())
         let existing = controller.activeSession
         assertions.activationError = .creationFailed(kind: .displaySleep, status: -99)
 
-        controller.requestStart(.init(endCondition: .after(60)))
+        controller.requestStart(ordinaryRequest(endCondition: .after(60)))
 
         #expect(controller.activeSession == existing)
         #expect(controller.lastErrorMessage?.contains("-99") == true)
@@ -486,6 +493,18 @@ struct AwakeSessionControllerTests {
         #expect(assertions.deactivationCount == 1)
         #expect(endReason == .closedDisplayPowerChange)
         #expect(controller.lastErrorMessage?.contains("Power Protect") == true)
+    }
+
+    private func ordinaryRequest(
+        endCondition: AwakeSessionEndCondition = .indefinitely
+    ) -> AwakeSessionRequest {
+        AwakeSessionRequest(
+            endCondition: endCondition,
+            options: AwakeSessionOptions(
+                allowsDisplaySleep: false,
+                allowsClosedDisplaySleep: true
+            )
+        )
     }
 
     private func waitUntil(

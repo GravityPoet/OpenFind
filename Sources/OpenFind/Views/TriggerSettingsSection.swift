@@ -36,7 +36,8 @@ struct TriggerSettingsSection: View {
                     isCreating = true
                     editingTrigger = AwakeTrigger(
                         name: L("New Trigger"),
-                        criteria: [.wifiNetwork("")]
+                        criteria: [.wifiNetwork("")],
+                        sessionOptions: .defaultValue
                     )
                 } label: {
                     Label(L("Add Trigger"), systemImage: "plus")
@@ -284,7 +285,10 @@ private struct TriggerEditorView: View {
                     Toggle(L("Allow Display Sleep"), isOn: $draft.allowsDisplaySleep)
                     Toggle(
                         L("Allow Closed Display Sleep"),
-                        isOn: $draft.allowsClosedDisplaySleep
+                        isOn: Binding(
+                            get: { !draft.allowsClosedDisplaySleep },
+                            set: { draft.allowsClosedDisplaySleep = !$0 }
+                        )
                     )
                     .disabled(!closedDisplaySupported)
                     if !closedDisplaySupported {
