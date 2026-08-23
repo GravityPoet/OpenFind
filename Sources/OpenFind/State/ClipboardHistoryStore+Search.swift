@@ -189,7 +189,8 @@ extension ClipboardHistoryStore {
     var selectedEntry: ClipboardEntry? {
         let visible = filteredEntries
         guard visible.indices.contains(selectedIndex) else { return nil }
-        return visible[selectedIndex]
+        let entry = visible[selectedIndex]
+        return (try? materializedEntry(for: entry)) ?? entry
     }
 
     func select(_ entry: ClipboardEntry, preservingMultiSelection: Bool = false) {

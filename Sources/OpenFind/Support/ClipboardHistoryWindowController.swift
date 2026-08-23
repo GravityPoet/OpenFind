@@ -22,6 +22,8 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     var pasteStackAdvanceTask: Task<Void, Never>?
     var isUserMovingPanel = false
     var isUserResizingPanel = false
+    private let backgroundReleaseDelay: Duration
+    private var backgroundReleaseTask: Task<Void, Never>?
 
     init(
         store: ClipboardHistoryStore,
@@ -32,12 +34,14 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         applicationDeactivator: @escaping @MainActor () -> Void = {
             if NSApp.isActive { NSApp.hide(nil) }
         },
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        backgroundReleaseDelay: Duration = .seconds(5)
     ) {
         self.store = store
         self.frameAutosaveName = frameAutosaveName
         self.applicationActivator = applicationActivator
         self.applicationDeactivator = applicationDeactivator
+        self.backgroundReleaseDelay = backgroundReleaseDelay
         super.init()
         notificationCenter.addObserver(
             self,
@@ -86,30 +90,26 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     }
 
     func prepare() {
+        backgroundReleaseTask?.cancel()
+        backgroundReleaseTask = nil
         let panel = makePanelIfNeeded()
         configureMinimumSize(panel, showingPreview: true)
         if !restoreSavedFrameIfNeeded(panel) {
             resize(panel, showingPreview: true, animated: false)
         }
-        park(panel, keepCompositorWarm: true)
-        panel.contentView?.layoutSubtreeIfNeeded()
-        panel.displayIfNeeded()
-        CATransaction.flush()
+        park(panel, keepCompositorWarm: false)
     }
 
     func prepareForBackgroundResidence() {
-        prepare()
-        guard let panel,
-              let searchField = firstTextField(in: panel.contentView) else { return }
-        // Prepare the search target without claiming keyboard focus while the
-        // panel is invisible. Presentation performs the real key-window handoff.
-        panel.initialFirstResponder = searchField
+        releaseForBackgroundResidence()
     }
 
     func present(
         positionOverride: ClipboardPopupPosition? = nil,
         hideApplicationWindows: Bool = false
     ) {
+        backgroundReleaseTask?.cancel()
+        backgroundReleaseTask = nil
         pasteService.captureTargetApplication()
         store.query = ""
         store.kindFilter = .all
@@ -171,11 +171,47 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         store.endPresentation()
         if let panel {
             park(panel, keepCompositorWarm: true)
+            scheduleBackgroundRelease()
         }
         shortcutCycleState.reset()
         removeShortcutFlagsMonitor()
         if shouldReturnApplicationFocus {
             applicationDeactivator()
+        }
+    }
+
+    func releaseForBackgroundResidence() {
+        guard !store.isPanelPresented else { return }
+        backgroundReleaseTask?.cancel()
+        backgroundReleaseTask = nil
+        quickLook.close()
+        store.hibernatePayloadsForBackground()
+        guard let panel else { return }
+        park(panel, keepCompositorWarm: false)
+        panel.delegate = nil
+        if let clipboardPanel = panel as? ClipboardHistoryPanel {
+            clipboardPanel.onToggleActions = nil
+            clipboardPanel.onSaveForReuse = nil
+            clipboardPanel.onUndo = nil
+            clipboardPanel.onClose = nil
+        }
+        panel.contentView = nil
+        self.panel = nil
+        ProcessMemoryReclaimer.schedule()
+    }
+
+    private func scheduleBackgroundRelease() {
+        backgroundReleaseTask?.cancel()
+        let delay = backgroundReleaseDelay
+        backgroundReleaseTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+            guard let self, !self.store.isPanelPresented else { return }
+            self.backgroundReleaseTask = nil
+            self.releaseForBackgroundResidence()
         }
     }
 

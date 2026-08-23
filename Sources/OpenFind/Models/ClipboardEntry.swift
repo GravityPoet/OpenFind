@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 enum ClipboardEntryKind: String, Codable, Sendable {
@@ -34,6 +35,88 @@ enum ClipboardEntryKind: String, Codable, Sendable {
             return nil
         }
         return url
+    }
+}
+
+struct ClipboardPayloadDescriptor: Codable, Equatable, Sendable {
+    let byteCount: Int
+    let fingerprint: Data
+    let itemCount: Int
+    let typeNames: [String]
+    /// Hash of the normalized plain-text representation, when the first
+    /// pasteboard item has one. This lets the Quick Merge event tap identify a
+    /// cold entry without decrypting a potentially multi-megabyte payload.
+    let plainTextFingerprint: Data?
+
+    var hasPlainText: Bool {
+        plainTextFingerprint != nil || !Set(typeNames).isDisjoint(with: [
+            "public.utf8-plain-text",
+            "public.utf16-external-plain-text",
+            "public.text",
+        ])
+    }
+
+    static func make(for items: [[String: Data]]) -> ClipboardPayloadDescriptor? {
+        guard !items.isEmpty, items.contains(where: { !$0.isEmpty }) else { return nil }
+        var hasher = SHA256()
+        update(UInt64(items.count), in: &hasher)
+        var byteCount = 0
+        var typeNames = Set<String>()
+        var plainTextFingerprint: Data?
+        for (itemIndex, item) in items.enumerated() {
+            update(UInt64(itemIndex), in: &hasher)
+            let sortedTypes = item.keys.sorted()
+            update(UInt64(sortedTypes.count), in: &hasher)
+            for type in sortedTypes {
+                guard let data = item[type] else { continue }
+                let typeData = Data(type.utf8)
+                update(UInt64(typeData.count), in: &hasher)
+                hasher.update(data: typeData)
+                update(UInt64(data.count), in: &hasher)
+                hasher.update(data: data)
+                byteCount += data.count
+                typeNames.insert(type)
+            }
+            if itemIndex == 0 {
+                let preferredTypes = [
+                    "public.utf8-plain-text",
+                    "public.utf16-external-plain-text",
+                    "public.text",
+                ]
+                for type in preferredTypes {
+                    guard let data = item[type],
+                          let text = textValue(data: data, type: type) else { continue }
+                    plainTextFingerprint = Data(SHA256.hash(data: Data(text.utf8)))
+                    break
+                }
+            }
+        }
+        return ClipboardPayloadDescriptor(
+            byteCount: byteCount,
+            fingerprint: Data(hasher.finalize()),
+            itemCount: items.count,
+            typeNames: typeNames.sorted(),
+            plainTextFingerprint: plainTextFingerprint
+        )
+    }
+
+    private static func textValue(data: Data, type: String) -> String? {
+        switch type {
+        case "public.utf8-plain-text",
+             "public.text":
+            return String(data: data, encoding: .utf8)
+        case "public.utf16-external-plain-text":
+            return String(data: data, encoding: .utf16)
+        default:
+            return nil
+        }
+    }
+
+    private static func update(_ value: UInt64, in hasher: inout SHA256) {
+        var bigEndian = value.bigEndian
+        withUnsafeBytes(of: &bigEndian) { buffer in
+            hasher.update(data: Data(buffer))
+        }
     }
 }
 
@@ -94,6 +177,7 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
     var snippetCollection: String?
     var snippetKeyword: String?
     var snippetExpansionEnabled: Bool?
+    var payloadDescriptor: ClipboardPayloadDescriptor?
 
     init(
         id: UUID = UUID(),
@@ -118,7 +202,8 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         frequentOverrideAt: Date? = nil,
         snippetCollection: String? = nil,
         snippetKeyword: String? = nil,
-        snippetExpansionEnabled: Bool? = nil
+        snippetExpansionEnabled: Bool? = nil,
+        payloadDescriptor: ClipboardPayloadDescriptor? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -143,6 +228,9 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
         self.snippetCollection = snippetCollection
         self.snippetKeyword = snippetKeyword
         self.snippetExpansionEnabled = snippetExpansionEnabled
+        self.payloadDescriptor = payloadDescriptor ?? ClipboardPayloadDescriptor.make(
+            for: self.retainedPasteboardItems
+        )
     }
 
     var initialCopiedAt: Date { firstCopiedAt ?? createdAt }
@@ -172,6 +260,43 @@ struct ClipboardEntry: Identifiable, Codable, Equatable, Sendable {
             return representations.isEmpty ? [] : [representations]
         }
         return pasteboardItems
+    }
+
+    var resolvedPayloadDescriptor: ClipboardPayloadDescriptor? {
+        ClipboardPayloadDescriptor.make(for: retainedPasteboardItems) ?? payloadDescriptor
+    }
+
+    var hasResidentPayload: Bool {
+        retainedPasteboardItems.contains { !$0.isEmpty }
+    }
+
+    func synchronizingPayloadDescriptor() -> ClipboardEntry {
+        guard hasResidentPayload else { return self }
+        var entry = self
+        entry.payloadDescriptor = ClipboardPayloadDescriptor.make(
+            for: retainedPasteboardItems
+        )
+        return entry
+    }
+
+    func strippingPayload() -> ClipboardEntry {
+        var entry = synchronizingPayloadDescriptor()
+        entry.representations = [:]
+        entry.pasteboardItems = nil
+        return entry
+    }
+
+    func restoringPayload(from stored: ClipboardEntry) throws -> ClipboardEntry {
+        guard id == stored.id,
+              let expected = resolvedPayloadDescriptor,
+              stored.synchronizingPayloadDescriptor().resolvedPayloadDescriptor == expected else {
+            throw ClipboardHistoryError.persistenceDesynchronized
+        }
+        var entry = self
+        entry.representations = stored.representations
+        entry.pasteboardItems = stored.pasteboardItems
+        entry.payloadDescriptor = expected
+        return entry
     }
 
     var displayTitle: String {

@@ -189,16 +189,16 @@ struct ClipboardAlfredWorkflowTests {
         #expect(panel.canBecomeKey)
     }
 
-    @Test func preparingClipboardPanelKeepsAnImperceptibleNonInteractiveSurfaceWarm() throws {
+    @Test func preparingClipboardPanelKeepsItsSurfaceOffscreen() throws {
         let context = try makeContext()
         let controller = ClipboardHistoryWindowController(store: context.store)
 
         controller.prepare()
 
         let panel = try #require(controller.panel)
-        #expect(panel.isVisible)
-        #expect(panel.alphaValue == 0.49)
-        #expect(panel.contentView?.alphaValue == 0.001)
+        #expect(!panel.isVisible)
+        #expect(panel.alphaValue == 0)
+        #expect(panel.contentView?.alphaValue == 0)
         #expect(panel.ignoresMouseEvents)
         #expect(!panel.hasShadow)
         #expect(!panel.isKeyWindow)
@@ -206,19 +206,40 @@ struct ClipboardAlfredWorkflowTests {
         #expect(context.store.isPreviewVisible)
     }
 
-    @Test func backgroundResidenceDoesNotClaimKeyboardFocusWhileHidden() throws {
+    @Test func backgroundResidenceDoesNotCreateOrRetainAClipboardPanel() throws {
         let context = try makeContext()
         let controller = ClipboardHistoryWindowController(store: context.store)
 
         controller.prepareForBackgroundResidence()
 
-        let panel = try #require(controller.panel)
-        #expect(!panel.isKeyWindow)
-        #expect(panel.alphaValue == 0.49)
-        #expect(panel.contentView?.alphaValue == 0.001)
-        #expect(panel.ignoresMouseEvents)
+        #expect(controller.panel == nil)
         #expect(!context.store.isPanelPresented)
+    }
+
+    @Test func closedClipboardPanelReleasesItsViewAndReopensWithOneAction() async throws {
+        let context = try makeContext()
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            applicationActivator: {},
+            applicationDeactivator: {},
+            backgroundReleaseDelay: .milliseconds(10)
+        )
+
+        controller.present(positionOverride: .center, hideApplicationWindows: true)
+        let firstPanel = try #require(controller.panel)
         controller.close()
+        try await Task.sleep(for: .milliseconds(30))
+
+        #expect(controller.panel == nil)
+        #expect(firstPanel.contentView == nil)
+
+        controller.present(positionOverride: .center, hideApplicationWindows: true)
+        let reopenedPanel = try #require(controller.panel)
+        #expect(reopenedPanel !== firstPanel)
+        #expect(context.store.isPanelPresented)
+        #expect(reopenedPanel.isVisible)
+        controller.close()
+        controller.releaseForBackgroundResidence()
     }
 
     @Test func clipboardShortcutDoesNotRequireApplicationActivation() throws {

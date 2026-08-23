@@ -198,7 +198,10 @@ struct ClipboardPinsSettings: View {
 
     private var selectedEntry: ClipboardEntry? {
         guard let selectedID else { return nil }
-        return store.entries.first { $0.id == selectedID && $0.isPinned }
+        guard let entry = store.entries.first(where: {
+            $0.id == selectedID && $0.isPinned
+        }) else { return nil }
+        return (try? store.materializedEntry(for: entry)) ?? entry
     }
 
     private var groupedEntries: [(name: String, entries: [ClipboardEntry])] {

@@ -6,6 +6,44 @@ import Testing
 @MainActor
 @Suite("Session Activity Controller Tests")
 struct SessionActivityControllerTests {
+    @Test func plainAwakeSessionDoesNotStartOptionalActivityPolling() async throws {
+        let suite = "OpenFindTests.SessionActivityIdle.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AwakeSessionPreferences(defaults: defaults)
+        let sessions = AwakeSessionController(
+            assertions: ActivityPowerAssertions(),
+            closedDisplay: ActivityClosedDisplayManager()
+        )
+        let performer = FakeSessionActivityPerformer(idle: 10)
+        let closedDisplayState = FakeClosedDisplayStateMonitor()
+        let controller = SessionActivityController(
+            sessions: sessions,
+            preferences: preferences,
+            workspaceCenter: NotificationCenter(),
+            performer: performer,
+            closedDisplayState: closedDisplayState,
+            tickInterval: 0.01
+        )
+        controller.start()
+        defer { controller.stop() }
+        try await sessions.startAsync(.init(options: .init(
+            allowsDisplaySleep: false,
+            allowsClosedDisplaySleep: false
+        )))
+
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(performer.idleQueryCount == 0)
+        #expect(closedDisplayState.startCount == 0)
+
+        preferences.setScreenLockEnabled(true)
+        preferences.setLockOnClosedDisplay(true)
+        try await waitUntil { closedDisplayState.startCount == 1 }
+        #expect(performer.idleQueryCount > 0)
+        preferences.setScreenLockEnabled(false)
+        try await waitUntil { closedDisplayState.stopCount == 1 }
+    }
+
     @Test func cursorMovementRunsOnlyDuringAnActiveSession() async throws {
         let suite = "OpenFindTests.SessionActivity.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -184,12 +222,16 @@ private final class ActivityPowerAssertions: PowerAssertionControlling {
 private final class FakeClosedDisplayStateMonitor: ClosedDisplayStateMonitoring {
     private var handler: (@MainActor (ClosedDisplayHardwareState) -> Void)?
     private var state: ClosedDisplayHardwareState = .open
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
 
     func start(handler: @escaping @MainActor (ClosedDisplayHardwareState) -> Void) {
+        startCount += 1
         self.handler = handler
     }
 
     func stop() {
+        stopCount += 1
         handler = nil
     }
 
@@ -219,12 +261,16 @@ private final class FakeSessionActivityPerformer: SessionActivityPerforming {
     var idle: TimeInterval
     private(set) var moveCount = 0
     private(set) var lockCount = 0
+    private(set) var idleQueryCount = 0
 
     init(idle: TimeInterval) {
         self.idle = idle
     }
 
-    func idleSeconds(useCursorMovement: Bool) -> TimeInterval { idle }
+    func idleSeconds(useCursorMovement: Bool) -> TimeInterval {
+        idleQueryCount += 1
+        return idle
+    }
     func isScreenSaverActive() -> Bool { screenSaverActive }
     func isScreenLocked() -> Bool { screenLocked }
     func moveCursor(speed: CursorMovementSpeed) { moveCount += 1 }

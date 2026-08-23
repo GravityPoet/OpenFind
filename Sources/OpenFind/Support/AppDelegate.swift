@@ -50,10 +50,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     override convenience init() {
+        let defaults = UserDefaults.standard
         self.init(
-            viewModel: SearchViewModel(),
+            viewModel: SearchViewModel(
+                startIndexing: FirstRunGuideStore.shouldPresent(defaults: defaults)
+            ),
             clipboardStore: ClipboardHistoryStore(),
-            defaults: .standard,
+            defaults: defaults,
             launchAtLoginService: MainAppLaunchAtLoginService()
         )
     }
@@ -271,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func showSettingsWindow(_ sender: Any?) {
         let window = makeSettingsWindowIfNeeded()
-        enterForegroundMode()
+        enterForegroundMode(resumesSearch: false)
         NSApp.unhide(nil)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(sender)
@@ -363,13 +366,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         [mainWindow, settingsWindow].compactMap { $0 }.contains { $0.isVisible }
     }
 
-    private func enterForegroundMode() {
-        let wasBackgroundResident = isBackgroundResident
+    private func enterForegroundMode(resumesSearch: Bool = true) {
         isBackgroundResident = false
         applyActivationPolicy(.accessory)
         backgroundHibernateTask?.cancel()
         backgroundHibernateTask = nil
-        if wasBackgroundResident {
+        if resumesSearch {
             viewModel.resumeFromBackground()
         }
     }

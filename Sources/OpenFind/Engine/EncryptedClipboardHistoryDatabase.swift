@@ -4,9 +4,10 @@ import SQLite3
 
 private let clipboardSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-struct EncryptedClipboardHistorySnapshot {
+struct EncryptedClipboardHistoryHeader {
     let manifest: Data?
-    let records: [UUID: Data]
+    let residentIndex: Data?
+    let recordIDs: Set<UUID>
 }
 
 final class EncryptedClipboardHistoryDatabase {
@@ -22,9 +23,13 @@ final class EncryptedClipboardHistoryDatabase {
         return lstat(url.path, &information) == 0
     }
 
-    func load() throws -> EncryptedClipboardHistorySnapshot {
+    func loadHeader() throws -> EncryptedClipboardHistoryHeader {
         guard exists else {
-            return EncryptedClipboardHistorySnapshot(manifest: nil, records: [:])
+            return EncryptedClipboardHistoryHeader(
+                manifest: nil,
+                residentIndex: nil,
+                recordIDs: []
+            )
         }
         try validateDatabaseFile()
         let database = try open(flags: SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX)
@@ -33,12 +38,93 @@ final class EncryptedClipboardHistoryDatabase {
             throw ClipboardHistoryError.persistenceCorrupt
         }
 
-        let manifest = try queryManifest(in: database)
-        let records = try queryRecords(in: database)
-        guard manifest != nil || records.isEmpty else {
+        let manifest = try queryMetadata(key: "order-v1", in: database)
+        let residentIndex = try queryMetadata(key: "resident-index-v1", in: database)
+        let recordIDs = try queryRecordIDs(in: database)
+        guard manifest != nil || recordIDs.isEmpty else {
             throw ClipboardHistoryError.persistenceCorrupt
         }
-        return EncryptedClipboardHistorySnapshot(manifest: manifest, records: records)
+        return EncryptedClipboardHistoryHeader(
+            manifest: manifest,
+            residentIndex: residentIndex,
+            recordIDs: recordIDs
+        )
+    }
+
+    func forEachRecord(_ body: (UUID, Data) throws -> Void) throws {
+        guard exists else { return }
+        try validateDatabaseFile()
+        let database = try open(flags: SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX)
+        defer { sqlite3_close_v2(database) }
+        guard try schemaVersion(in: database) == Self.schemaVersion else {
+            throw ClipboardHistoryError.persistenceCorrupt
+        }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "SELECT id, payload FROM entries",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK, let statement else {
+            sqlite3_finalize(statement)
+            throw ClipboardHistoryError.persistenceCorrupt
+        }
+        defer { sqlite3_finalize(statement) }
+        var seen = Set<UUID>()
+        while true {
+            switch sqlite3_step(statement) {
+            case SQLITE_ROW:
+                guard let text = sqlite3_column_text(statement, 0),
+                      let id = UUID(uuidString: String(cString: text)),
+                      seen.insert(id).inserted,
+                      let payload = data(in: statement, column: 1) else {
+                    throw ClipboardHistoryError.persistenceCorrupt
+                }
+                try body(id, payload)
+            case SQLITE_DONE:
+                return
+            default:
+                throw ClipboardHistoryError.persistenceCorrupt
+            }
+        }
+    }
+
+    func loadRecord(id: UUID) throws -> Data? {
+        guard exists else { return nil }
+        try validateDatabaseFile()
+        let database = try open(flags: SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX)
+        defer { sqlite3_close_v2(database) }
+        guard try schemaVersion(in: database) == Self.schemaVersion else {
+            throw ClipboardHistoryError.persistenceCorrupt
+        }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "SELECT payload FROM entries WHERE id = ?",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK, let statement else {
+            sqlite3_finalize(statement)
+            throw ClipboardHistoryError.persistenceUnavailable
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_bind_text(
+            statement,
+            1,
+            id.uuidString,
+            -1,
+            clipboardSQLiteTransient
+        ) == SQLITE_OK else {
+            throw ClipboardHistoryError.persistenceUnavailable
+        }
+        let status = sqlite3_step(statement)
+        if status == SQLITE_DONE { return nil }
+        guard status == SQLITE_ROW, let payload = data(in: statement, column: 0) else {
+            throw ClipboardHistoryError.persistenceCorrupt
+        }
+        return payload
     }
 
     /// Number of entry rows currently stored on disk, without decrypting
@@ -69,7 +155,8 @@ final class EncryptedClipboardHistoryDatabase {
     func save(
         changedRecords: [UUID: Data],
         retainingIDs: Set<UUID>,
-        manifest: Data
+        manifest: Data,
+        residentIndex: Data
     ) throws {
         try prepareDirectory()
         if exists { try validateDatabaseFile() }
@@ -83,6 +170,10 @@ final class EncryptedClipboardHistoryDatabase {
 
         try execute("BEGIN IMMEDIATE TRANSACTION", in: database)
         do {
+            // Query the authoritative row set inside the same transaction.
+            // The in-memory manifest can be stale after a crashed/parallel
+            // writer; relying on it alone would leave orphan rows that make
+            // the next startup reject an otherwise valid history.
             let storedIDs = try queryRecordIDs(in: database)
             for id in storedIDs.subtracting(retainingIDs) {
                 try deleteRecord(id: id, in: database)
@@ -90,7 +181,35 @@ final class EncryptedClipboardHistoryDatabase {
             for (id, payload) in changedRecords {
                 try upsertRecord(id: id, payload: payload, in: database)
             }
-            try upsertManifest(manifest, in: database)
+            try upsertMetadata(key: "order-v1", payload: manifest, in: database)
+            try upsertMetadata(
+                key: "resident-index-v1",
+                payload: residentIndex,
+                in: database
+            )
+            try execute("COMMIT", in: database)
+        } catch {
+            try? execute("ROLLBACK", in: database)
+            throw error
+        }
+        try validateDatabaseFile()
+    }
+
+    func writeResidentIndex(_ payload: Data) throws {
+        try prepareDirectory()
+        guard exists else { throw ClipboardHistoryError.persistenceUnavailable }
+        try validateDatabaseFile()
+        let database = try open(flags: SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX)
+        defer { sqlite3_close_v2(database) }
+        try configure(database)
+        try createSchema(in: database)
+        try execute("BEGIN IMMEDIATE TRANSACTION", in: database)
+        do {
+            try upsertMetadata(
+                key: "resident-index-v1",
+                payload: payload,
+                in: database
+            )
             try execute("COMMIT", in: database)
         } catch {
             try? execute("ROLLBACK", in: database)
@@ -148,6 +267,31 @@ final class EncryptedClipboardHistoryDatabase {
             """,
             in: database
         )
+        for operation in ["INSERT", "UPDATE", "DELETE"] {
+            try execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS invalidate_resident_index_entries_\(operation.lowercased())
+                AFTER \(operation) ON entries
+                BEGIN
+                    DELETE FROM metadata WHERE key = 'resident-index-v1';
+                END
+                """,
+                in: database
+            )
+        }
+        for operation in ["INSERT", "UPDATE", "DELETE"] {
+            try execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS invalidate_resident_index_order_\(operation.lowercased())
+                AFTER \(operation) ON metadata
+                WHEN \(operation == "DELETE" ? "OLD.key" : "NEW.key") = 'order-v1'
+                BEGIN
+                    DELETE FROM metadata WHERE key = 'resident-index-v1';
+                END
+                """,
+                in: database
+            )
+        }
         try execute("PRAGMA user_version=\(Self.schemaVersion)", in: database)
     }
 
@@ -166,11 +310,11 @@ final class EncryptedClipboardHistoryDatabase {
         return sqlite3_column_int(statement, 0)
     }
 
-    private func queryManifest(in database: OpaquePointer) throws -> Data? {
+    private func queryMetadata(key: String, in database: OpaquePointer) throws -> Data? {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(
             database,
-            "SELECT payload FROM metadata WHERE key = 'order-v1'",
+            "SELECT payload FROM metadata WHERE key = ?",
             -1,
             &statement,
             nil
@@ -179,44 +323,21 @@ final class EncryptedClipboardHistoryDatabase {
             throw ClipboardHistoryError.persistenceCorrupt
         }
         defer { sqlite3_finalize(statement) }
+        guard sqlite3_bind_text(
+            statement,
+            1,
+            key,
+            -1,
+            clipboardSQLiteTransient
+        ) == SQLITE_OK else {
+            throw ClipboardHistoryError.persistenceCorrupt
+        }
         let status = sqlite3_step(statement)
         if status == SQLITE_DONE { return nil }
         guard status == SQLITE_ROW, let data = data(in: statement, column: 0) else {
             throw ClipboardHistoryError.persistenceCorrupt
         }
         return data
-    }
-
-    private func queryRecords(in database: OpaquePointer) throws -> [UUID: Data] {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(
-            database,
-            "SELECT id, payload FROM entries",
-            -1,
-            &statement,
-            nil
-        ) == SQLITE_OK, let statement else {
-            sqlite3_finalize(statement)
-            throw ClipboardHistoryError.persistenceCorrupt
-        }
-        defer { sqlite3_finalize(statement) }
-        var records: [UUID: Data] = [:]
-        while true {
-            switch sqlite3_step(statement) {
-            case SQLITE_ROW:
-                guard let text = sqlite3_column_text(statement, 0),
-                      let id = UUID(uuidString: String(cString: text)),
-                      let payload = data(in: statement, column: 1),
-                      records[id] == nil else {
-                    throw ClipboardHistoryError.persistenceCorrupt
-                }
-                records[id] = payload
-            case SQLITE_DONE:
-                return records
-            default:
-                throw ClipboardHistoryError.persistenceCorrupt
-            }
-        }
     }
 
     private func queryRecordIDs(in database: OpaquePointer) throws -> Set<UUID> {
@@ -301,11 +422,15 @@ final class EncryptedClipboardHistoryDatabase {
         }
     }
 
-    private func upsertManifest(_ payload: Data, in database: OpaquePointer) throws {
+    private func upsertMetadata(
+        key: String,
+        payload: Data,
+        in database: OpaquePointer
+    ) throws {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(
             database,
-            "INSERT INTO metadata(key, payload) VALUES('order-v1', ?) "
+            "INSERT INTO metadata(key, payload) VALUES(?, ?) "
                 + "ON CONFLICT(key) DO UPDATE SET payload=excluded.payload",
             -1,
             &statement,
@@ -315,7 +440,14 @@ final class EncryptedClipboardHistoryDatabase {
             throw ClipboardHistoryError.persistenceUnavailable
         }
         defer { sqlite3_finalize(statement) }
-        guard bind(payload, to: statement, index: 1),
+        guard sqlite3_bind_text(
+            statement,
+            1,
+            key,
+            -1,
+            clipboardSQLiteTransient
+        ) == SQLITE_OK,
+              bind(payload, to: statement, index: 2),
               sqlite3_step(statement) == SQLITE_DONE else {
             throw ClipboardHistoryError.persistenceUnavailable
         }

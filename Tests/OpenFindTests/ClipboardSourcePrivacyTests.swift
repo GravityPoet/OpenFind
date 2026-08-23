@@ -6,6 +6,41 @@ import Testing
 @MainActor
 @Suite("Clipboard Source Privacy Tests")
 struct ClipboardSourcePrivacyTests {
+    @Test func idlePollingDoesNotResolveTheFrontmostApplicationRepeatedly() throws {
+        let suite = "OpenFindTests.ClipboardIdleSource.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pasteboard = NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: SourcePrivacyMemoryPersistence(),
+            pasteboard: pasteboard
+        )
+        var resolutionCount = 0
+        let monitor = ClipboardMonitor(
+            store: store,
+            pasteboard: pasteboard,
+            activationNotificationCenter: NotificationCenter(),
+            sourceApplicationProvider: {
+                resolutionCount += 1
+                return nil
+            }
+        )
+        defer { monitor.stop() }
+        monitor.start(interval: 5)
+        let startupResolutionCount = resolutionCount
+
+        monitor.poll()
+        monitor.poll()
+        monitor.poll()
+        #expect(resolutionCount == startupResolutionCount)
+
+        pasteboard.clearContents()
+        #expect(pasteboard.setString("changed", forType: .string))
+        monitor.poll()
+        #expect(resolutionCount == startupResolutionCount + 1)
+    }
+
     @Test func pendingCopyIsAttributedBeforeApplicationSwitch() throws {
         let suite = "OpenFindTests.ClipboardSourceSwitch.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))

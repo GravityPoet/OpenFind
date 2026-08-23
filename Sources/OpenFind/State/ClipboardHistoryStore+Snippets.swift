@@ -54,6 +54,7 @@ extension ClipboardHistoryStore {
         try ensureKeywordIsAvailable(record.keyword, excluding: nil)
         let entry = snippetEntry(from: record, existingEntries: entries)
         entries.insert(entry, at: 0)
+        hasUnpersistedPayloadChanges = true
         restoreSelection(id: entry.id)
         persist()
         return entry
@@ -67,11 +68,14 @@ extension ClipboardHistoryStore {
         collection: String?,
         expandsAutomatically: Bool
     ) throws {
-        guard let index = entries.firstIndex(where: { $0.id == entry.id && $0.isPinned }),
-              plainText(for: entries[index]) != nil else {
+        guard let index = entries.firstIndex(where: { $0.id == entry.id && $0.isPinned }) else {
             throw ClipboardSnippetError.textOnly
         }
-        let content = content ?? plainText(for: entries[index]) ?? ""
+        let materialized = try materializedEntry(for: entries[index])
+        guard let existingContent = plainText(for: materialized) else {
+            throw ClipboardSnippetError.textOnly
+        }
+        let content = content ?? existingContent
         let record = try validatedSnippetRecord(ClipboardSnippetRecord(
             id: entry.id,
             name: name,
@@ -86,6 +90,12 @@ extension ClipboardHistoryStore {
             NSPasteboard.PasteboardType.string.rawValue: Data(record.content.utf8),
         ]
         entries[index].pasteboardItems = nil
+        entries[index].payloadDescriptor = ClipboardPayloadDescriptor.make(
+            for: entries[index].retainedPasteboardItems
+        )
+        nonresidentPayloadEntryIDs.remove(entry.id)
+        removeMaterializedPayloadFromCache(entry.id)
+        hasUnpersistedPayloadChanges = true
         entries[index].previewText = String(record.content.prefix(4_096))
         entries[index].kind = .text
         entries[index].snippetKeyword = record.keyword
@@ -96,16 +106,18 @@ extension ClipboardHistoryStore {
     }
 
     func exportSnippetArchive() throws -> Data {
-        let snippets = reusableEntries.compactMap { entry -> ClipboardSnippetRecord? in
-            guard let content = plainText(for: entry) else { return nil }
-            return ClipboardSnippetRecord(
+        var snippets: [ClipboardSnippetRecord] = []
+        for entry in reusableEntries {
+            let materialized = try materializedEntry(for: entry)
+            guard let content = plainText(for: materialized) else { continue }
+            snippets.append(ClipboardSnippetRecord(
                 id: entry.id,
                 name: entry.displayTitle,
                 content: content,
                 keyword: entry.snippetKeyword,
                 collection: entry.snippetCollection,
                 expandsAutomatically: entry.expandsFromKeyword
-            )
+            ))
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -140,6 +152,7 @@ extension ClipboardHistoryStore {
 
         var next = entries
         let importedIDs = Set(records.map(\.id))
+        var residentImportedIDs: Set<UUID> = []
         let existingKeywords = Set(
             next.compactMap { entry -> String? in
                 guard !importedIDs.contains(entry.id),
@@ -160,21 +173,29 @@ extension ClipboardHistoryStore {
                     NSPasteboard.PasteboardType.string.rawValue: Data(record.content.utf8),
                 ]
                 next[index].pasteboardItems = nil
+                next[index].payloadDescriptor = ClipboardPayloadDescriptor.make(
+                    for: next[index].retainedPasteboardItems
+                )
                 next[index].previewText = String(record.content.prefix(4_096))
                 next[index].kind = .text
                 next[index].snippetCollection = record.collection
                 next[index].snippetKeyword = record.keyword
                 next[index].snippetExpansionEnabled = record.expandsAutomatically
                     && record.keyword != nil
+                residentImportedIDs.insert(record.id)
             } else {
                 var record = record
                 if next.contains(where: { $0.id == record.id }) {
                     record.id = UUID()
                 }
+                residentImportedIDs.insert(record.id)
                 next.insert(snippetEntry(from: record, existingEntries: next), at: 0)
             }
         }
         entries = next
+        nonresidentPayloadEntryIDs.subtract(residentImportedIDs)
+        residentImportedIDs.forEach(removeMaterializedPayloadFromCache)
+        hasUnpersistedPayloadChanges = true
         selectedIndex = 0
         clearMultiSelection()
         persist()

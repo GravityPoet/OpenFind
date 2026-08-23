@@ -63,7 +63,6 @@ final class ClipboardController {
             enabled: isShortcutEnabled,
             action: { [weak self] in self?.handleShortcutInvocation() }
         )
-        windowController.prepare()
     }
 
     func stop() {
@@ -72,6 +71,7 @@ final class ClipboardController {
         quickMerge.stop()
         windowController.cancelPasteStack()
         windowController.close()
+        windowController.releaseForBackgroundResidence()
         registry.unbind(id: Self.hotKeyID)
         hasStarted = false
         registrationState = .disabled

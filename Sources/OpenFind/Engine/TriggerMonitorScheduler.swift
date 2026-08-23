@@ -12,6 +12,7 @@ final class TriggerMonitorScheduler {
     private var generation = 0
     private var hasStarted = false
     private var configuredCriteria: Set<TriggerCriterion.Kind> = []
+    private var pollInterval: TimeInterval = 5
 
     init(
         coordinator: TriggerCoordinator,
@@ -26,14 +27,9 @@ final class TriggerMonitorScheduler {
     func start(interval: TimeInterval = 5) {
         stop()
         hasStarted = true
-        configureWakeEvents()
+        pollInterval = min(300, max(1, interval))
         observeTriggerConfiguration()
-        refresh()
-        let boundedInterval = min(300, max(1, interval))
-        timer = Timer.scheduledTimer(withTimeInterval: boundedInterval, repeats: true) {
-            [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh() }
-        }
+        reconcileMonitoring(refreshOnChange: false)
     }
 
     func stop() {
@@ -45,6 +41,7 @@ final class TriggerMonitorScheduler {
         refreshTask = nil
         refreshPending = false
         configuredCriteria = []
+        pollInterval = 5
         wakeEvents.stop()
     }
 
@@ -71,12 +68,37 @@ final class TriggerMonitorScheduler {
         }
     }
 
-    private func configureWakeEvents() {
+    @discardableResult
+    private func configureWakeEvents() -> Bool {
         let requiredCriteria = coordinator.requiredCriteria
-        guard requiredCriteria != configuredCriteria || !hasStarted else { return }
+        guard requiredCriteria != configuredCriteria else { return false }
         configuredCriteria = requiredCriteria
         wakeEvents.start(requiredCriteria: requiredCriteria) { [weak self] in
             self?.refresh()
+        }
+        return true
+    }
+
+    private func reconcileMonitoring(refreshOnChange: Bool) {
+        guard hasStarted else { return }
+        let criteriaChanged = configureWakeEvents()
+        let hasCriteria = !coordinator.requiredCriteria.isEmpty
+        if hasCriteria {
+            if timer == nil {
+                refresh()
+                timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) {
+                    [weak self] _ in
+                    MainActor.assumeIsolated { self?.refresh() }
+                }
+            } else if refreshOnChange {
+                refresh()
+            }
+        } else {
+            timer?.invalidate()
+            timer = nil
+            // A transition to no criteria must still give the coordinator a
+            // chance to end a trigger session that was previously active.
+            if criteriaChanged, refreshOnChange { refresh() }
         }
     }
 
@@ -87,8 +109,7 @@ final class TriggerMonitorScheduler {
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, self.hasStarted else { return }
-                self.configureWakeEvents()
-                self.refresh()
+                self.reconcileMonitoring(refreshOnChange: true)
                 self.observeTriggerConfiguration()
             }
         }

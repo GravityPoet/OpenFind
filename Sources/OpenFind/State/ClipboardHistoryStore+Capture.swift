@@ -103,17 +103,23 @@ extension ClipboardHistoryStore {
             kind,
             previewText: previewText
         )
+        let incomingDescriptor = ClipboardPayloadDescriptor.make(for: retainedItems)
         let retainedEntryID: UUID
         if let duplicateIndex = entries.firstIndex(where: {
-            $0.retainedPasteboardItems == retainedItems
+            guard $0.resolvedPayloadDescriptor == incomingDescriptor,
+                  let materialized = try? materializedEntry(for: $0) else { return false }
+            return materialized.retainedPasteboardItems == retainedItems
         }) {
-            var duplicate = entries.remove(at: duplicateIndex)
+            var duplicate = (try? materializedEntry(for: entries[duplicateIndex]))
+                ?? entries[duplicateIndex]
+            entries.remove(at: duplicateIndex)
             duplicate.firstCopiedAt = duplicate.initialCopiedAt
             duplicate.createdAt = createdAt
             duplicate.previewText = String(previewText.prefix(4_096))
             duplicate.kind = resolvedKind
             duplicate.representations = representations
             duplicate.pasteboardItems = pasteboardItems
+            duplicate.payloadDescriptor = incomingDescriptor
             duplicate.copyCount = duplicate.numberOfCopies + 1
             duplicate.sourceBundleIdentifier = normalizedMetadata(
                 sourceBundleIdentifier,
@@ -124,6 +130,8 @@ extension ClipboardHistoryStore {
                 limit: 256
             ) ?? duplicate.sourceApplicationName
             retainedEntryID = duplicate.id
+            nonresidentPayloadEntryIDs.remove(duplicate.id)
+            removeMaterializedPayloadFromCache(duplicate.id)
             entries.insert(duplicate, at: 0)
         } else {
             let entry = ClipboardEntry(
@@ -147,9 +155,13 @@ extension ClipboardHistoryStore {
         }
         selectedIndex = 0
         clearMultiSelection()
-        persist()
+        hasUnpersistedPayloadChanges = true
+        let didPersist = persist()
         if resolvedKind == .image {
             enqueueImageTextRecognition(ids: [retainedEntryID])
+        }
+        if didPersist, isClipboardBackgroundResident {
+            hibernatePayloadsForBackground()
         }
         return true
     }
