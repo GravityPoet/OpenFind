@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PowerProtectSettingsSection: View {
     @Bindable var controller: PowerProtectController
+    var canUninstall = true
 
     var body: some View {
         Section {
@@ -14,6 +15,12 @@ struct PowerProtectSettingsSection: View {
                     .foregroundStyle(.green)
                 Button(L("Uninstall Power Protect"), role: .destructive) {
                     controller.uninstall()
+                }
+                .disabled(!canUninstall)
+                if !canUninstall {
+                    Text(L("Power Protect Uninstall Blocked"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             case .invalid:
                 Label(L("Power Protect Rule Invalid"), systemImage: "exclamationmark.shield.fill")
@@ -28,9 +35,11 @@ struct PowerProtectSettingsSection: View {
                 }
             }
 
-            Text("/usr/bin/pmset -a disablesleep 1\n/usr/bin/pmset -a disablesleep 0")
-                .font(.system(.caption, design: .monospaced))
-                .textSelection(.enabled)
+            DisclosureGroup(L("View Authorization Scope")) {
+                Text("/usr/bin/pmset -a disablesleep 1\n/usr/bin/pmset -a disablesleep 0")
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+            }
 
             if let error = controller.lastErrorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")

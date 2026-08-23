@@ -111,7 +111,12 @@ struct AwakeMenuSection: View {
                     controller.clearError()
                 }
             }
+
+            if controller.isPowerTransitionInProgress {
+                Label(L("Updating Keep Awake"), systemImage: "hourglass")
+            }
         }
+        .disabled(controller.isPowerTransitionInProgress)
     }
 
     private func fileDownloadButton(_ title: String, timeout: TimeInterval) -> some View {

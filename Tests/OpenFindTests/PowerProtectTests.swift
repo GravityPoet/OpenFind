@@ -13,7 +13,7 @@ struct PowerProtectTests {
         #expect(rule.contents.contains("/usr/bin/pmset -a disablesleep 0"))
         #expect(!rule.contents.contains("ALL ALL"))
 
-        for invalid in ["", "1user", "user name", "user;rm", "user\nroot"] {
+        for invalid in ["", "ALL", "all", "1user", "user name", "user;rm", "user\nroot"] {
             #expect(throws: PowerProtectError.invalidUserName) {
                 try PowerProtectRule(userName: invalid)
             }
@@ -36,18 +36,23 @@ struct PowerProtectTests {
 
         for required in [
             "/usr/bin/mktemp",
+            "/usr/bin/lockf -t 30 9",
             "/usr/sbin/visudo -cf",
             "/bin/chmod 0440",
             "/usr/sbin/chown root:wheel",
-            "/bin/mv -f",
-            "openfind-backup",
+            "/bin/mv -n",
+            "installed_identity",
+            "committed=1",
         ] {
             #expect(install.contains(required))
         }
         #expect(uninstall.contains("/usr/bin/cmp -s"))
         #expect(uninstall.contains("openfind-remove-backup"))
-        #expect(uninstall.contains("/bin/mv -f \"$backup\" \"$target\""))
+        #expect(uninstall.contains("/bin/mv -n \"$backup\" \"$target\""))
+        #expect(uninstall.contains("removed=1\n/bin/rm -f \"$target\""))
         #expect(!install.contains("testuser ALL="))
+        #expect(shellSyntaxIsValid(install))
+        #expect(shellSyntaxIsValid(uninstall))
     }
 
     @Test func installedRuleValidationRequiresExactContentOwnerGroupAndMode() throws {
@@ -57,6 +62,7 @@ struct PowerProtectTests {
             .ownerAccountID: NSNumber(value: 0),
             .groupOwnerAccountID: NSNumber(value: 0),
             .posixPermissions: NSNumber(value: 0o440),
+            .size: NSNumber(value: rule.contents.utf8.count),
         ]
 
         #expect(PowerProtectFileValidator.isValid(
@@ -74,6 +80,18 @@ struct PowerProtectTests {
         #expect(!PowerProtectFileValidator.isValid(
             data: Data(rule.contents.utf8),
             attributes: writableAttributes,
+            userName: "testuser"
+        ))
+        #expect(PowerProtectFileValidator.isValid(
+            data: nil,
+            attributes: validAttributes,
+            userName: "testuser"
+        ))
+        var wrongSizeAttributes = validAttributes
+        wrongSizeAttributes[.size] = NSNumber(value: rule.contents.utf8.count + 1)
+        #expect(!PowerProtectFileValidator.isValid(
+            data: nil,
+            attributes: wrongSizeAttributes,
             userName: "testuser"
         ))
     }
@@ -96,7 +114,7 @@ struct PowerProtectTests {
 
     @Test func controllerTracksInstallAndUninstallWithoutDuplicateOperations() async throws {
         let service = FakePowerProtectService()
-        let controller = PowerProtectController(service: service, userName: "testuser")
+        let controller = PowerProtectController(service: service)
         #expect(controller.state == .notInstalled)
 
         controller.install()
@@ -106,6 +124,181 @@ struct PowerProtectTests {
         controller.uninstall()
         try await waitUntil { controller.state == .notInstalled }
         #expect(service.uninstallCount == 1)
+    }
+
+    @Test func oneTimeAuthorizationInstallsOnceThenUsesOnlyNonInteractiveSudo() async throws {
+        let service = FakePowerProtectService()
+        let prompt = FakePowerProtectAuthorizationPrompt(choice: .authorize)
+        var commands: [(String, [String])] = []
+        let client = PMSetClosedDisplayPowerClient(
+            powerProtect: service,
+            authorizationPrompt: prompt,
+            systemPowerAccessAllowed: { true },
+            commandRunner: { executable, arguments, _, _ in
+                commands.append((executable.path, arguments))
+                let output = executable.path == "/usr/bin/pmset"
+                    ? Data("SleepDisabled 0\n".utf8)
+                    : Data()
+                return BoundedProcessResult(
+                    output: output,
+                    terminationStatus: 0,
+                    timedOut: false,
+                    outputExceededLimit: false
+                )
+            }
+        )
+
+        try await client.authorizePowerProtectIfNeeded()
+        try await client.setSleepDisabled(true)
+        try await client.authorizePowerProtectIfNeeded()
+        try await client.setSleepDisabled(false)
+
+        #expect(prompt.requestCount == 1)
+        #expect(service.installCount == 1)
+        #expect(commands.count == 2)
+        #expect(commands.first?.0 == "/usr/bin/sudo")
+        #expect(commands.first?.1 == ["-n", "/usr/bin/pmset", "-a", "disablesleep", "1"])
+        #expect(commands.last?.0 == "/usr/bin/sudo")
+        #expect(commands.last?.1 == ["-n", "/usr/bin/pmset", "-a", "disablesleep", "0"])
+        #expect(commands.allSatisfy { $0.0 != "/usr/bin/osascript" })
+    }
+
+    @Test func backgroundPowerWriteNeverPromptsOrFallsBackToOsascript() async {
+        let service = FakePowerProtectService()
+        let prompt = FakePowerProtectAuthorizationPrompt(choice: .authorize)
+        var commands: [(String, [String])] = []
+        let client = PMSetClosedDisplayPowerClient(
+            powerProtect: service,
+            authorizationPrompt: prompt,
+            systemPowerAccessAllowed: { true },
+            commandRunner: { executable, arguments, _, _ in
+                commands.append((executable.path, arguments))
+                return BoundedProcessResult(
+                    output: Data(),
+                    terminationStatus: 0,
+                    timedOut: false,
+                    outputExceededLimit: false
+                )
+            }
+        )
+
+        do {
+            try await client.setSleepDisabled(true)
+            Issue.record("Background power write unexpectedly succeeded without authorization")
+        } catch let error as PowerProtectError {
+            #expect(error == .authorizationRequired)
+        } catch {
+            Issue.record("Unexpected background power error: \(error)")
+        }
+
+        #expect(prompt.requestCount == 0)
+        #expect(service.installCount == 0)
+        #expect(commands.isEmpty)
+    }
+
+    @Test func revokedInstalledRuleFailsWithoutOpeningAnotherPrompt() async {
+        let service = FakePowerProtectService()
+        service.currentStatus = .installed
+        let prompt = FakePowerProtectAuthorizationPrompt(choice: .authorize)
+        var commandCount = 0
+        let client = PMSetClosedDisplayPowerClient(
+            powerProtect: service,
+            authorizationPrompt: prompt,
+            systemPowerAccessAllowed: { true },
+            commandRunner: { _, _, _, _ in
+                commandCount += 1
+                return BoundedProcessResult(
+                    output: Data("sudo denied".utf8),
+                    terminationStatus: 1,
+                    timedOut: false,
+                    outputExceededLimit: false
+                )
+            }
+        )
+
+        do {
+            try await client.setSleepDisabled(true)
+            Issue.record("Revoked rule unexpectedly changed system power state")
+        } catch is ClosedDisplayPowerError {
+            // Expected: surface a recoverable error without another prompt.
+        } catch {
+            Issue.record("Unexpected revoked-rule error: \(error)")
+        }
+
+        #expect(commandCount == 1)
+        #expect(prompt.requestCount == 0)
+        #expect(service.installCount == 0)
+    }
+
+    @Test func cancellingOneTimeAuthorizationDoesNotInstallOrRetry() async {
+        let service = FakePowerProtectService()
+        let prompt = FakePowerProtectAuthorizationPrompt(choice: .cancel)
+        let client = PMSetClosedDisplayPowerClient(
+            powerProtect: service,
+            authorizationPrompt: prompt,
+            systemPowerAccessAllowed: { true }
+        )
+
+        do {
+            try await client.authorizePowerProtectIfNeeded()
+            Issue.record("Cancelled one-time authorization unexpectedly succeeded")
+        } catch let error as PowerProtectError {
+            #expect(error == .authorizationCancelled)
+        } catch {
+            Issue.record("Unexpected cancellation error: \(error)")
+        }
+
+        #expect(prompt.requestCount == 1)
+        #expect(service.installCount == 0)
+        #expect(service.currentStatus == .notInstalled)
+    }
+
+    @Test func fullClosedDisplayCyclePromptsOnlyOnTheFirstEnable() async throws {
+        let suite = "OpenFindTests.OneTimePowerProtect.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = FakePowerProtectService()
+        let prompt = FakePowerProtectAuthorizationPrompt(choice: .authorize)
+        var sleepDisabled = false
+        var sudoValues: [Bool] = []
+        let client = PMSetClosedDisplayPowerClient(
+            powerProtect: service,
+            authorizationPrompt: prompt,
+            systemPowerAccessAllowed: { true },
+            commandRunner: { executable, arguments, _, _ in
+                if executable.path == "/usr/bin/pmset" {
+                    return BoundedProcessResult(
+                        output: Data("SleepDisabled \(sleepDisabled ? 1 : 0)\n".utf8),
+                        terminationStatus: 0,
+                        timedOut: false,
+                        outputExceededLimit: false
+                    )
+                }
+                let disabled = arguments.last == "1"
+                sleepDisabled = disabled
+                sudoValues.append(disabled)
+                return BoundedProcessResult(
+                    output: Data(),
+                    terminationStatus: 0,
+                    timedOut: false,
+                    outputExceededLimit: false
+                )
+            }
+        )
+        let controller = ClosedDisplayModeController(
+            power: client,
+            support: AlwaysSupportedClosedDisplay(),
+            defaults: defaults
+        )
+
+        try await controller.enable(interaction: .installPowerProtectIfNeeded)
+        try await controller.disable(interaction: .installPowerProtectIfNeeded)
+        try await controller.enable(interaction: .installPowerProtectIfNeeded)
+
+        #expect(prompt.requestCount == 1)
+        #expect(service.installCount == 1)
+        #expect(sudoValues == [true, false, true])
+        #expect(sleepDisabled)
     }
 
     private func waitUntil(
@@ -118,6 +311,21 @@ struct PowerProtectTests {
         }
         #expect(condition())
     }
+
+    private func shellSyntaxIsValid(_ script: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-n", "-c", script]
+        process.standardOutput = Pipe()
+        process.standardError = process.standardOutput
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
 }
 
 @MainActor
@@ -128,13 +336,32 @@ private final class FakePowerProtectService: PowerProtectServicing {
 
     func status() -> PowerProtectInstallationStatus { currentStatus }
 
-    func install(for userName: String) async throws {
+    func install() async throws {
         installCount += 1
         currentStatus = .installed
     }
 
-    func uninstall(for userName: String) async throws {
+    func uninstall() async throws {
         uninstallCount += 1
         currentStatus = .notInstalled
     }
+}
+
+@MainActor
+private final class FakePowerProtectAuthorizationPrompt: PowerProtectAuthorizationPrompting {
+    let choice: PowerProtectAuthorizationChoice
+    private(set) var requestCount = 0
+
+    init(choice: PowerProtectAuthorizationChoice) {
+        self.choice = choice
+    }
+
+    func requestAuthorization() -> PowerProtectAuthorizationChoice {
+        requestCount += 1
+        return choice
+    }
+}
+
+private final class AlwaysSupportedClosedDisplay: ClosedDisplaySupportDetecting {
+    func supportsClosedDisplayMode() -> Bool { true }
 }

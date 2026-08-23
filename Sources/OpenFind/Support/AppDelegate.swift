@@ -76,8 +76,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             defaults: defaults
         )
         self.keyboardLock = KeyboardLockController(registry: hotKeyRegistry, defaults: defaults)
+        let powerProtectService = SudoersPowerProtectService()
+        let powerProtectController = PowerProtectController(service: powerProtectService)
         let awakeSession = AwakeSessionController(
-            closedDisplay: ClosedDisplayModeController(defaults: defaults)
+            closedDisplay: ClosedDisplayModeController(
+                power: PMSetClosedDisplayPowerClient(powerProtect: powerProtectService),
+                defaults: defaults
+            )
         )
         let awakeSessionPreferences = AwakeSessionPreferences(defaults: defaults)
         let triggerStore = TriggerStore(defaults: defaults)
@@ -97,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             sessions: awakeSession,
             preferences: awakeSessionPreferences
         )
-        self.powerProtect = PowerProtectController()
+        self.powerProtect = powerProtectController
         self.launchAtLogin = LaunchAtLoginController(
             service: launchAtLoginService,
             defaults: defaults

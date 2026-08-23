@@ -1,20 +1,37 @@
 import Foundation
 import Observation
 
+enum ClosedDisplayAuthorizationPolicy: Equatable {
+    case nonInteractive
+    case installPowerProtectIfNeeded
+}
+
 @MainActor
 protocol ClosedDisplayModeManaging: AnyObject {
     var isEnabled: Bool { get }
     var isSupported: Bool { get }
     var hasPendingRestoration: Bool { get }
     func recoverIfNeeded() async -> Bool
+    func recoverIfNeeded(interaction: ClosedDisplayAuthorizationPolicy) async -> Bool
     func reconcileAfterPowerSourceChange() async -> Bool
     func enable() async throws
     func disable() async throws
+    func enable(interaction: ClosedDisplayAuthorizationPolicy) async throws
+    func disable(interaction: ClosedDisplayAuthorizationPolicy) async throws
 }
 
 extension ClosedDisplayModeManaging {
     var isSupported: Bool { true }
     func reconcileAfterPowerSourceChange() async -> Bool { true }
+    func recoverIfNeeded(interaction: ClosedDisplayAuthorizationPolicy) async -> Bool {
+        await recoverIfNeeded()
+    }
+    func enable(interaction: ClosedDisplayAuthorizationPolicy) async throws {
+        try await enable()
+    }
+    func disable(interaction: ClosedDisplayAuthorizationPolicy) async throws {
+        try await disable()
+    }
 }
 
 @MainActor
@@ -78,11 +95,18 @@ final class ClosedDisplayModeController: ClosedDisplayModeManaging {
     }
 
     func recoverIfNeeded() async -> Bool {
+        await recoverIfNeeded(interaction: .nonInteractive)
+    }
+
+    func recoverIfNeeded(interaction: ClosedDisplayAuthorizationPolicy) async -> Bool {
         do {
             guard let journal = try loadJournal() else { return true }
             let current = try await power.readSleepDisabled()
             if current == journal.managedValue,
                current != journal.originalValue {
+                if interaction == .installPowerProtectIfNeeded {
+                    try await power.authorizePowerProtectIfNeeded()
+                }
                 try await power.setSleepDisabled(journal.originalValue)
             }
             removeJournal()
@@ -117,13 +141,22 @@ final class ClosedDisplayModeController: ClosedDisplayModeManaging {
     }
 
     func enable() async throws {
+        try await enable(interaction: .nonInteractive)
+    }
+
+    func enable(interaction: ClosedDisplayAuthorizationPolicy) async throws {
         guard !isEnabled else { return }
         guard support.supportsClosedDisplayMode() else {
             state = .unsupported
             throw ClosedDisplayModeError.unsupported
         }
-        guard await recoverIfNeeded() else { throw ClosedDisplayModeError.recoveryFailed }
+        guard await recoverIfNeeded(interaction: interaction) else {
+            throw ClosedDisplayModeError.recoveryFailed
+        }
         let original = try await power.readSleepDisabled()
+        if !original, interaction == .installPowerProtectIfNeeded {
+            try await power.authorizePowerProtectIfNeeded()
+        }
         try saveJournal(.init(originalValue: original, managedValue: true))
         do {
             if !original { try await power.setSleepDisabled(true) }
@@ -135,6 +168,10 @@ final class ClosedDisplayModeController: ClosedDisplayModeManaging {
     }
 
     func disable() async throws {
+        try await disable(interaction: .nonInteractive)
+    }
+
+    func disable(interaction: ClosedDisplayAuthorizationPolicy) async throws {
         guard state != .unsupported || hasPendingRestoration else { return }
         do {
             guard let journal = try loadJournal() else {
@@ -144,6 +181,9 @@ final class ClosedDisplayModeController: ClosedDisplayModeManaging {
             let current = try await power.readSleepDisabled()
             if current == journal.managedValue,
                current != journal.originalValue {
+                if interaction == .installPowerProtectIfNeeded {
+                    try await power.authorizePowerProtectIfNeeded()
+                }
                 try await power.setSleepDisabled(journal.originalValue)
             }
             removeJournal()

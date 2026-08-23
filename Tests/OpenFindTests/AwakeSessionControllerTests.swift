@@ -391,6 +391,65 @@ struct AwakeSessionControllerTests {
         #expect(assertions.deactivationCount == 1)
     }
 
+    @Test func manualClosedDisplaySessionUsesOneTimeAuthorizationPolicy() async throws {
+        let closedDisplay = FakeClosedDisplayModeManager()
+        let controller = AwakeSessionController(
+            assertions: FakePowerAssertionController(),
+            closedDisplay: closedDisplay
+        )
+
+        try await controller.startAsync(.init(options: .init(
+            allowsDisplaySleep: false,
+            allowsClosedDisplaySleep: false
+        )))
+        try await controller.endAsync(reason: .requested)
+
+        #expect(closedDisplay.enablePolicies.first == .installPowerProtectIfNeeded)
+        #expect(closedDisplay.disablePolicies.first == .installPowerProtectIfNeeded)
+    }
+
+    @Test func automaticClosedDisplaySessionNeverRequestsInteractiveAuthorization() async throws {
+        let closedDisplay = FakeClosedDisplayModeManager()
+        let controller = AwakeSessionController(
+            assertions: FakePowerAssertionController(),
+            closedDisplay: closedDisplay
+        )
+
+        try await controller.startAsync(.init(
+            options: .init(
+                allowsDisplaySleep: false,
+                allowsClosedDisplaySleep: false
+            ),
+            source: .applicationLaunch
+        ))
+        try await controller.endAsync(reason: .applicationTermination)
+
+        #expect(closedDisplay.enablePolicies.first == .nonInteractive)
+        #expect(closedDisplay.disablePolicies.first == .nonInteractive)
+    }
+
+    @Test func repeatedManualStartDuringAuthorizationIsRejectedWithoutQueuing() async throws {
+        let closedDisplay = FakeClosedDisplayModeManager()
+        closedDisplay.enableDelay = .milliseconds(60)
+        let controller = AwakeSessionController(
+            assertions: FakePowerAssertionController(),
+            closedDisplay: closedDisplay
+        )
+        let request = AwakeSessionRequest(options: .init(
+            allowsDisplaySleep: false,
+            allowsClosedDisplaySleep: false
+        ))
+
+        let first = Task { await controller.requestStartAsync(request) }
+        try await waitUntil { controller.isPowerTransitionInProgress }
+        let second = await controller.requestStartAsync(request)
+
+        #expect(!second)
+        #expect(await first.value)
+        #expect(closedDisplay.enableCount == 1)
+        #expect(controller.isActive)
+    }
+
     @Test func failedAssertionCreationRollsBackClosedDisplayMode() async {
         let assertions = FakePowerAssertionController()
         assertions.activationError = .creationFailed(kind: .systemSleep, status: -7)
@@ -589,7 +648,10 @@ private final class FakeClosedDisplayModeManager: ClosedDisplayModeManaging {
     private(set) var enableCount = 0
     private(set) var disableCount = 0
     private(set) var reconcileCount = 0
+    private(set) var enablePolicies: [ClosedDisplayAuthorizationPolicy] = []
+    private(set) var disablePolicies: [ClosedDisplayAuthorizationPolicy] = []
     var reconcileResult = true
+    var enableDelay: Duration?
 
     func recoverIfNeeded() async -> Bool { true }
 
@@ -599,7 +661,13 @@ private final class FakeClosedDisplayModeManager: ClosedDisplayModeManaging {
     }
 
     func enable() async throws {
+        try await enable(interaction: .nonInteractive)
+    }
+
+    func enable(interaction: ClosedDisplayAuthorizationPolicy) async throws {
         enableCount += 1
+        enablePolicies.append(interaction)
+        if let enableDelay { try await Task.sleep(for: enableDelay) }
         isEnabled = true
     }
 
@@ -607,7 +675,12 @@ private final class FakeClosedDisplayModeManager: ClosedDisplayModeManaging {
     var disableErrorsRemaining = 0
 
     func disable() async throws {
+        try await disable(interaction: .nonInteractive)
+    }
+
+    func disable(interaction: ClosedDisplayAuthorizationPolicy) async throws {
         disableCount += 1
+        disablePolicies.append(interaction)
         if disableErrorsRemaining > 0 {
             disableErrorsRemaining -= 1
             throw DisableFailure()

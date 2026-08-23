@@ -13,17 +13,14 @@ final class PowerProtectController {
     }
 
     @ObservationIgnored private let service: any PowerProtectServicing
-    @ObservationIgnored private let userName: String
     @ObservationIgnored private var operationTask: Task<Void, Never>?
     private(set) var state: State
     private(set) var lastErrorMessage: String?
 
     init(
-        service: any PowerProtectServicing = SudoersPowerProtectService(),
-        userName: String = NSUserName()
+        service: any PowerProtectServicing = SudoersPowerProtectService()
     ) {
         self.service = service
-        self.userName = userName
         state = Self.state(for: service.status())
     }
 
@@ -35,12 +32,12 @@ final class PowerProtectController {
     }
 
     func install() {
-        guard operationTask == nil, state != .unsupported else { return }
+        guard operationTask == nil, state == .notInstalled else { return }
         state = .working
         operationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await self.service.install(for: self.userName)
+                try await self.service.install()
                 self.state = Self.state(for: self.service.status())
                 self.lastErrorMessage = nil
             } catch is CancellationError {
@@ -54,12 +51,12 @@ final class PowerProtectController {
     }
 
     func uninstall() {
-        guard operationTask == nil, state != .unsupported else { return }
+        guard operationTask == nil, state == .installed else { return }
         state = .working
         operationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await self.service.uninstall(for: self.userName)
+                try await self.service.uninstall()
                 self.state = Self.state(for: self.service.status())
                 self.lastErrorMessage = nil
             } catch is CancellationError {

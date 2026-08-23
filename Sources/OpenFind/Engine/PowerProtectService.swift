@@ -9,6 +9,8 @@ enum PowerProtectInstallationStatus: Equatable, Sendable {
 
 enum PowerProtectError: Error, Equatable, LocalizedError {
     case unsupported
+    case authorizationRequired
+    case authorizationCancelled
     case invalidUserName
     case existingRuleInvalid
     case commandFailed
@@ -19,6 +21,10 @@ enum PowerProtectError: Error, Equatable, LocalizedError {
         switch self {
         case .unsupported:
             L("Power Protect Unsupported")
+        case .authorizationRequired:
+            L("Power Protect Authorization Required")
+        case .authorizationCancelled:
+            L("Power Protect Authorization Cancelled")
         case .invalidUserName:
             L("Power Protect User Invalid")
         case .existingRuleInvalid:
@@ -41,6 +47,7 @@ struct PowerProtectRule: Equatable, Sendable {
     init(userName: String) throws {
         let scalars = userName.unicodeScalars
         guard !userName.isEmpty,
+              userName.caseInsensitiveCompare("ALL") != .orderedSame,
               userName.utf8.count <= 64,
               let first = scalars.first,
               CharacterSet.letters.union(CharacterSet(charactersIn: "_")).contains(first),
@@ -69,25 +76,33 @@ struct PowerProtectRule: Equatable, Sendable {
 
 enum PowerProtectFileValidator {
     static func isValid(
-        data: Data,
+        data: Data?,
         attributes: [FileAttributeKey: Any],
         userName: String
     ) -> Bool {
-        guard data.count <= 4_096,
-              attributes[.type] as? FileAttributeType == .typeRegular,
+        guard attributes[.type] as? FileAttributeType == .typeRegular,
               (attributes[.ownerAccountID] as? NSNumber)?.intValue == 0,
               (attributes[.groupOwnerAccountID] as? NSNumber)?.intValue == 0,
               (attributes[.posixPermissions] as? NSNumber)?.intValue == 0o440,
-              let rule = try? PowerProtectRule(userName: userName) else { return false }
-        return rule.matches(data)
+              let rule = try? PowerProtectRule(userName: userName),
+              (attributes[.size] as? NSNumber)?.intValue == rule.contents.utf8.count
+        else { return false }
+
+        // A correct sudoers file is root:wheel 0440, so ordinary users usually
+        // cannot read it. Validate exact bytes when available and otherwise
+        // rely on immutable root-owned metadata; the first `sudo -n` command
+        // remains the operational verification and never falls back to a
+        // second authorization prompt.
+        guard let data else { return true }
+        return data.count <= 4_096 && rule.matches(data)
     }
 }
 
 @MainActor
 protocol PowerProtectServicing: AnyObject {
     func status() -> PowerProtectInstallationStatus
-    func install(for userName: String) async throws
-    func uninstall(for userName: String) async throws
+    func install() async throws
+    func uninstall() async throws
 }
 
 @MainActor
@@ -97,6 +112,7 @@ final class SudoersPowerProtectService: PowerProtectServicing {
     private let fileManager: FileManager
     private let environment: [String: String]
     private let userNameProvider: @MainActor () -> String
+    private var installTask: Task<Void, any Error>?
 
     init(
         fileManager: FileManager = .default,
@@ -115,9 +131,8 @@ final class SudoersPowerProtectService: PowerProtectServicing {
         }
         do {
             let attributes = try fileManager.attributesOfItem(atPath: PowerProtectRule.targetPath)
-            guard let data = fileManager.contents(atPath: PowerProtectRule.targetPath),
-                  PowerProtectFileValidator.isValid(
-                    data: data,
+            guard PowerProtectFileValidator.isValid(
+                    data: fileManager.contents(atPath: PowerProtectRule.targetPath),
                     attributes: attributes,
                     userName: userNameProvider()
                   ) else {
@@ -129,17 +144,48 @@ final class SudoersPowerProtectService: PowerProtectServicing {
         }
     }
 
-    func install(for userName: String) async throws {
-        guard status() != .unsupported else { throw PowerProtectError.unsupported }
-        let rule = try PowerProtectRule(userName: userName)
-        try await runPrivileged(shellScript: installScript(rule: rule))
+    func install() async throws {
+        try Task.checkCancellation()
+        switch status() {
+        case .installed:
+            return
+        case .notInstalled:
+            break
+        case .invalid:
+            throw PowerProtectError.existingRuleInvalid
+        case .unsupported:
+            throw PowerProtectError.unsupported
+        }
+        if let installTask {
+            try await installTask.value
+            guard status() == .installed else { throw PowerProtectError.commandFailed }
+            return
+        }
+
+        let rule = try PowerProtectRule(userName: userNameProvider())
+        let task = Task { @MainActor [self] in
+            try await runPrivileged(shellScript: installScript(rule: rule))
+        }
+        installTask = task
+        defer { installTask = nil }
+        try await task.value
         guard status() == .installed else { throw PowerProtectError.commandFailed }
     }
 
-    func uninstall(for userName: String) async throws {
-        guard status() != .unsupported else { throw PowerProtectError.unsupported }
-        let rule = try PowerProtectRule(userName: userName)
-        guard status() != .notInstalled else { return }
+    func uninstall() async throws {
+        try Task.checkCancellation()
+        if let installTask { try await installTask.value }
+        switch status() {
+        case .notInstalled:
+            return
+        case .installed:
+            break
+        case .invalid:
+            throw PowerProtectError.existingRuleInvalid
+        case .unsupported:
+            throw PowerProtectError.unsupported
+        }
+        let rule = try PowerProtectRule(userName: userNameProvider())
         try await runPrivileged(shellScript: uninstallScript(rule: rule))
         guard status() == .notInstalled else { throw PowerProtectError.commandFailed }
     }
@@ -150,40 +196,52 @@ final class SudoersPowerProtectService: PowerProtectServicing {
         set -eu
         target='\(PowerProtectRule.targetPath)'
         directory='/private/etc/sudoers.d'
+        lock='/private/var/run/openfind-power-protect.lock'
         test -d "$directory"
-        test ! -L "$target"
-        if test -e "$target"; then
-          test "$(/usr/bin/head -n 1 "$target")" = '\(PowerProtectRule.marker)'
-          test "$(/usr/bin/stat -f '%Su:%Sg:%Lp' "$target")" = 'root:wheel:440'
-        fi
+        test ! -L "$directory"
+        test "$(/usr/bin/stat -f '%Su:%Sg:%Lp' "$directory")" = 'root:wheel:755'
+        exec 9>"$lock"
+        /usr/sbin/chown root:wheel "$lock"
+        /bin/chmod 0600 "$lock"
+        /usr/bin/lockf -t 30 9
         temporary="$(/usr/bin/mktemp "$directory/.openfind-rule.XXXXXX")"
-        backup=''
+        installed=0
+        installed_identity=''
+        committed=0
         cleanup() {
-          /bin/rm -f "$temporary"
-          if test -n "$backup"; then /bin/rm -f "$backup"; fi
+          status=$?
+          if test "$installed" -eq 1 && test "$committed" -ne 1 && test -e "$target" && { test -z "$temporary" || test ! -e "$temporary"; }; then
+            current_identity="$(/usr/bin/stat -f '%d:%i' "$target" 2>/dev/null || true)"
+            if test -z "$installed_identity" || test "$current_identity" = "$installed_identity"; then /bin/rm -f "$target"; fi
+          fi
+          if test -n "$temporary"; then /bin/rm -f "$temporary"; fi
+          exit "$status"
         }
-        trap cleanup EXIT HUP INT TERM
+        trap cleanup EXIT
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
         /bin/echo '\(encodedRule)' | /usr/bin/base64 -D > "$temporary"
         /usr/sbin/chown root:wheel "$temporary"
         /bin/chmod 0440 "$temporary"
         /usr/sbin/visudo -cf "$temporary" >/dev/null
         if test -e "$target"; then
-          backup="$(/usr/bin/mktemp "$directory/.openfind-backup.XXXXXX")"
-          /bin/cp -p "$target" "$backup"
+          test ! -L "$target"
+          test "$(/usr/bin/stat -f '%HT:%Su:%Sg:%Lp' "$target")" = 'Regular File:root:wheel:440'
+          /usr/bin/cmp -s "$temporary" "$target"
+          committed=1
+          exit 0
         fi
-        /bin/mv -f "$temporary" "$target"
+        installed=1
+        /bin/mv -n "$temporary" "$target"
+        test ! -e "$temporary"
         temporary=''
+        installed_identity="$(/usr/bin/stat -f '%d:%i' "$target")"
         if ! /usr/sbin/visudo -cf /etc/sudoers >/dev/null; then
-          if test -n "$backup"; then
-            /bin/mv -f "$backup" "$target"
-            backup=''
-          else
-            /bin/rm -f "$target"
-          fi
           exit 1
         fi
-        /bin/chmod 0440 "$target"
-        /usr/sbin/chown root:wheel "$target"
+        test "$(/usr/bin/stat -f '%HT:%Su:%Sg:%Lp' "$target")" = 'Regular File:root:wheel:440'
+        committed=1
         """
     }
 
@@ -193,22 +251,45 @@ final class SudoersPowerProtectService: PowerProtectServicing {
         set -eu
         target='\(PowerProtectRule.targetPath)'
         directory='/private/etc/sudoers.d'
+        lock='/private/var/run/openfind-power-protect.lock'
+        test -d "$directory"
+        test ! -L "$directory"
+        test "$(/usr/bin/stat -f '%Su:%Sg:%Lp' "$directory")" = 'root:wheel:755'
+        exec 9>"$lock"
+        /usr/sbin/chown root:wheel "$lock"
+        /bin/chmod 0600 "$lock"
+        /usr/bin/lockf -t 30 9
         test ! -L "$target"
         if test ! -e "$target"; then exit 0; fi
-        test "$(/usr/bin/stat -f '%Su:%Sg:%Lp' "$target")" = 'root:wheel:440'
+        test "$(/usr/bin/stat -f '%HT:%Su:%Sg:%Lp' "$target")" = 'Regular File:root:wheel:440'
         expected="$(/usr/bin/mktemp "$directory/.openfind-expected.XXXXXX")"
         backup="$(/usr/bin/mktemp "$directory/.openfind-remove-backup.XXXXXX")"
-        cleanup() { /bin/rm -f "$expected" "$backup"; }
-        trap cleanup EXIT HUP INT TERM
+        removed=0
+        committed=0
+        cleanup() {
+          status=$?
+          if test "$removed" -eq 1 && test "$committed" -ne 1 && test ! -e "$target"; then
+            if /bin/mv -n "$backup" "$target"; then backup=''; fi
+          fi
+          if test -n "$expected"; then /bin/rm -f "$expected"; fi
+          if test -n "$backup" && { test "$removed" -eq 0 || test "$committed" -eq 1 || test -e "$target"; }; then
+            /bin/rm -f "$backup"
+          fi
+          exit "$status"
+        }
+        trap cleanup EXIT
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
         /bin/echo '\(encodedRule)' | /usr/bin/base64 -D > "$expected"
         /usr/bin/cmp -s "$expected" "$target"
         /bin/cp -p "$target" "$backup"
+        removed=1
         /bin/rm -f "$target"
         if ! /usr/sbin/visudo -cf /etc/sudoers >/dev/null; then
-          /bin/mv -f "$backup" "$target"
-          backup=''
           exit 1
         fi
+        committed=1
         """
     }
 
@@ -233,6 +314,9 @@ final class SudoersPowerProtectService: PowerProtectServicing {
         guard !result.outputExceededLimit else { throw PowerProtectError.outputTooLarge }
         guard result.terminationStatus == 0 else {
             let message = String(decoding: result.output, as: UTF8.self)
+            if message.contains("(-128)") || message.localizedCaseInsensitiveContains("canceled") {
+                throw PowerProtectError.authorizationCancelled
+            }
             if message.contains("OpenFind Power Protect")
                 || message.contains("stat")
                 || message.contains("cmp") {

@@ -26,6 +26,7 @@ final class AwakeSessionController {
 
     private(set) var activeSession: AwakeSession?
     private(set) var lastErrorMessage: String?
+    private(set) var isPowerTransitionInProgress = false
 
     init(
         assertions: any PowerAssertionControlling = PowerAssertionEngine(),
@@ -67,6 +68,11 @@ final class AwakeSessionController {
         closedDisplay.isSupported
     }
 
+    var requiresClosedDisplayRestoration: Bool {
+        activeSession?.options.allowsClosedDisplaySleep == false
+            || closedDisplay.hasPendingRestoration
+    }
+
     var allowsClosedDisplaySleep: Bool {
         activeSession?.options.allowsClosedDisplaySleep ?? true
     }
@@ -96,8 +102,15 @@ final class AwakeSessionController {
         var request = request
         request.options = try request.options.validated()
         let endCondition = try prepareEndCondition(for: request, at: now)
+        guard !operationGate.isOccupied else {
+            throw AwakeSessionValidationError.powerTransitionInProgress
+        }
         await operationGate.enter()
-        defer { operationGate.leave() }
+        isPowerTransitionInProgress = true
+        defer {
+            isPowerTransitionInProgress = false
+            operationGate.leave()
+        }
         try Task.checkCancellation()
 
         let previouslyPrevented = activeSession?.options.allowsClosedDisplaySleep == false
@@ -108,9 +121,13 @@ final class AwakeSessionController {
         do {
             if transitionNeeded {
                 if shouldPrevent {
-                    try await closedDisplay.enable()
+                    try await closedDisplay.enable(
+                        interaction: authorizationPolicy(for: request.source)
+                    )
                 } else {
-                    try await closedDisplay.disable()
+                    try await closedDisplay.disable(
+                        interaction: authorizationPolicy(for: request.source)
+                    )
                 }
                 try Task.checkCancellation()
             }
@@ -144,8 +161,15 @@ final class AwakeSessionController {
     }
 
     func endAsync(reason: AwakeSessionEndReason = .requested) async throws {
+        guard !operationGate.isOccupied else {
+            throw AwakeSessionValidationError.powerTransitionInProgress
+        }
         await operationGate.enter()
-        defer { operationGate.leave() }
+        isPowerTransitionInProgress = true
+        defer {
+            isPowerTransitionInProgress = false
+            operationGate.leave()
+        }
         try Task.checkCancellation()
 
         let shouldRestoreClosedDisplay = activeSession?.options.allowsClosedDisplaySleep == false
@@ -159,7 +183,11 @@ final class AwakeSessionController {
         let shouldReenableAfterAssertionFailure =
             activeSession?.options.allowsClosedDisplaySleep == false
         do {
-            try await closedDisplay.disable()
+            try await closedDisplay.disable(
+                interaction: reason == .requested
+                    ? .installPowerProtectIfNeeded
+                    : .nonInteractive
+            )
             try Task.checkCancellation()
             try assertions.deactivate()
         } catch {
@@ -174,18 +202,28 @@ final class AwakeSessionController {
         clearSessionLifecycle(reason: reason)
     }
 
-    func setClosedDisplaySleepAllowed(_ allowed: Bool) async throws {
+    func setClosedDisplaySleepAllowed(
+        _ allowed: Bool,
+        interaction: ClosedDisplayAuthorizationPolicy = .nonInteractive
+    ) async throws {
+        guard !operationGate.isOccupied else {
+            throw AwakeSessionValidationError.powerTransitionInProgress
+        }
         await operationGate.enter()
-        defer { operationGate.leave() }
+        isPowerTransitionInProgress = true
+        defer {
+            isPowerTransitionInProgress = false
+            operationGate.leave()
+        }
         try Task.checkCancellation()
 
         guard var session = activeSession,
               session.options.allowsClosedDisplaySleep != allowed else { return }
         do {
             if allowed {
-                try await closedDisplay.disable()
+                try await closedDisplay.disable(interaction: interaction)
             } else {
-                try await closedDisplay.enable()
+                try await closedDisplay.enable(interaction: interaction)
             }
             try Task.checkCancellation()
         } catch let operationError {
@@ -223,7 +261,10 @@ final class AwakeSessionController {
     func requestClosedDisplaySleepAllowed(_ allowed: Bool) {
         Task { @MainActor [weak self] in
             do {
-                try await self?.setClosedDisplaySleepAllowed(allowed)
+                try await self?.setClosedDisplaySleepAllowed(
+                    allowed,
+                    interaction: .installPowerProtectIfNeeded
+                )
                 self?.lastErrorMessage = nil
             } catch {
                 self?.lastErrorMessage = error.localizedDescription
@@ -238,7 +279,11 @@ final class AwakeSessionController {
 
     func recoverClosedDisplayState() async -> Bool {
         await operationGate.enter()
-        defer { operationGate.leave() }
+        isPowerTransitionInProgress = true
+        defer {
+            isPowerTransitionInProgress = false
+            operationGate.leave()
+        }
         let recovered = await closedDisplay.recoverIfNeeded()
         if !recovered {
             lastErrorMessage = ClosedDisplayModeError.recoveryFailed.localizedDescription
@@ -628,7 +673,9 @@ final class AwakeSessionController {
         closedDisplayPowerTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.operationGate.enter()
+            self.isPowerTransitionInProgress = true
             defer {
+                self.isPowerTransitionInProgress = false
                 self.operationGate.leave()
                 self.closedDisplayPowerTask = nil
             }
@@ -747,6 +794,12 @@ final class AwakeSessionController {
         !request.options.allowsClosedDisplaySleep
             || activeSession?.options.allowsClosedDisplaySleep == false
             || closedDisplay.hasPendingRestoration
+    }
+
+    private func authorizationPolicy(
+        for source: AwakeSessionSource
+    ) -> ClosedDisplayAuthorizationPolicy {
+        source == .manual ? .installPowerProtectIfNeeded : .nonInteractive
     }
 }
 
