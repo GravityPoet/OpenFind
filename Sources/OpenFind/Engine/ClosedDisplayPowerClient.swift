@@ -1,14 +1,40 @@
+import AppKit
 import Foundation
 
 @MainActor
 protocol ClosedDisplayPowerClient: AnyObject {
     func readSleepDisabled() async throws -> Bool
+    func authorizePowerProtectIfNeeded() async throws
     func setSleepDisabled(_ disabled: Bool) async throws
     func setSleepDisabledWithoutPrompt(_ disabled: Bool) async throws -> Bool
 }
 
 extension ClosedDisplayPowerClient {
+    func authorizePowerProtectIfNeeded() async throws {}
     func setSleepDisabledWithoutPrompt(_ disabled: Bool) async throws -> Bool { false }
+}
+
+enum PowerProtectAuthorizationChoice: Equatable {
+    case authorize
+    case cancel
+}
+
+@MainActor
+protocol PowerProtectAuthorizationPrompting: AnyObject {
+    func requestAuthorization() -> PowerProtectAuthorizationChoice
+}
+
+@MainActor
+final class SystemPowerProtectAuthorizationPrompt: PowerProtectAuthorizationPrompting {
+    func requestAuthorization() -> PowerProtectAuthorizationChoice {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = L("Power Protect One-Time Authorization Title")
+        alert.informativeText = L("Power Protect One-Time Authorization Body")
+        alert.addButton(withTitle: L("Authorize Once and Continue"))
+        alert.addButton(withTitle: L("Cancel"))
+        return alert.runModal() == .alertFirstButtonReturn ? .authorize : .cancel
+    }
 }
 
 enum ClosedDisplayPowerError: Error, Equatable, LocalizedError {
@@ -71,20 +97,43 @@ struct PMSetOutputParser {
 @MainActor
 final class PMSetClosedDisplayPowerClient: ClosedDisplayPowerClient {
     private static let pmsetPath = "/usr/bin/pmset"
-    private static let osascriptPath = "/usr/bin/osascript"
     private static let sudoPath = "/usr/bin/sudo"
     private nonisolated static let maximumOutputBytes = 64 * 1_024
     private let powerProtect: any PowerProtectServicing
+    private let authorizationPrompt: any PowerProtectAuthorizationPrompting
     private let systemPowerAccessAllowed: () -> Bool
+    private let commandRunner: @MainActor (
+        URL,
+        [String],
+        TimeInterval,
+        Int
+    ) async throws -> BoundedProcessResult
 
     init(
         powerProtect: any PowerProtectServicing = SudoersPowerProtectService(),
+        authorizationPrompt: any PowerProtectAuthorizationPrompting =
+            SystemPowerProtectAuthorizationPrompt(),
         systemPowerAccessAllowed: @escaping () -> Bool = {
             ClosedDisplayPowerAccessPolicy.isAllowed()
+        },
+        commandRunner: @escaping @MainActor (
+            URL,
+            [String],
+            TimeInterval,
+            Int
+        ) async throws -> BoundedProcessResult = { executableURL, arguments, timeout, limit in
+            try await BoundedProcessRunner.run(
+                executableURL: executableURL,
+                arguments: arguments,
+                timeout: timeout,
+                outputLimit: limit
+            )
         }
     ) {
         self.powerProtect = powerProtect
+        self.authorizationPrompt = authorizationPrompt
         self.systemPowerAccessAllowed = systemPowerAccessAllowed
+        self.commandRunner = commandRunner
     }
 
     func readSleepDisabled() async throws -> Bool {
@@ -102,23 +151,43 @@ final class PMSetClosedDisplayPowerClient: ClosedDisplayPowerClient {
         return value
     }
 
+    func authorizePowerProtectIfNeeded() async throws {
+        guard systemPowerAccessAllowed() else {
+            throw ClosedDisplayPowerError.testAccessBlocked
+        }
+        switch powerProtect.status() {
+        case .installed:
+            return
+        case .notInstalled:
+            guard authorizationPrompt.requestAuthorization() == .authorize else {
+                throw PowerProtectError.authorizationCancelled
+            }
+            try await powerProtect.install()
+            guard powerProtect.status() == .installed else {
+                throw PowerProtectError.commandFailed
+            }
+        case .invalid:
+            throw PowerProtectError.existingRuleInvalid
+        case .unsupported:
+            throw PowerProtectError.unsupported
+        }
+    }
+
     func setSleepDisabled(_ disabled: Bool) async throws {
         guard systemPowerAccessAllowed() else {
             throw ClosedDisplayPowerError.testAccessBlocked
         }
-        let value = disabled ? "1" : "0"
-        do {
-            if try await setSleepDisabledWithoutPrompt(disabled) { return }
-        } catch {
-            // The rule may have been revoked outside OpenFind. A user-initiated
-            // transition can still fall back to the standard admin prompt.
+        if try await setSleepDisabledWithoutPrompt(disabled) { return }
+        switch powerProtect.status() {
+        case .notInstalled:
+            throw PowerProtectError.authorizationRequired
+        case .invalid:
+            throw PowerProtectError.existingRuleInvalid
+        case .unsupported:
+            throw PowerProtectError.unsupported
+        case .installed:
+            throw PowerProtectError.commandFailed
         }
-        let script = "do shell script \"/usr/bin/pmset -a disablesleep \(value)\" with administrator privileges"
-        _ = try await run(
-            command: Self.osascriptPath,
-            arguments: ["-e", script],
-            timeout: 300
-        )
     }
 
     func setSleepDisabledWithoutPrompt(_ disabled: Bool) async throws -> Bool {
@@ -142,11 +211,11 @@ final class PMSetClosedDisplayPowerClient: ClosedDisplayPowerClient {
     ) async throws -> String {
         let result: BoundedProcessResult
         do {
-            result = try await BoundedProcessRunner.run(
-                executableURL: URL(fileURLWithPath: command),
-                arguments: arguments,
-                timeout: timeout,
-                outputLimit: Self.maximumOutputBytes
+            result = try await commandRunner(
+                URL(fileURLWithPath: command),
+                arguments,
+                timeout,
+                Self.maximumOutputBytes
             )
         } catch is CancellationError {
             throw CancellationError()

@@ -230,7 +230,10 @@ struct SettingsView: View {
                 preferences: awakeSessionPreferences,
                 activity: sessionActivity
             )
-            PowerProtectSettingsSection(controller: powerProtect)
+            PowerProtectSettingsSection(
+                controller: powerProtect,
+                canUninstall: !awakeSession.requiresClosedDisplayRestoration
+            )
             AwakeHotKeySettingsSection(controller: awakeHotKeys)
         }
         .formStyle(.grouped)
