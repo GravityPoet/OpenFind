@@ -44,6 +44,12 @@ extension ClipboardHistoryStore {
         let representations = [NSPasteboard.PasteboardType.string.rawValue: data]
         entries[index].representations = representations
         entries[index].pasteboardItems = nil
+        entries[index].payloadDescriptor = ClipboardPayloadDescriptor.make(
+            for: entries[index].retainedPasteboardItems
+        )
+        nonresidentPayloadEntryIDs.remove(entry.id)
+        removeMaterializedPayloadFromCache(entry.id)
+        hasUnpersistedPayloadChanges = true
         entries[index].previewText = String(text.prefix(4_096))
         entries[index].kind = .text
         persist()

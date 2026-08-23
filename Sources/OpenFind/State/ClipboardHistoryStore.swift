@@ -37,8 +37,13 @@ final class ClipboardHistoryStore {
     @ObservationIgnored let imageTextRecognizer: any ClipboardImageTextRecognizing
     @ObservationIgnored let imageTextRecognitionStartDelay: Duration
     @ObservationIgnored let deletionUndoBannerDuration: Duration
+    @ObservationIgnored var hasUnpersistedChanges = false
+    @ObservationIgnored var suppressEntryDirtyTracking = false
     var entries: [ClipboardEntry] = [] {
-        didSet { invalidateClipboardProjection() }
+        didSet {
+            invalidateClipboardProjection()
+            if !suppressEntryDirtyTracking { hasUnpersistedChanges = true }
+        }
     }
     var lastErrorMessage: String?
     var isPersistenceEnabled = true
@@ -104,6 +109,12 @@ final class ClipboardHistoryStore {
     @ObservationIgnored var previewPresentationTask: Task<Void, Never>?
     @ObservationIgnored var deletionUndoBannerDismissTask: Task<Void, Never>?
     @ObservationIgnored var deletionUndoBannerGeneration: UInt64 = 0
+    @ObservationIgnored var nonresidentPayloadEntryIDs: Set<UUID> = []
+    @ObservationIgnored var materializedPayloadCache: [UUID: ClipboardEntry] = [:]
+    @ObservationIgnored var materializedPayloadCacheOrder: [UUID] = []
+    @ObservationIgnored var materializedPayloadCacheBytes = 0
+    @ObservationIgnored var isClipboardBackgroundResident = false
+    @ObservationIgnored var hasUnpersistedPayloadChanges = false
     var selectedIndex = 0
     var selectedEntryIDs: [UUID] = []
     var selectionAnchorID: UUID?
@@ -139,11 +150,16 @@ final class ClipboardHistoryStore {
         requiresPersistenceMigration = enabled && persistence.requiresExplicitMigration
         guard enabled, !requiresPersistenceMigration else { return }
         do {
-            entries = try persistence.load()
+            entries = try persistence.loadResidentHistory()
+            nonresidentPayloadEntryIDs = persistence.unloadedPayloadEntryIDs
             let trimmed = trimToLimits()
             let normalizedKinds = normalizeContentKinds()
             let normalizedPins = normalizePinnedKeys()
-            if trimmed || normalizedKinds || normalizedPins { persist() }
+            if trimmed || normalizedKinds || normalizedPins {
+                _ = persist()
+            } else {
+                hasUnpersistedChanges = false
+            }
             enqueueMissingImageTextRecognition()
         } catch {
             // A transient load failure must degrade this session to
@@ -181,7 +197,10 @@ final class ClipboardHistoryStore {
         guard entry.kind == .image else { return nil }
         let key = entry.id as NSUUID
         if let cached = rowImageCache.object(forKey: key) { return cached }
-        guard let image = entry.downsampledPreviewImage(maxPixelSize: 256) else { return nil }
+        let materialized = (try? materializedEntry(for: entry)) ?? entry
+        guard let image = materialized.downsampledPreviewImage(maxPixelSize: 256) else {
+            return nil
+        }
         let cost = Int(image.size.width * image.size.height * 4)
         rowImageCache.setObject(image, forKey: key, cost: cost)
         return image
@@ -191,7 +210,10 @@ final class ClipboardHistoryStore {
         guard entry.kind == .image else { return nil }
         let key = entry.id as NSUUID
         if let cached = previewImageCache.object(forKey: key) { return cached }
-        guard let image = entry.downsampledPreviewImage(maxPixelSize: 1_600) else { return nil }
+        let materialized = (try? materializedEntry(for: entry)) ?? entry
+        guard let image = materialized.downsampledPreviewImage(maxPixelSize: 1_600) else {
+            return nil
+        }
         let cost = Int(image.size.width * image.size.height * 4)
         previewImageCache.setObject(image, forKey: key, cost: cost)
         return image
@@ -201,7 +223,8 @@ final class ClipboardHistoryStore {
         guard entry.kind == .image else { return nil }
         let key = entry.id as NSUUID
         if let cached = imageDimensionsCache.object(forKey: key) { return cached as String }
-        guard let dimensions = entry.imageDimensions else { return nil }
+        let materialized = (try? materializedEntry(for: entry)) ?? entry
+        guard let dimensions = materialized.imageDimensions else { return nil }
         imageDimensionsCache.setObject(dimensions as NSString, forKey: key)
         return dimensions
     }
@@ -219,7 +242,27 @@ final class ClipboardHistoryStore {
         clipboardProjectionRevision &+= 1
     }
 
+    func releasePresentationCachesForBackground() {
+        rowImageCache.removeAllObjects()
+        previewImageCache.removeAllObjects()
+        imageDimensionsCache.removeAllObjects()
+        applicationIconCache.removeAllObjects()
+        cachedClipboardProjectionRevision = nil
+        cachedFilteredEntries.removeAll(keepingCapacity: false)
+        cachedVisibleIndexByID.removeAll(keepingCapacity: false)
+        cachedQuickIndexByID.removeAll(keepingCapacity: false)
+        cachedQuickEntryIDs.removeAll(keepingCapacity: false)
+        cachedSearchPresentationByID.removeAll(keepingCapacity: false)
+        cachedFrequentEntryIDs.removeAll(keepingCapacity: false)
+        cachedFrequentEntryIDsInOrder.removeAll(keepingCapacity: false)
+        cachedEntryByID.removeAll(keepingCapacity: false)
+        cachedSnippetKeywords.removeAll(keepingCapacity: false)
+        cachedUsageRankingDate = nil
+        invalidateClipboardProjection()
+    }
+
     func beginPresentation() {
+        resumePayloadsForPresentation()
         previewPresentationTask?.cancel()
         previewPresentationTask = nil
         // Refresh time-decayed usage periodically without throwing away the

@@ -76,6 +76,27 @@ struct AppLaunchContextTests {
         #expect(context.persistence.loadCount == 1)
     }
 
+    @Test func menuBarAndSettingsStaySearchColdUntilTheMainWindowOpens() throws {
+        let application = NSApplication.shared
+        let existingWindows = Set(application.windows.map(ObjectIdentifier.init))
+        let context = makeContext(shouldPresentFirstRunGuide: false)
+        let delegate = context.delegate
+        defer { closeTestWindows(application, excluding: existingWindows) }
+
+        delegate.presentInitialInterface()
+        #expect(!delegate.viewModel.isIndexLifecycleStarted)
+
+        delegate.showSettingsWindow(nil)
+        #expect(!delegate.viewModel.isIndexLifecycleStarted)
+        let settings = try #require(application.windows.first {
+            $0.identifier?.rawValue == "OpenFind.settings" && $0.isVisible
+        })
+        #expect(!delegate.windowShouldClose(settings))
+
+        delegate.showOpenFindWindow(nil)
+        #expect(delegate.viewModel.isIndexLifecycleStarted)
+    }
+
     private func closeTestWindows(
         _ application: NSApplication,
         excluding existingWindows: Set<ObjectIdentifier>

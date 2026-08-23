@@ -14,7 +14,8 @@ extension ClipboardHistoryStore {
     func enqueueImageTextRecognition(ids: some Sequence<UUID>) {
         guard preferences.imageTextRecognitionEnabled else { return }
         pendingImageTextRecognitionIDs.formUnion(ids)
-        guard imageTextRecognitionTask == nil,
+        guard !isClipboardBackgroundResident,
+              imageTextRecognitionTask == nil,
               !pendingImageTextRecognitionIDs.isEmpty else { return }
         let startDelay = imageTextRecognitionStartDelay
         imageTextRecognitionTask = Task { @MainActor [weak self] in
@@ -33,9 +34,13 @@ extension ClipboardHistoryStore {
                 pendingImageTextRecognitionIDs.remove(id)
                 guard let entry = entries.first(where: { $0.id == id }),
                       needsImageTextRecognition(entry),
-                      let data = entry.imageData else { continue }
+                      let materialized = try? materializedEntry(for: entry),
+                      let data = materialized.imageData else { continue }
                 let recognized = await imageTextRecognizer.recognizeText(in: data)
-                guard !Task.isCancelled else { break }
+                guard !Task.isCancelled else {
+                    pendingImageTextRecognitionIDs.insert(id)
+                    break
+                }
                 changed = applyRecognizedText(recognized, to: id) || changed
             }
             imageTextRecognitionTask = nil
@@ -76,6 +81,11 @@ extension ClipboardHistoryStore {
         }
     }
 
+    func pauseImageTextRecognitionForBackground() {
+        imageTextRecognitionTask?.cancel()
+        imageTextRecognitionTask = nil
+    }
+
     @discardableResult
     private func applyRecognizedText(_ value: String?, to id: UUID) -> Bool {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return false }
@@ -95,7 +105,7 @@ extension ClipboardHistoryStore {
     }
 
     private func needsImageTextRecognition(_ entry: ClipboardEntry) -> Bool {
-        guard entry.kind == .image, entry.imageData != nil else { return false }
+        guard entry.kind == .image else { return false }
         if entry.recognizedText == nil { return true }
         return entry.recognizedText?.isEmpty == true
             && (entry.imageTextRecognitionRevision ?? 0)

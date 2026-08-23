@@ -11,6 +11,7 @@ final class DriveAliveController {
     @ObservationIgnored private var loopTask: Task<Void, Never>?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshGeneration: UInt64 = 0
+    @ObservationIgnored private var hasStarted = false
 
     private(set) var statuses: [UUID: DriveAliveTargetStatus] = [:]
     private(set) var lastErrorMessage: String?
@@ -37,21 +38,14 @@ final class DriveAliveController {
     }
 
     func start() {
-        guard loopTask == nil else { return }
-        loopTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled {
-                await self.refresh()
-                do {
-                    try await Task.sleep(for: .seconds(self.store.interval))
-                } catch {
-                    break
-                }
-            }
-        }
+        guard !hasStarted else { return }
+        hasStarted = true
+        observeStoreChanges()
+        reconcileLoop()
     }
 
     func stop() {
+        hasStarted = false
         loopTask?.cancel()
         loopTask = nil
         refreshTask?.cancel()
@@ -137,7 +131,9 @@ final class DriveAliveController {
             return results
         }
         guard !Task.isCancelled else { return }
+        guard store.isEnabled else { return }
         for (id, result) in outcomes {
+            guard store.target(id: id) != nil else { continue }
             switch result {
             case .success:
                 statuses[id] = .healthy(Date())
@@ -169,6 +165,7 @@ final class DriveAliveController {
         _ = try store.remove(id: id)
         statuses.removeValue(forKey: id)
         lastErrorMessage = cleanupFailure?.localizedDescription
+        reconcileLoop()
     }
 
     func clearError() {
@@ -183,6 +180,49 @@ final class DriveAliveController {
                 guard let self else { return }
                 if self.isRunning { await self.refresh() }
                 self.observeSessionChanges()
+            }
+        }
+    }
+
+    private func observeStoreChanges() {
+        guard hasStarted else { return }
+        withObservationTracking {
+            _ = store.isEnabled
+            _ = store.interval
+            _ = store.targets
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.hasStarted else { return }
+                self.reconcileLoop()
+                self.observeStoreChanges()
+            }
+        }
+    }
+
+    private func reconcileLoop() {
+        guard hasStarted,
+              store.isEnabled,
+              !store.targets.isEmpty else {
+            refreshGeneration &+= 1
+            refreshTask?.cancel()
+            refreshTask = nil
+            loopTask?.cancel()
+            loopTask = nil
+            let configuredIDs = Set(store.targets.map(\.id))
+            statuses = statuses.filter { configuredIDs.contains($0.key) }
+            for target in store.targets { statuses[target.id] = .inactive }
+            return
+        }
+        guard loopTask == nil else { return }
+        loopTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                await self.refresh()
+                do {
+                    try await Task.sleep(for: .seconds(self.store.interval))
+                } catch {
+                    break
+                }
             }
         }
     }

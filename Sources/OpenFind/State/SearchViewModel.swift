@@ -60,6 +60,7 @@ final class SearchViewModel {
     @ObservationIgnored private var staleNameResultCount = 0
     @ObservationIgnored private var excludedNameResultIdentities: Set<ResolvedNodeIdentity> = []
     private let indexStore: SearchIndexStore
+    @ObservationIgnored private(set) var isIndexLifecycleStarted: Bool
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
     @ObservationIgnored private var automaticSearchTask: Task<Void, Never>?
@@ -114,6 +115,7 @@ final class SearchViewModel {
         resultPublishStride = max(pageSize, 512)
         visibleResultLimit = pageSize
         self.indexStore = indexStore
+        isIndexLifecycleStarted = startIndexing
         self.automaticSearchQuietPeriod = automaticSearchQuietPeriod
         options = initialOptions ?? Preferences.loadOptions()
         if let initialScopes {
@@ -317,11 +319,14 @@ final class SearchViewModel {
 
         let didHibernate = await indexStore.hibernate()
         guard didHibernate, !Task.isCancelled else { return }
+        isIndexLifecycleStarted = false
         indexStats = await indexStore.stats()
         ProcessMemoryReclaimer.schedule()
     }
 
     func resumeFromBackground() {
+        guard !isIndexLifecycleStarted else { return }
+        isIndexLifecycleStarted = true
         startIndexStatsObserver()
         refreshIndex()
     }

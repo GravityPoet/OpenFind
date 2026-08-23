@@ -5,6 +5,30 @@ import Testing
 @MainActor
 @Suite("Drive Alive Controller Tests")
 struct DriveAliveControllerTests {
+    @Test func disabledOrEmptyConfigurationDoesNotStartTheKeepAliveLoop() async throws {
+        let suite = "OpenFindTests.DriveAliveControllerIdle.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let resolver = FakeControllerResolver()
+        let store = DriveAliveStore(defaults: defaults, resolver: resolver)
+        let writer = FakeDriveAliveWriter()
+        let controller = DriveAliveController(
+            store: store,
+            sessions: AwakeSessionController(assertions: FakeControllerAssertions()),
+            resolver: resolver,
+            writer: writer
+        )
+
+        controller.start()
+        #expect(!controller.isRunning)
+        let id = try store.add(directoryURL: FileManager.default.temporaryDirectory)
+        store.setEnabled(true)
+        try await waitUntil { controller.isRunning }
+        #expect(store.target(id: id) != nil)
+        controller.stop()
+        #expect(!controller.isRunning)
+    }
+
     @Test func alwaysTargetsWriteWithoutAnAwakeSession() async throws {
         let suite = "OpenFindTests.DriveAliveController.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -103,6 +127,17 @@ struct DriveAliveControllerTests {
         #expect(store.targets.isEmpty)
         #expect(controller.statuses[id] == nil)
         #expect(controller.lastErrorMessage == DriveAliveFailure.targetUnavailable.localizedDescription)
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(1),
+        condition: @escaping @MainActor () -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while !condition(), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(condition())
     }
 }
 

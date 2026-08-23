@@ -5,6 +5,33 @@ import Testing
 @MainActor
 @Suite("Awake Notification Controller Tests")
 struct AwakeNotificationControllerTests {
+    @Test func closedDisplayMonitorsRunOnlyWhenWarningIsEnabled() async throws {
+        let suite = "OpenFindTests.AwakeNotificationsIdle.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let lid = FakeNotificationClosedDisplayStateMonitor()
+        let environment = FakeClosedDisplayWarningEnvironment()
+        let controller = AwakeNotificationController(
+            sessions: AwakeSessionController(assertions: NotificationPowerAssertions()),
+            defaults: defaults,
+            delivery: FakeNotificationDelivery(),
+            soundPlayer: FakeSoundPlayer(),
+            closedDisplayState: lid,
+            closedDisplayWarningEnvironment: environment
+        )
+        controller.start()
+        defer { controller.stop() }
+
+        #expect(lid.startCount == 0)
+        #expect(environment.startCount == 0)
+        controller.setWarnsClosedDisplay(true)
+        #expect(lid.startCount == 1)
+        #expect(environment.startCount == 1)
+        controller.setWarnsClosedDisplay(false)
+        #expect(lid.stopCount == 1)
+        #expect(environment.stopCount == 1)
+    }
+
     @Test func notificationChannelMatchesSigningIdentity() {
         #expect(SystemAwakeNotificationDelivery.shouldUseLocalBanner(
             signingTeamIdentifier: nil
@@ -293,12 +320,16 @@ private final class FakeClosedDisplayWarningSound: ClosedDisplayWarningSoundPlay
 private final class FakeNotificationClosedDisplayStateMonitor: ClosedDisplayStateMonitoring {
     private var handler: (@MainActor (ClosedDisplayHardwareState) -> Void)?
     private var state: ClosedDisplayHardwareState = .open
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
 
     func start(handler: @escaping @MainActor (ClosedDisplayHardwareState) -> Void) {
+        startCount += 1
         self.handler = handler
     }
 
     func stop() {
+        stopCount += 1
         handler = nil
     }
 
@@ -314,16 +345,20 @@ private final class FakeNotificationClosedDisplayStateMonitor: ClosedDisplayStat
 private final class FakeClosedDisplayWarningEnvironment: ClosedDisplayWarningEnvironmentProviding {
     private(set) var suppressesWarning: Bool
     private var handler: (@MainActor () -> Void)?
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
 
     init(suppressesWarning: Bool = false) {
         self.suppressesWarning = suppressesWarning
     }
 
     func start(handler: @escaping @MainActor () -> Void) {
+        startCount += 1
         self.handler = handler
     }
 
     func stop() {
+        stopCount += 1
         handler = nil
     }
 

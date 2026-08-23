@@ -92,7 +92,7 @@ struct GetClipboardItemTextIntent: AppIntent {
                   let entry = store.entries.first(where: { $0.id == item.id }) else {
                 throw ClipboardHistoryError.entryNotFound
             }
-            guard let text = store.plainText(for: entry) else {
+            guard let text = try store.plainTextMaterializing(for: entry) else {
                 throw ClipboardHistoryError.unsupportedContent
             }
             return text

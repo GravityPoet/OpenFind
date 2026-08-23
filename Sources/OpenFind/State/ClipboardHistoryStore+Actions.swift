@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Foundation
 
 extension ClipboardHistoryStore {
@@ -7,6 +8,7 @@ extension ClipboardHistoryStore {
         guard entries.contains(where: { $0.id == entry.id }) else {
             throw ClipboardHistoryError.entryNotFound
         }
+        let entry = try materializedEntry(for: entry)
         if entry.isPinned,
            entry.snippetExpansionEnabled != nil,
            let template = plainText(for: entry) {
@@ -69,17 +71,22 @@ extension ClipboardHistoryStore {
     }
 
     func canCopyPlainText(_ entry: ClipboardEntry) -> Bool {
-        plainText(for: entry) != nil
+        entry.resolvedPayloadDescriptor?.hasPlainText == true
+            || entry.kind == .url
+            || (preferences.imageTextRecognitionEnabled
+                && entry.kind == .image
+                && entry.recognizedText?.isEmpty == false)
     }
 
     func canMergePlainText(_ selectedEntries: [ClipboardEntry]) -> Bool {
-        selectedEntries.count > 1 && selectedEntries.allSatisfy { plainText(for: $0) != nil }
+        selectedEntries.count > 1 && selectedEntries.allSatisfy(canCopyPlainText)
     }
 
     func availableContentActions(
         for entry: ClipboardEntry
     ) -> [ClipboardContentActionDescriptor] {
-        guard let text = plainText(for: entry) else { return [] }
+        guard let materialized = try? materializedEntry(for: entry),
+              let text = plainText(for: materialized) else { return [] }
         return contentActionRegistry.actions(for: text)
     }
 
@@ -88,7 +95,7 @@ extension ClipboardHistoryStore {
         on entry: ClipboardEntry
     ) throws {
         guard entries.contains(where: { $0.id == entry.id }),
-              let text = plainText(for: entry) else {
+              let text = try plainTextMaterializing(for: entry) else {
             throw ClipboardHistoryError.entryNotFound
         }
         let transformed = try contentActionRegistry.transform(
@@ -102,7 +109,9 @@ extension ClipboardHistoryStore {
         guard canMergePlainText(selectedEntries) else {
             throw ClipboardHistoryError.unsupportedContent
         }
-        let text = selectedEntries.compactMap(plainText).joined(separator: "\n")
+        let text = try selectedEntries.compactMap {
+            try plainTextMaterializing(for: $0)
+        }.joined(separator: "\n")
         try writePlainText(text)
     }
 
@@ -115,10 +124,10 @@ extension ClipboardHistoryStore {
         guard let entryIndex = entries.firstIndex(where: { $0.id == entry.id }) else { return }
         let selectedID = selectedEntry?.id
         let deletedSelectedEntry = selectedID == entry.id
-        recordDeletionUndo(
+        guard recordDeletionUndo(
             [ClipboardDeletionUndo.RemovedEntry(index: entryIndex, entry: entries[entryIndex])],
             selectedEntryID: selectedID
-        )
+        ) else { return }
         entries.remove(at: entryIndex)
         removeInvalidSelections()
         if !deletedSelectedEntry,
@@ -143,7 +152,7 @@ extension ClipboardHistoryStore {
                 : nil
         }
         guard !removed.isEmpty else { return }
-        recordDeletionUndo(removed, selectedEntryID: selectedEntry?.id)
+        guard recordDeletionUndo(removed, selectedEntryID: selectedEntry?.id) else { return }
         entries.removeAll { ids.contains($0.id) }
         clearMultiSelection()
         selectedIndex = min(selectedIndex, max(0, filteredEntries.count - 1))
@@ -202,7 +211,7 @@ extension ClipboardHistoryStore {
                 : nil
         }
         guard !removed.isEmpty else { return }
-        recordDeletionUndo(removed, selectedEntryID: selectedID)
+        guard recordDeletionUndo(removed, selectedEntryID: selectedID) else { return }
         let ids = Set(removed.map(\.entry.id))
         entries.removeAll { ids.contains($0.id) }
         removeInvalidSelections()
@@ -217,7 +226,7 @@ extension ClipboardHistoryStore {
                 : nil
         }
         guard !removed.isEmpty else { return }
-        recordDeletionUndo(removed, selectedEntryID: selectedEntry?.id)
+        guard recordDeletionUndo(removed, selectedEntryID: selectedEntry?.id) else { return }
         let ids = Set(removed.map(\.entry.id))
         entries.removeAll { ids.contains($0.id) }
         selectedIndex = 0
@@ -231,7 +240,7 @@ extension ClipboardHistoryStore {
             let removed = entries.enumerated().map {
                 ClipboardDeletionUndo.RemovedEntry(index: $0.offset, entry: $0.element)
             }
-            recordDeletionUndo(removed, selectedEntryID: selectedEntry?.id)
+            guard recordDeletionUndo(removed, selectedEntryID: selectedEntry?.id) else { return }
         } else {
             clearDeletionUndo()
         }
@@ -258,6 +267,12 @@ extension ClipboardHistoryStore {
             restored.insert(removed.entry, at: min(removed.index, restored.count))
         }
         entries = newEntries + restored
+        // The undo payload was materialized before deletion. Its database row
+        // may already have been removed, so it must be treated as resident
+        // when restored instead of being looked up as a cold row.
+        nonresidentPayloadEntryIDs.subtract(removedIDs)
+        removedIDs.forEach(removeMaterializedPayloadFromCache)
+        hasUnpersistedPayloadChanges = true
         clearMultiSelection()
         restoreSelection(
             id: undo.selectedEntryID ?? undo.removedEntries.first?.entry.id
@@ -285,19 +300,23 @@ extension ClipboardHistoryStore {
         }
     }
 
-    /// Hot-path membership check that avoids decoding entries wholesale: the
-    /// event-tap callback for Quick Merge runs while the user's Command-C is
-    /// suspended, so candidates are discarded by stored UTF-8 byte count
-    /// before any Data-to-String conversion happens.
+    /// Hot-path membership check that avoids decoding cold entries wholesale:
+    /// the event-tap callback for Quick Merge runs while the user's Command-C
+    /// is suspended. Resident entries still receive an exact representation
+    /// comparison; cold entries use the encrypted index's plain-text digest.
     func containsPlainText(_ text: String, inFirst limit: Int) -> Bool {
-        let utf8Count = text.utf8.count
+        let fingerprint = Data(SHA256.hash(data: Data(text.utf8)))
         return entries.prefix(limit).contains { entry in
-            if let data = entry.representations[NSPasteboard.PasteboardType.string.rawValue]
-                ?? entry.representations["public.utf8-plain-text"],
-               data.count != utf8Count {
-                return false
+            if entry.kind == .url { return entry.previewText == text }
+            guard entry.previewText == String(text.prefix(4_096)),
+                  let descriptor = entry.resolvedPayloadDescriptor,
+                  descriptor.hasPlainText else { return false }
+            if let storedFingerprint = descriptor.plainTextFingerprint {
+                return storedFingerprint == fingerprint
             }
-            return plainText(for: entry) == text
+            guard entry.hasResidentPayload,
+                  let materialized = try? materializedEntry(for: entry) else { return false }
+            return plainText(for: materialized) == text
         }
     }
 
@@ -331,20 +350,34 @@ extension ClipboardHistoryStore {
         }
     }
 
+    @discardableResult
     private func recordDeletionUndo(
         _ removedEntries: [ClipboardDeletionUndo.RemovedEntry],
         selectedEntryID: UUID?
-    ) {
-        guard !removedEntries.isEmpty else { return }
-        let removedIDs = Set(removedEntries.map(\.entry.id))
+    ) -> Bool {
+        guard !removedEntries.isEmpty else { return false }
+        let materialized: [ClipboardDeletionUndo.RemovedEntry]
+        do {
+            materialized = try removedEntries.map { removed in
+                ClipboardDeletionUndo.RemovedEntry(
+                    index: removed.index,
+                    entry: try materializedEntry(for: removed.entry)
+                )
+            }
+        } catch {
+            reportError(error)
+            return false
+        }
+        let removedIDs = Set(materialized.map(\.entry.id))
         deletionUndo = ClipboardDeletionUndo(
-            removedEntries: removedEntries,
+            removedEntries: materialized,
             survivingEntryIDs: Set(entries.lazy.filter {
                 !removedIDs.contains($0.id)
             }.map(\.id)),
             selectedEntryID: selectedEntryID
         )
         presentDeletionUndoBanner()
+        return true
     }
 
     private func presentDeletionUndoBanner() {
@@ -372,5 +405,9 @@ extension ClipboardHistoryStore {
         deletionUndoBannerGeneration &+= 1
         isDeletionUndoBannerPresented = false
         deletionUndo = nil
+    }
+
+    func discardDeletionUndoForBackground() {
+        clearDeletionUndo()
     }
 }

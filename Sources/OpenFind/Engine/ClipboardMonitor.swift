@@ -100,16 +100,15 @@ final class ClipboardMonitor: NSObject {
             _ = store.pruneExpiredHistory(referenceDate: now)
             nextRetentionCleanupAt = now.addingTimeInterval(60)
         }
-        capturePendingChange(
-            source: activeApplication ?? sourceApplicationProvider()
-        )
-        activeApplication = sourceApplicationProvider()
+        capturePendingChange {
+            activeApplication ?? sourceApplicationProvider()
+        }
     }
 
     func applicationDidActivate(_ application: ClipboardSourceApplication?) {
-        capturePendingChange(
-            source: activeApplication ?? sourceApplicationProvider()
-        )
+        capturePendingChange {
+            activeApplication ?? sourceApplicationProvider()
+        }
         activeApplication = application
     }
 
@@ -120,10 +119,13 @@ final class ClipboardMonitor: NSObject {
         applicationDidActivate(ClipboardSourceApplication(application))
     }
 
-    private func capturePendingChange(source: ClipboardSourceApplication?) {
+    private func capturePendingChange(
+        source: () -> ClipboardSourceApplication?
+    ) {
         let changeCount = pasteboard.changeCount
         guard changeCount != lastChangeCount else { return }
         lastChangeCount = changeCount
+        let source = source()
         let types = Set(pasteboard.pasteboardItems?.flatMap {
             $0.types.map(\.rawValue)
         } ?? [])

@@ -400,6 +400,117 @@ struct ClipboardHistoryStoreTests {
         #expect(keychain.readCount == readsAfterMigration)
     }
 
+    @Test func emptyV3ContainerFallsBackToAuthenticatedLegacyHistory() throws {
+        let suite = "OpenFindTests.ClipboardEmptyV3Fallback.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "OpenFindClipboardEmptyV3-\(UUID())",
+            isDirectory: true
+        )
+        let keyURL = directory.appendingPathComponent("clipboard-history-key-v3")
+        let databaseURL = directory.appendingPathComponent("clipboard-history-v3.sqlite3")
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let keychain = MemoryClipboardKeychain()
+        let existing = ClipboardEntry(
+            previewText: "legacy fallback",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("legacy fallback".utf8)]
+        )
+        let emptyWriter = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            databaseURL: databaseURL,
+            keychain: keychain,
+            signingTeamIdentifier: nil
+        )
+        try emptyWriter.save([])
+        // A normal user-initiated clear keeps the local key and a valid empty
+        // manifest. A stale legacy preference must not resurrect deleted rows.
+        try seedLegacyHistory([existing], defaults: defaults, keychain: keychain)
+        let intentionallyEmpty = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            databaseURL: databaseURL,
+            keychain: keychain,
+            signingTeamIdentifier: nil
+        )
+        #expect(try intentionallyEmpty.load().isEmpty)
+        #expect(defaults.data(forKey: EncryptedClipboardHistoryPersistence.ciphertextKey) == nil)
+
+        try FileManager.default.removeItem(at: keyURL)
+        try seedLegacyHistory([existing], defaults: defaults, keychain: keychain)
+
+        let reader = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            databaseURL: databaseURL,
+            keychain: keychain,
+            signingTeamIdentifier: nil
+        )
+        #expect(reader.requiresExplicitMigration)
+        #expect(try reader.load().map(\.previewText) == [existing.previewText])
+        #expect(FileManager.default.fileExists(atPath: keyURL.path))
+        #expect(defaults.data(forKey: EncryptedClipboardHistoryPersistence.ciphertextKey) == nil)
+    }
+
+    @Test func populatedV3ContainerCanFinishAKeyCommitAfterAnInterruptedMigration() throws {
+        let suite = "OpenFindTests.ClipboardPopulatedV3Recovery.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "OpenFindClipboardPopulatedV3-\(UUID())",
+            isDirectory: true
+        )
+        let keyURL = directory.appendingPathComponent("clipboard-history-key-v3")
+        let databaseURL = directory.appendingPathComponent("clipboard-history-v3.sqlite3")
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let keyData = Data(repeating: 41, count: 32)
+        try keyData.write(to: keyURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: keyURL.path
+        )
+        let keychain = MemoryClipboardKeychain()
+        keychain.data = keyData
+        let existing = ClipboardEntry(
+            previewText: "populated recovery",
+            kind: .text,
+            representations: ["public.utf8-plain-text": Data("populated recovery".utf8)]
+        )
+        let writer = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            databaseURL: databaseURL,
+            keychain: keychain,
+            signingTeamIdentifier: nil
+        )
+        try writer.save([existing])
+        try FileManager.default.removeItem(at: keyURL)
+        try seedLegacyHistory([existing], defaults: defaults, keychain: keychain)
+        // The crash window retains the keychain key that encrypted the v3 DB;
+        // the legacy blob itself is only the migration marker here.
+        keychain.data = keyData
+
+        let reader = EncryptedClipboardHistoryPersistence(
+            defaults: defaults,
+            keyFileURL: keyURL,
+            databaseURL: databaseURL,
+            keychain: keychain,
+            signingTeamIdentifier: nil
+        )
+        #expect(reader.requiresExplicitMigration)
+        #expect(try reader.load().map(\.previewText) == [existing.previewText])
+        #expect(FileManager.default.fileExists(atPath: keyURL.path))
+        #expect(!reader.requiresExplicitMigration)
+        #expect(defaults.data(forKey: EncryptedClipboardHistoryPersistence.ciphertextKey) == nil)
+    }
+
     @Test func newSelfSignedHistoryCreatesAFileKeyWithoutOpeningKeychain() throws {
         let suite = "OpenFindTests.ClipboardLocalKey.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -1586,7 +1697,7 @@ struct ClipboardHistoryStoreTests {
             defaults: defaults,
             persistence: MemoryClipboardPersistence(),
             pasteboard: NSPasteboard(name: .init("OpenFindTests.\(UUID())")),
-            deletionUndoBannerDuration: .milliseconds(20)
+            deletionUndoBannerDuration: .milliseconds(100)
         )
         #expect(store.ingest(
             representations: ["public.utf8-plain-text": Data("temporary".utf8)],
@@ -1599,7 +1710,7 @@ struct ClipboardHistoryStoreTests {
 
         #expect(store.isDeletionUndoBannerPresented)
         #expect(store.canUndoDeletion)
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
         while store.isDeletionUndoBannerPresented, ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(10))
         }

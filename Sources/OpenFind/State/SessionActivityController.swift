@@ -82,6 +82,8 @@ final class SessionActivityController {
     @ObservationIgnored private let tickInterval: TimeInterval
     @ObservationIgnored private var subscription: AwakeSessionEventSubscription?
     @ObservationIgnored private var tickTask: Task<Void, Never>?
+    @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var isMonitoringClosedDisplay = false
     private var activeSessionID: UUID?
     private var movementStartedAt: Date?
     private var lastMovementAt: Date?
@@ -108,22 +110,23 @@ final class SessionActivityController {
 
     func start() {
         guard subscription == nil else { return }
+        hasStarted = true
         subscription = sessions.observeEvents { [weak self] event in
             self?.handle(event)
         }
-        closedDisplayState.start { [weak self] state in
-            self?.handleClosedDisplayState(state)
-        }
+        observeActivityPreferences()
         if let session = sessions.activeSession { begin(session) }
+        else { reconcileBackgroundWork() }
     }
 
     func stop() {
+        hasStarted = false
         if let session = sessions.activeSession, displaySleepBeforeLock != nil {
             reconcileDisplaySleepForLockedScreen(session: session, isLocked: false)
         }
         subscription?.cancel()
         subscription = nil
-        closedDisplayState.stop()
+        stopClosedDisplayMonitoring()
         tickTask?.cancel()
         tickTask = nil
         activeSessionID = nil
@@ -143,6 +146,7 @@ final class SessionActivityController {
         case let .replaced(_, current): begin(current)
         case let .updated(session):
             guard activeSessionID == session.id else { begin(session); return }
+            reconcileBackgroundWork()
         case .ended:
             tickTask?.cancel()
             tickTask = nil
@@ -151,6 +155,7 @@ final class SessionActivityController {
             lastMovementAt = nil
             didLockCurrentSession = false
             displaySleepBeforeLock = nil
+            reconcileBackgroundWork()
         }
     }
 
@@ -160,42 +165,36 @@ final class SessionActivityController {
         lastMovementAt = nil
         didLockCurrentSession = false
         displaySleepBeforeLock = nil
-        tickTask?.cancel()
-        tickTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled {
-                self.tick()
-                do {
-                    try await Task.sleep(for: .seconds(self.tickInterval))
-                } catch {
-                    return
-                }
-            }
-        }
+        reconcileBackgroundWork()
     }
 
     private func tick() {
         guard let session = sessions.activeSession,
               session.id == activeSessionID else { return }
         let now = Date()
-        let cursorIdle = performer.idleSeconds(useCursorMovement: true)
-        let lockIdle = performer.idleSeconds(
-            useCursorMovement: preferences.lockUsesCursorMovement
-        )
-        let isScreenLocked = performer.isScreenLocked()
-        reconcileDisplaySleepForLockedScreen(session: session, isLocked: isScreenLocked)
-        if didLockCurrentSession,
-           !isScreenLocked,
-           lockIdle < Double(preferences.screenLockInactivityThresholdSeconds) {
-            didLockCurrentSession = false
+        let cursorIdle = preferences.cursorMovementEnabled
+            ? performer.idleSeconds(useCursorMovement: true) : nil
+        let lockIdle = preferences.screenLockEnabled
+            ? performer.idleSeconds(useCursorMovement: preferences.lockUsesCursorMovement) : nil
+        if preferences.screenLockEnabled {
+            let isScreenLocked = performer.isScreenLocked()
+            reconcileDisplaySleepForLockedScreen(session: session, isLocked: isScreenLocked)
+            if didLockCurrentSession,
+               !isScreenLocked,
+               let lockIdle,
+               lockIdle < Double(preferences.screenLockInactivityThresholdSeconds) {
+                didLockCurrentSession = false
+            }
         }
 
-        if cursorIdle < Double(preferences.cursorInactivityThresholdSeconds) {
-            movementStartedAt = nil
-            lastMovementAt = nil
+        if let cursorIdle,
+           cursorIdle < Double(preferences.cursorInactivityThresholdSeconds) {
+                movementStartedAt = nil
+                lastMovementAt = nil
         }
 
         if preferences.cursorMovementEnabled,
+           let cursorIdle,
            !performer.isScreenSaverActive(),
            cursorIdle >= Double(preferences.cursorInactivityThresholdSeconds) {
             let canMove: Bool
@@ -220,6 +219,7 @@ final class SessionActivityController {
         }
 
         guard preferences.screenLockEnabled,
+              let lockIdle,
               !didLockCurrentSession,
               lockIdle >= Double(preferences.screenLockInactivityThresholdSeconds) else {
             return
@@ -271,6 +271,7 @@ final class SessionActivityController {
             return
         }
         guard state == .closed,
+              preferences.screenLockEnabled,
               preferences.lockOnClosedDisplay,
               let session = sessions.activeSession,
               !session.options.allowsClosedDisplaySleep,
@@ -281,5 +282,77 @@ final class SessionActivityController {
         }
         performer.lockScreen()
         didLockCurrentSession = true
+    }
+
+    private func reconcileBackgroundWork() {
+        guard hasStarted else {
+            tickTask?.cancel()
+            tickTask = nil
+            stopClosedDisplayMonitoring()
+            return
+        }
+
+        let hasActiveSession = activeSessionID != nil && sessions.activeSession != nil
+        let needsTick = hasActiveSession
+            && (preferences.cursorMovementEnabled || preferences.screenLockEnabled)
+        if needsTick {
+            if tickTask == nil {
+                tickTask = Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    while !Task.isCancelled {
+                        self.tick()
+                        do {
+                            try await Task.sleep(for: .seconds(self.tickInterval))
+                        } catch {
+                            return
+                        }
+                    }
+                }
+            }
+        } else {
+            if !preferences.screenLockEnabled,
+               let session = sessions.activeSession,
+               displaySleepBeforeLock != nil {
+                reconcileDisplaySleepForLockedScreen(session: session, isLocked: false)
+            }
+            tickTask?.cancel()
+            tickTask = nil
+            movementStartedAt = nil
+            lastMovementAt = nil
+        }
+
+        let needsClosedDisplayMonitoring = hasActiveSession
+            && preferences.screenLockEnabled
+            && preferences.lockOnClosedDisplay
+            && sessions.activeSession?.options.allowsClosedDisplaySleep == false
+        if needsClosedDisplayMonitoring, !isMonitoringClosedDisplay {
+            isMonitoringClosedDisplay = true
+            closedDisplayState.start { [weak self] state in
+                self?.handleClosedDisplayState(state)
+            }
+        } else if !needsClosedDisplayMonitoring {
+            stopClosedDisplayMonitoring()
+        }
+    }
+
+    private func stopClosedDisplayMonitoring() {
+        guard isMonitoringClosedDisplay else { return }
+        isMonitoringClosedDisplay = false
+        closedDisplayState.stop()
+    }
+
+    private func observeActivityPreferences() {
+        guard hasStarted else { return }
+        withObservationTracking {
+            _ = preferences.cursorMovementEnabled
+            _ = preferences.screenLockEnabled
+            _ = preferences.lockOnClosedDisplay
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.hasStarted else { return }
+                self.reconcileBackgroundWork()
+                self.observeActivityPreferences()
+            }
+        }
     }
 }

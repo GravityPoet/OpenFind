@@ -5,6 +5,58 @@ import Testing
 @MainActor
 @Suite("Trigger Monitor Scheduler Tests")
 struct TriggerMonitorSchedulerTests {
+    @Test func editingAValueWithTheSameCriterionKindRefreshesImmediately() async throws {
+        let suite = "OpenFindTests.TriggerSchedulerSameKind.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = TriggerStore(defaults: defaults)
+        var trigger = AwakeTrigger(name: "Wi-Fi", criteria: [.wifiNetwork("Studio")])
+        _ = try store.add(trigger)
+        let provider = SchedulerSnapshotProvider(snapshot: .init(wifiSSID: "Elsewhere"))
+        let scheduler = TriggerMonitorScheduler(
+            coordinator: TriggerCoordinator(
+                store: store,
+                sessions: AwakeSessionController(assertions: SchedulerPowerAssertions())
+            ),
+            provider: provider,
+            wakeEvents: FakeTriggerWakeEvents()
+        )
+        scheduler.start(interval: 300)
+        defer { scheduler.stop() }
+        try await waitUntil { provider.snapshotCount >= 1 }
+
+        trigger.criteria = [.wifiNetwork("Elsewhere")]
+        try store.update(trigger)
+        try await waitUntil { provider.snapshotCount >= 2 }
+    }
+
+    @Test func emptyTriggerConfigurationDoesNotStartPolling() async throws {
+        let suite = "OpenFindTests.TriggerSchedulerIdle.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = TriggerStore(defaults: defaults)
+        let provider = SchedulerSnapshotProvider(snapshot: .init())
+        let events = FakeTriggerWakeEvents()
+        let scheduler = TriggerMonitorScheduler(
+            coordinator: TriggerCoordinator(
+                store: store,
+                sessions: AwakeSessionController(assertions: SchedulerPowerAssertions())
+            ),
+            provider: provider,
+            wakeEvents: events
+        )
+        scheduler.start(interval: 1)
+        defer { scheduler.stop() }
+
+        try await Task.sleep(for: .milliseconds(40))
+        #expect(provider.snapshotCount == 0)
+        #expect(events.configurations.isEmpty)
+
+        _ = try store.add(AwakeTrigger(name: "Wi-Fi", criteria: [.wifiNetwork("Studio")]))
+        try await waitUntil { provider.snapshotCount > 0 }
+        #expect(events.configurations == [[.wifiNetwork]])
+    }
+
     @Test func wakeEventsReevaluateImmediatelyWithoutWaitingForTheFallbackTimer() async throws {
         let suite = "OpenFindTests.TriggerScheduler.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))

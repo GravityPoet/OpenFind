@@ -307,7 +307,8 @@ final class ClipboardSnippetExpansionController {
         )
         guard let entry = store.snippetEntry(matchingSuffix: typed),
               let keyword = entry.snippetKeyword,
-              let template = store.plainText(for: entry) else { return }
+              let materialized = try? store.materializedEntry(for: entry),
+              let template = store.plainText(for: materialized) else { return }
         buffer.reset()
         let rendered = ClipboardSnippetRenderer.render(
             template,

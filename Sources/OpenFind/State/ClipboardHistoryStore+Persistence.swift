@@ -10,10 +10,16 @@ extension ClipboardHistoryStore {
             return
         }
         do {
+            let materializedEntries = try entries.map { try materializedEntry(for: $0) }
             // Keep the persisted preference enabled until the durable delete
             // succeeds, otherwise a failed delete is silently skipped on the
             // next launch while ciphertext remains on disk.
             try persistence.remove()
+            entries = materializedEntries
+            nonresidentPayloadEntryIDs.removeAll()
+            clearMaterializedPayloadCache()
+            hasUnpersistedChanges = false
+            hasUnpersistedPayloadChanges = false
             isPersistenceEnabled = false
             defaults.set(false, forKey: Self.persistenceEnabledKey)
             requiresPersistenceMigration = false
@@ -29,14 +35,20 @@ extension ClipboardHistoryStore {
     func migratePersistence() -> Bool {
         guard isPersistenceEnabled, requiresPersistenceMigration else { return true }
         do {
-            entries = try persistence.load()
+            entries = try persistence.loadResidentHistory()
+            nonresidentPayloadEntryIDs = persistence.unloadedPayloadEntryIDs
+            hasUnpersistedPayloadChanges = false
             let trimmed = trimToLimits()
             let normalizedKinds = normalizeContentKinds()
             let normalizedPins = normalizePinnedKeys()
             selectedIndex = 0
             requiresPersistenceMigration = false
             lastErrorMessage = nil
-            if trimmed || normalizedKinds || normalizedPins { persist() }
+            if trimmed || normalizedKinds || normalizedPins {
+                _ = persist()
+            } else {
+                hasUnpersistedChanges = false
+            }
             enqueueMissingImageTextRecognition()
             return true
         } catch {
@@ -45,18 +57,33 @@ extension ClipboardHistoryStore {
         }
     }
 
-    func persist() {
-        guard isPersistenceEnabled, !requiresPersistenceMigration else { return }
+    @discardableResult
+    func persist() -> Bool {
+        guard isPersistenceEnabled, !requiresPersistenceMigration else { return false }
         guard !isPersistenceDegraded else {
             lastErrorMessage = ClipboardHistoryError
                 .persistenceDesynchronized.localizedDescription
-            return
+            return false
         }
         do {
-            try persistence.save(entries)
+            let normalized = entries.map { entry in
+                nonresidentPayloadEntryIDs.contains(entry.id)
+                    ? entry : entry.synchronizingPayloadDescriptor()
+            }
+            if normalized != entries { entries = normalized }
+            let currentIDs = Set(entries.map(\.id))
+            nonresidentPayloadEntryIDs.formIntersection(currentIDs)
+            try persistence.save(
+                entries,
+                preservingPayloadsFor: nonresidentPayloadEntryIDs
+            )
+            hasUnpersistedChanges = false
+            hasUnpersistedPayloadChanges = false
             lastErrorMessage = nil
+            return true
         } catch {
             lastErrorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -95,12 +122,6 @@ extension ClipboardHistoryStore {
     }
 
     var retainedPayloadBytes: Int {
-        entries.reduce(0) { $0 + payloadByteCount(of: $1) }
-    }
-
-    private func payloadByteCount(of entry: ClipboardEntry) -> Int {
-        entry.retainedPasteboardItems
-            .flatMap(\.values)
-            .reduce(0) { $0 + $1.count }
+        entries.reduce(0) { $0 + ($1.resolvedPayloadDescriptor?.byteCount ?? 0) }
     }
 }

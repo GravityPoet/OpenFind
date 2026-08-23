@@ -294,6 +294,7 @@ final class AwakeNotificationController {
     @ObservationIgnored private var subscription: AwakeSessionEventSubscription?
     @ObservationIgnored private var reminderTask: Task<Void, Never>?
     @ObservationIgnored private var closedDisplayWarningTask: Task<Void, Never>?
+    @ObservationIgnored private var isMonitoringClosedDisplay = false
     private var closedDisplayStateValue: ClosedDisplayHardwareState = .unknown
     private var warnedClosedDisplaySessionID: UUID?
 
@@ -363,12 +364,7 @@ final class AwakeNotificationController {
         if remindersEnabled, let session = sessions.activeSession {
             scheduleReminders(for: session.id)
         }
-        closedDisplayWarningEnvironment.start { [weak self] in
-            self?.refreshClosedDisplayWarning()
-        }
-        closedDisplayState.start { [weak self] state in
-            self?.handleClosedDisplayState(state)
-        }
+        reconcileClosedDisplayMonitoring()
         if notifiesAutomaticStarts || notifiesAutomaticEnds || remindersEnabled
             || warnsClosedDisplay {
             requestAuthorization()
@@ -382,8 +378,7 @@ final class AwakeNotificationController {
         reminderTask = nil
         closedDisplayWarningTask?.cancel()
         closedDisplayWarningTask = nil
-        closedDisplayState.stop()
-        closedDisplayWarningEnvironment.stop()
+        stopClosedDisplayMonitoring()
         closedDisplayWarningSound.restoreVolume()
         warnedClosedDisplaySessionID = nil
         closedDisplayStateValue = .unknown
@@ -447,8 +442,10 @@ final class AwakeNotificationController {
         defaults.set(enabled, forKey: Self.closedDisplayWarningKey)
         if enabled {
             requestAuthorization()
+            reconcileClosedDisplayMonitoring()
             refreshClosedDisplayWarning()
         } else {
+            reconcileClosedDisplayMonitoring()
             cancelClosedDisplayWarning(resetSession: true)
         }
     }
@@ -532,6 +529,30 @@ final class AwakeNotificationController {
         } else {
             cancelClosedDisplayWarning(resetSession: true)
         }
+    }
+
+    private func reconcileClosedDisplayMonitoring() {
+        guard subscription != nil else { return }
+        if warnsClosedDisplay {
+            guard !isMonitoringClosedDisplay else { return }
+            isMonitoringClosedDisplay = true
+            closedDisplayWarningEnvironment.start { [weak self] in
+                self?.refreshClosedDisplayWarning()
+            }
+            closedDisplayState.start { [weak self] state in
+                self?.handleClosedDisplayState(state)
+            }
+        } else {
+            stopClosedDisplayMonitoring()
+            closedDisplayStateValue = .unknown
+        }
+    }
+
+    private func stopClosedDisplayMonitoring() {
+        guard isMonitoringClosedDisplay else { return }
+        isMonitoringClosedDisplay = false
+        closedDisplayState.stop()
+        closedDisplayWarningEnvironment.stop()
     }
 
     private func refreshClosedDisplayWarning(for session: AwakeSession? = nil) {

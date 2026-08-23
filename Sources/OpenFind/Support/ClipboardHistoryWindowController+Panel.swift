@@ -103,7 +103,7 @@ extension ClipboardHistoryWindowController {
             onQuickLook: { [weak self] entry in
                 guard let self else { return }
                 do {
-                    try quickLook.toggle(entry: entry)
+                    try quickLook.toggle(entry: try store.materializedEntry(for: entry))
                 } catch {
                     store.reportError(error)
                 }
