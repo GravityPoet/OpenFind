@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ClipboardHistoryRow: View {
@@ -58,7 +59,9 @@ struct ClipboardHistoryRow: View {
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .frame(width: 18, height: 18)
                     .background(
-                        isSelected ? Color.white.opacity(0.22) : Color.accentColor.opacity(0.18),
+                        isSelected
+                            ? selectedTextColor.opacity(0.22)
+                            : Color.accentColor.opacity(0.18),
                         in: Circle()
                     )
             }
@@ -115,7 +118,9 @@ struct ClipboardHistoryRow: View {
                             .truncationMode(.tail)
                     }
                     .font(ClipboardTypography.matchContext)
-                    .foregroundStyle(ClipboardTypography.noteText)
+                    .foregroundStyle(isSelected
+                        ? selectedTextColor.opacity(0.88)
+                        : ClipboardTypography.noteText)
                 }
 
                 if let searchPresentation,
@@ -135,7 +140,7 @@ struct ClipboardHistoryRow: View {
                             .truncationMode(.tail)
                     }
                     .foregroundStyle(isSelected
-                        ? Color.white.opacity(0.78)
+                        ? selectedTextColor.opacity(0.78)
                         : ClipboardTypography.secondaryText)
                 }
             }
@@ -145,7 +150,7 @@ struct ClipboardHistoryRow: View {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(isSelected
-                        ? Color.white.opacity(0.90)
+                        ? selectedTextColor.opacity(0.90)
                         : Color.accentColor.opacity(0.68))
                 if let pin = ClipboardPinKey.normalize(entry.pinKey) {
                     shortcutChip("⌘\(pin.uppercased())")
@@ -158,7 +163,7 @@ struct ClipboardHistoryRow: View {
         }
         .padding(.horizontal, 9)
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
-        .foregroundStyle(isSelected ? Color.white : ClipboardTypography.primaryText)
+        .foregroundStyle(isSelected ? selectedTextColor : ClipboardTypography.primaryText)
         .modifier(ClipboardHistoryRowSurface(
             isSelected: isSelected,
             isHovered: isHovered
@@ -183,10 +188,12 @@ struct ClipboardHistoryRow: View {
         } else if previewImage == nil {
             Image(systemName: entry.kind.systemImage)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                .foregroundStyle(isSelected ? selectedTextColor : Color.secondary)
                 .frame(width: 22, height: 22)
                 .background(
-                    isSelected ? Color.white.opacity(0.16) : Color.secondary.opacity(0.10),
+                    isSelected
+                        ? selectedTextColor.opacity(0.16)
+                        : Color.secondary.opacity(0.10),
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
         }
@@ -197,12 +204,14 @@ struct ClipboardHistoryRow: View {
             .font(ClipboardTypography.shortcut)
             .monospacedDigit()
             .foregroundStyle(isSelected
-                ? Color.white.opacity(0.96)
+                ? selectedTextColor.opacity(0.96)
                 : ClipboardTypography.secondaryText)
             .padding(.horizontal, 5)
             .frame(minWidth: 24, minHeight: 18)
             .background(
-                isSelected ? Color.white.opacity(0.13) : Color.primary.opacity(0.05),
+                isSelected
+                    ? selectedTextColor.opacity(0.13)
+                    : Color.primary.opacity(0.05),
                 in: RoundedRectangle(cornerRadius: 5, style: .continuous)
             )
     }
@@ -235,6 +244,10 @@ struct ClipboardHistoryRow: View {
 
     private var frequentlyUsedActionTitle: String {
         isFrequentlyUsed ? L("Remove from Frequently Used") : L("Add to Frequently Used")
+    }
+
+    private var selectedTextColor: Color {
+        Color(nsColor: .selectedControlTextColor)
     }
 
     private var sourceHelp: String {
@@ -270,15 +283,14 @@ private struct ClipboardHistoryRowSurface: ViewModifier {
         if isSelected {
             content
                 .background(
-                    Color.accentColor.opacity(
-                        colorSchemeContrast == .increased ? 0.96 : 0.86
-                    ),
+                    Color(nsColor: .selectedContentBackgroundColor),
                     in: RoundedRectangle(cornerRadius: 9, style: .continuous)
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .strokeBorder(
-                            Color.white.opacity(colorSchemeContrast == .increased ? 0.72 : 0.24),
+                            Color(nsColor: .selectedControlTextColor)
+                                .opacity(colorSchemeContrast == .increased ? 0.72 : 0.24),
                             lineWidth: colorSchemeContrast == .increased ? 1.2 : 0.7
                         )
                 }

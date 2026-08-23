@@ -9,7 +9,19 @@ fi
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_SCRIPT="$ROOT_DIR/Scripts/build_customer_app.sh"
 APP_NAME="OpenFind.app"
+BUILD_FROM_SOURCE=1
 ARCHIVE_PATH="$ROOT_DIR/dist/OpenFind.zip"
+if [ "$#" -gt 1 ]; then
+    echo "Usage: $0 [path/to/OpenFind.zip]" >&2
+    exit 2
+fi
+if [ "$#" -eq 1 ]; then
+    case "$1" in
+        /*) ARCHIVE_PATH="$1" ;;
+        *) ARCHIVE_PATH="$ROOT_DIR/$1" ;;
+    esac
+    BUILD_FROM_SOURCE=0
+fi
 INSTALL_APP="/Applications/$APP_NAME"
 BUNDLE_ID="com.openfind.app"
 EXECUTABLE_NAME="OpenFind"
@@ -98,6 +110,7 @@ cleanup_or_rollback() {
     remove_known_tree "$TEMP_ROOT"
     remove_known_tree "$INSTALL_STAGING"
     if [ "$status" -ne 0 ] && [ "$REPLACEMENT_STARTED" -eq 1 ]; then
+        stop_running_install || true
         unregister_app_bundle "$INSTALL_APP"
         remove_known_tree "$INSTALL_APP"
         restored=0
@@ -118,13 +131,35 @@ trap cleanup_or_rollback EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+stop_running_install() {
+    /usr/bin/swift -e '
+      import AppKit
+      for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.openfind.app") {
+        _ = app.terminate()
+      }
+    ' >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5; do
+        if ! pgrep -f "$PROCESS_PATTERN" >/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    if pgrep -f "$PROCESS_PATTERN" >/dev/null; then
+        pkill -TERM -f "$PROCESS_PATTERN" || true
+        sleep 1
+    fi
+    ! pgrep -f "$PROCESS_PATTERN" >/dev/null
+}
+
 : > "$TEMP_ROOT/.metadata_never_index"
 remove_known_tree "$INSTALL_STAGING"
 remove_known_tree "$DISPLACED_APP"
 cleanup_openfind_appcast_cache
 cleanup_openfind_temp_bundles
 
-ARCHS="$ARCHS" "$BUILD_SCRIPT"
+if [ "$BUILD_FROM_SOURCE" -eq 1 ]; then
+    ARCHS="$ARCHS" "$BUILD_SCRIPT"
+fi
 if [ ! -f "$ARCHIVE_PATH" ]; then
     echo "Error: build did not produce $ARCHIVE_PATH." >&2
     exit 1
@@ -152,23 +187,7 @@ ditto --noextattr --noqtn "$SOURCE_APP" "$INSTALL_STAGING"
 xattr -cr "$INSTALL_STAGING"
 codesign --verify --deep --strict "$INSTALL_STAGING"
 
-/usr/bin/swift -e '
-  import AppKit
-  for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.openfind.app") {
-    _ = app.terminate()
-  }
-' >/dev/null 2>&1 || true
-for _ in 1 2 3 4 5; do
-    if ! pgrep -f "$PROCESS_PATTERN" >/dev/null; then
-        break
-    fi
-    sleep 1
-done
-if pgrep -f "$PROCESS_PATTERN" >/dev/null; then
-    pkill -TERM -f "$PROCESS_PATTERN" || true
-    sleep 1
-fi
-if pgrep -f "$PROCESS_PATTERN" >/dev/null; then
+if ! stop_running_install; then
     echo "Error: OpenFind did not quit cleanly." >&2
     exit 1
 fi

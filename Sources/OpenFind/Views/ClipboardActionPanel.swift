@@ -1,10 +1,39 @@
 import SwiftUI
 
+enum ClipboardFrequentAction: Equatable {
+    case add
+    case remove
+
+    static func resolve(
+        selectedItemCount: Int,
+        isFrequentlyUsed: Bool
+    ) -> Self? {
+        guard selectedItemCount == 1 else { return nil }
+        return isFrequentlyUsed ? .remove : .add
+    }
+
+    var localizedTitle: String {
+        switch self {
+        case .add: L("Add to Frequently Used")
+        case .remove: L("Remove from Frequently Used")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .add: "bolt.badge.plus"
+        case .remove: "bolt.slash"
+        }
+    }
+}
+
 struct ClipboardActionPanel: View {
     let itemActions: [ClipboardPanelAction]
+    let frequentAction: ClipboardFrequentAction?
     let contentActions: [ClipboardContentActionDescriptor]
     let historyActions: [ClipboardPanelAction]
     let onPerform: (ClipboardPanelAction) -> Void
+    let onToggleFrequentlyUsed: () -> Void
     let onPerformContentAction: (ClipboardContentActionDescriptor) -> Void
     let onDismiss: () -> Void
     @FocusState private var focusedActionID: String?
@@ -12,7 +41,11 @@ struct ClipboardActionPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !itemActions.isEmpty {
-                actionSection(title: L("Selected Clipboard Item"), actions: itemActions)
+                actionSection(
+                    title: L("Selected Clipboard Item"),
+                    actions: itemActions,
+                    frequentAction: frequentAction
+                )
                 if !contentActions.isEmpty {
                     Divider()
                     contentActionSection
@@ -32,14 +65,26 @@ struct ClipboardActionPanel: View {
     }
 
     private var allActionIDs: [String] {
-        itemActions.map { "panel:\($0.rawValue)" }
+        itemActionIDs
             + contentActions.map { "content:\($0.id)" }
             + historyActions.map { "panel:\($0.rawValue)" }
     }
 
+    private var itemActionIDs: [String] {
+        itemActions.flatMap { action in
+            var identifiers: [String] = []
+            if action.isDestructive, frequentAction != nil {
+                identifiers.append("frequent")
+            }
+            identifiers.append("panel:\(action.rawValue)")
+            return identifiers
+        }
+    }
+
     private func actionSection(
         title: String,
-        actions: [ClipboardPanelAction]
+        actions: [ClipboardPanelAction],
+        frequentAction: ClipboardFrequentAction? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
@@ -49,6 +94,9 @@ struct ClipboardActionPanel: View {
                 .padding(.bottom, 2)
 
             ForEach(actions) { action in
+                if action.isDestructive, let frequentAction {
+                    frequentActionButton(frequentAction)
+                }
                 let focusID = "panel:\(action.rawValue)"
                 Button(role: action.isDestructive ? .destructive : nil) {
                     onPerform(action)
@@ -85,6 +133,36 @@ struct ClipboardActionPanel: View {
                 .accessibilityIdentifier("clipboard.action.\(action.rawValue)")
             }
         }
+    }
+
+    private func frequentActionButton(_ action: ClipboardFrequentAction) -> some View {
+        let focusID = "frequent"
+        return Button {
+            onToggleFrequentlyUsed()
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: action.systemImage)
+                    .font(.system(size: 12, weight: .medium))
+                    .frame(width: 18)
+                Text(action.localizedTitle)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 7)
+            .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focused($focusedActionID, equals: focusID)
+        .background {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(focusedActionID == focusID ? Color.accentColor.opacity(0.14) : .clear)
+        }
+        .onHover { hovering in
+            if hovering { focusedActionID = focusID }
+        }
+        .accessibilityLabel(Text(action.localizedTitle))
+        .accessibilityIdentifier("clipboard.action.toggleFrequentlyUsed")
     }
 
     private var contentActionSection: some View {

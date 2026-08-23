@@ -12,9 +12,11 @@ struct ContentView: View {
     let onShowMenuBar: () -> Void
     let onShowSettings: () -> Void
     let firstRunCapabilities: () -> [FirstRunCapability]
+    let shouldPresentFirstRunGuide: Bool
     @FocusState private var focusedTarget: SearchFocusTarget?
     @State private var selection = Set<SearchResult.ID>()
     @State private var isFirstRunGuidePresented = false
+    @State private var completeFirstRunOnDismiss = false
     @AppStorage(FirstRunGuideStore.completionKey)
     private var hasCompletedFirstRunGuide = false
     /// Empty means preserve engine relevance order. Once the user selects a
@@ -55,20 +57,23 @@ struct ContentView: View {
             FirstRunGuideView(
                 capabilities: firstRunCapabilities(),
                 onStartSearching: {
+                    completeFirstRunOnDismiss = true
                     isFirstRunGuidePresented = false
                     focusedTarget = .query
                 },
                 onOpenSettings: {
+                    completeFirstRunOnDismiss = true
                     isFirstRunGuidePresented = false
                     onShowSettings()
                 },
                 onDismiss: {
+                    completeFirstRunOnDismiss = false
                     isFirstRunGuidePresented = false
                 }
             )
         }
         .onAppear {
-            if !hasCompletedFirstRunGuide {
+            if shouldPresentFirstRunGuide && !hasCompletedFirstRunGuide {
                 isFirstRunGuidePresented = true
             }
         }
@@ -93,6 +98,8 @@ struct ContentView: View {
     }
 
     private func completeFirstRunGuide() {
+        guard completeFirstRunOnDismiss else { return }
+        completeFirstRunOnDismiss = false
         hasCompletedFirstRunGuide = true
         FirstRunGuideStore.markCompleted()
         focusedTarget = .query

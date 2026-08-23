@@ -67,8 +67,8 @@ struct AwakeSessionDefaultsSection: View {
                 }
                 if closedDisplaySupported {
                     Toggle(L("Allow Closed Display Sleep"), isOn: Binding(
-                        get: { preferences.allowsClosedDisplaySleep },
-                        set: { preferences.setAllowsClosedDisplaySleep($0) }
+                        get: { !preferences.allowsClosedDisplaySleep },
+                        set: { preferences.setAllowsClosedDisplaySleep(!$0) }
                     ))
                 }
             } header: {

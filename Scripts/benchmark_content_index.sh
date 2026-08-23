@@ -14,5 +14,5 @@ COPIES="${COPIES:-4}"
 OPENFIND_CONTENT_BENCHMARK_FILES="$FILES" \
 OPENFIND_CONTENT_BENCHMARK_KB="$BODY_KB" \
 OPENFIND_CONTENT_BENCHMARK_COPIES="$COPIES" \
-    xcrun --sdk macosx swift test -c release \
+    bash Scripts/test.sh -c release \
     --filter TemporarySearchPerformanceTests.measureGeneratedContentIndex

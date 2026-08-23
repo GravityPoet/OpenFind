@@ -214,9 +214,9 @@
 
 /* Awake Sessions */
 "Keep Awake" = "Keep Awake";
-"Start Awake Session" = "Start Awake Session";
-"End Awake Session" = "End Awake Session";
-"Awake Session Active" = "Awake Session Active";
+"Start Awake Session" = "Keep This Mac Awake";
+"End Awake Session" = "Stop Keeping Awake";
+"Awake Session Active" = "Mac Is Staying Awake";
 "Awake Until %@" = "Awake Until %@";
 "Allow Display Sleep" = "Allow Display Sleep";
 "Indefinitely" = "Indefinitely";
@@ -225,8 +225,8 @@
 "1 Hour" = "1 Hour";
 "2 Hours" = "2 Hours";
 "Dismiss Error" = "Dismiss Error";
-"Extend Awake Session" = "Extend Awake Session…";
-"Disable Triggers and End Session" = "Disable Triggers and End Session";
+"Extend Awake Session" = "Keep Awake Longer…";
+"Disable Triggers and End Session" = "Disable Triggers and Stop Keeping Awake";
 "End Time Calculation" = "End Time Calculation";
 "Timer" = "Timer";
 "System Clock" = "System Clock";
@@ -239,6 +239,10 @@
 "Include Seconds" = "Include seconds";
 "Menu Bar Session Time Help" = "The active dot always shows session state. Timed sessions can also show their remaining time or end time.";
 "OpenFind Session Time Accessibility Format" = "OpenFind, session time %@";
+"OpenFind Idle Accessibility" = "OpenFind, idle, not keeping your Mac awake";
+"OpenFind Keeping Awake Accessibility" = "OpenFind, keeping your Mac awake";
+"OpenFind Remaining Time Accessibility Format" = "OpenFind, keeping your Mac awake, %@ remaining";
+"OpenFind End Time Accessibility Format" = "OpenFind, keeping your Mac awake until %@";
 "Statistics" = "Statistics";
 "Enable Statistics Collection" = "Enable statistics collection";
 "Total Awake Time" = "Total awake time";
@@ -297,7 +301,7 @@
 "Allow Location" = "Allow Location";
 "Open Location Settings" = "Open Location Settings";
 "Trigger Session Options" = "Session Options";
-"Allow Closed Display Sleep" = "Allow closed-display sleep";
+"Allow Closed Display Sleep" = "Keep awake with lid closed";
 "Allow Screen Saver" = "Allow Screen Saver";
 "While File Is Downloading" = "While File Is Downloading…";
 "30 Second Timeout" = "30-second inactivity timeout";
@@ -307,8 +311,8 @@
 "Monitor File" = "Monitor";
 "Awake While Application Runs" = "Awake while application is running";
 "Awake While File Downloads" = "Awake while file is downloading";
-"Next Session Options" = "Next Session Options";
-"Awake Session Defaults" = "Awake Session Defaults";
+"Next Session Options" = "Next Keep-Awake Options";
+"Awake Session Defaults" = "Keep-Awake Defaults";
 "Awake Session Defaults Help" = "These options apply to manual sessions and session hotkeys. Each Trigger keeps its own independent options.";
 "Minutes Format" = "%lld minutes";
 "Custom Duration" = "Custom Duration…";
@@ -404,13 +408,13 @@
 "Any Requirement (OR)" = "Any requirement (OR)";
 "Awake Session Hotkeys" = "Awake Session Hotkeys";
 "Awake Session Hotkeys Help" = "Each action registers independently. OpenFind rejects duplicate or unavailable shortcuts without replacing a working binding.";
-"Hotkey Start Awake Session" = "Start session";
-"Hotkey End Awake Session" = "End session";
-"Hotkey Toggle Awake Session" = "Start / end session";
+"Hotkey Start Awake Session" = "Keep this Mac awake";
+"Hotkey End Awake Session" = "Stop keeping awake";
+"Hotkey Toggle Awake Session" = "Start / stop keeping awake";
 "Hotkey Open Menu" = "Open menu";
 "Hotkey Toggle Display Sleep" = "Toggle display sleep";
 "Hotkey Toggle Screen Saver" = "Toggle screen saver";
-"Hotkey Toggle Closed Display Sleep" = "Toggle closed-display sleep";
+"Hotkey Toggle Closed Display Sleep" = "Toggle keeping awake with lid closed";
 
 /* Clipboard History */
 "Clipboard History" = "Clipboard History";
@@ -571,6 +575,11 @@
 "Pause Clipboard Capture" = "Pause clipboard capture";
 "Ignore Next Clipboard Copy" = "Ignore next copy";
 "Waiting for Next Clipboard Copy" = "Waiting for the next copy";
+"Clipboard Capture Paused Status" = "Clipboard capture is paused";
+"Clipboard Capture Paused Description" = "New copies are not being added to history.";
+"Clipboard Ignore Next Copy Status" = "Waiting to ignore the next copy";
+"Clipboard Ignore Next Copy Description" = "OpenFind will skip the next copy, then resume capture automatically.";
+"Resume Clipboard Capture" = "Resume Capture";
 "Manage Clipboard Ignore Rules" = "Manage ignore rules…";
 "Clipboard Storage Settings" = "Storage";
 "Clipboard Behavior Settings" = "Behavior and shortcuts";
@@ -703,11 +712,11 @@
 "Notifications and Sounds Help" = "OpenFind automatically uses the notification channel supported by this build. Session bodies contain no paths, process names, network names, or clipboard content.";
 "Dismiss Notification" = "Dismiss notification";
 "Notification Permission Denied" = "Notification permission was denied in System Settings.";
-"Awake Session Started" = "Awake session started";
+"Awake Session Started" = "Mac is staying awake";
 "OpenFind Is Keeping Mac Awake" = "OpenFind is keeping your Mac awake.";
-"Awake Session Ended" = "Awake session ended";
+"Awake Session Ended" = "Mac stopped staying awake";
 "Mac Will Use Normal Sleep Schedule" = "Your Mac will use its normal sleep schedule.";
-"Awake Session Reminder" = "Awake session reminder";
+"Awake Session Reminder" = "Keep-awake reminder";
 "OpenFind Is Still Keeping Mac Awake" = "OpenFind is still keeping your Mac awake.";
 "Move Cursor During Awake Sessions" = "Move the cursor during awake sessions";
 "Move Cursor Every" = "Move cursor every";

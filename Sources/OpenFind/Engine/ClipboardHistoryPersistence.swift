@@ -448,6 +448,10 @@ final class EncryptedClipboardHistoryPersistence: ClipboardHistoryPersisting {
                 throw ClipboardHistoryError.persistenceUnavailable
             }
         }
+        // The file fsync above does not make the directory entry durable. A
+        // power loss between rename and the next launch could otherwise leave
+        // the database and its key out of sync.
+        try validateKeyDirectory(directory)
         guard let written = try readValidatedLocalKey(), written == data else {
             throw ClipboardHistoryError.persistenceUnavailable
         }
@@ -466,6 +470,14 @@ final class EncryptedClipboardHistoryPersistence: ClipboardHistoryPersisting {
         guard fstat(descriptor, &information) == 0,
               information.st_uid == geteuid(),
               information.st_mode & mode_t(S_IFMT) == mode_t(S_IFDIR) else {
+            throw ClipboardHistoryError.persistenceUnavailable
+        }
+        if information.st_mode & mode_t(0o077) != 0 {
+            guard fchmod(descriptor, mode_t(0o700)) == 0 else {
+                throw ClipboardHistoryError.persistenceUnavailable
+            }
+        }
+        guard fsync(descriptor) == 0 else {
             throw ClipboardHistoryError.persistenceUnavailable
         }
     }

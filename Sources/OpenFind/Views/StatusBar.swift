@@ -98,6 +98,7 @@ struct StatusBar: View {
             statPill(
                 title: L("Files"),
                 value: formattedNumber(viewModel.indexStats.indexedFiles),
+                systemImage: "doc",
                 tint: .green,
                 isSelected: viewModel.displayMode == .files,
                 compact: isCompact
@@ -116,6 +117,7 @@ struct StatusBar: View {
             statPill(
                 title: L("Events"),
                 value: formattedNumber(viewModel.indexStats.processedEvents),
+                systemImage: "waveform.path.ecg",
                 tint: .orange,
                 isSelected: viewModel.displayMode == .events,
                 compact: isCompact
@@ -365,6 +367,7 @@ struct StatusBar: View {
     private func statPill(
         title: String,
         value: String,
+        systemImage: String,
         tint: Color,
         isSelected: Bool,
         compact: Bool,
@@ -372,7 +375,12 @@ struct StatusBar: View {
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                if !compact {
+                if compact {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 13 * interfaceSize.scale)
+                } else {
                     Text(title)
                         .fontWeight(.semibold)
                         .foregroundStyle(.primary)
@@ -400,7 +408,11 @@ struct StatusBar: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(title), \(value)")
+        .help("\(title): \(value)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(value)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func iconButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {

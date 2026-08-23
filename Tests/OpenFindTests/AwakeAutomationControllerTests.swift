@@ -13,7 +13,10 @@ struct AwakeAutomationControllerTests {
         preferences.setDefaultDurationMinutes(30)
         preferences.setStartsSessionAtLaunch(true)
         preferences.setStartsSessionAfterWake(true)
-        let sessions = AwakeSessionController(assertions: AutomationPowerAssertions())
+        let sessions = AwakeSessionController(
+            assertions: AutomationPowerAssertions(),
+            closedDisplay: AutomationClosedDisplayManager()
+        )
         let power = AutomationPowerMonitor()
         let controller = AwakeAutomationController(
             sessions: sessions,
@@ -42,7 +45,10 @@ struct AwakeAutomationControllerTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AwakeSessionPreferences(defaults: defaults)
         preferences.setEndsSessionOnForcedSleep(true)
-        let sessions = AwakeSessionController(assertions: AutomationPowerAssertions())
+        let sessions = AwakeSessionController(
+            assertions: AutomationPowerAssertions(),
+            closedDisplay: AutomationClosedDisplayManager()
+        )
         let controller = AwakeAutomationController(
             sessions: sessions,
             preferences: preferences,
@@ -70,7 +76,10 @@ struct AwakeAutomationControllerTests {
         preferences.setLowBatteryThreshold(20)
         preferences.setIgnoresLowBatteryWhileOnAC(true)
         preferences.setRestartsSessionAfterACReconnect(true)
-        let sessions = AwakeSessionController(assertions: AutomationPowerAssertions())
+        let sessions = AwakeSessionController(
+            assertions: AutomationPowerAssertions(),
+            closedDisplay: AutomationClosedDisplayManager()
+        )
         let power = AutomationPowerMonitor()
         let controller = AwakeAutomationController(
             sessions: sessions,
@@ -97,7 +106,10 @@ struct AwakeAutomationControllerTests {
         preferences.setLowBatteryEndEnabled(true)
         preferences.setLowBatteryThreshold(20)
         preferences.setPromptsBeforeLowBatteryEnd(true)
-        let sessions = AwakeSessionController(assertions: AutomationPowerAssertions())
+        let sessions = AwakeSessionController(
+            assertions: AutomationPowerAssertions(),
+            closedDisplay: AutomationClosedDisplayManager()
+        )
         let power = AutomationPowerMonitor()
         let prompt = AutomationLowBatteryPrompt(shouldEnd: false)
         let controller = AwakeAutomationController(
@@ -142,6 +154,22 @@ private final class AutomationPowerAssertions: PowerAssertionControlling {
 
     func deactivate() throws {
         activeConfiguration = nil
+    }
+}
+
+@MainActor
+private final class AutomationClosedDisplayManager: ClosedDisplayModeManaging {
+    var isEnabled = false
+    var hasPendingRestoration: Bool { isEnabled }
+
+    func recoverIfNeeded() async -> Bool { true }
+
+    func enable() async throws {
+        isEnabled = true
+    }
+
+    func disable() async throws {
+        isEnabled = false
     }
 }
 

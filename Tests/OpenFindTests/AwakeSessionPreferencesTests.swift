@@ -13,7 +13,7 @@ struct AwakeSessionPreferencesTests {
 
         #expect(!preferences.allowsDisplaySleep)
         #expect(!preferences.allowsScreenSaver)
-        #expect(preferences.allowsClosedDisplaySleep)
+        #expect(!preferences.allowsClosedDisplaySleep)
         #expect(preferences.defaultDurationMinutes == nil)
         #expect(preferences.endTimeCalculation == .timer)
         #expect(!preferences.showsSessionTimeInMenuBar)
@@ -37,7 +37,7 @@ struct AwakeSessionPreferencesTests {
             "  com.example.Video  ",
             "",
         ])
-        preferences.setAllowsClosedDisplaySleep(false)
+        preferences.setAllowsClosedDisplaySleep(true)
         preferences.setDefaultDurationMinutes(90)
         preferences.setEndTimeCalculation(.systemClock)
         preferences.setShowsSessionTimeInMenuBar(true)
@@ -72,7 +72,7 @@ struct AwakeSessionPreferencesTests {
             "com.example.Reader",
             "com.example.Video",
         ])
-        #expect(!reloaded.allowsClosedDisplaySleep)
+        #expect(reloaded.allowsClosedDisplaySleep)
         #expect(reloaded.defaultDurationMinutes == 90)
         #expect(reloaded.defaultEndCondition == .after(90 * 60))
         #expect(reloaded.endTimeCalculation == .systemClock)
@@ -106,7 +106,7 @@ struct AwakeSessionPreferencesTests {
                 "com.example.Reader",
                 "com.example.Video",
             ],
-            allowsClosedDisplaySleep: false,
+            allowsClosedDisplaySleep: true,
             endTimeCalculation: .systemClock
         ))
     }
@@ -141,5 +141,19 @@ struct AwakeSessionPreferencesTests {
         #expect(decoded.allowsDisplaySleep)
         #expect(!decoded.allowsClosedDisplaySleep)
         #expect(decoded.endTimeCalculation == .timer)
+    }
+
+    @Test func legacySessionOptionsWithoutClosedDisplayChoicePreserveCompatibility() throws {
+        let legacy = try JSONSerialization.data(withJSONObject: [
+            "allowsDisplaySleep": false,
+        ])
+
+        let decoded = try JSONDecoder().decode(AwakeSessionOptions.self, from: legacy)
+
+        #expect(decoded.allowsClosedDisplaySleep)
+    }
+
+    @Test func newSessionAndTriggerDefaultsDoNotAllowClosedDisplaySleep() {
+        #expect(!AwakeSessionOptions.defaultValue.allowsClosedDisplaySleep)
     }
 }

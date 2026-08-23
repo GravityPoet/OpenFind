@@ -68,7 +68,7 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 * **Regex, Globs & Quick Look**: Complete support for `src/**/*.swift`, `regex:^Report-[0-9]+$`, and instant `Space` key Quick Look preview.
 
 ### 2. 📋 Encrypted Clipboard Manager & OCR Tool
-* **Encrypted Storage**: AES-GCM encryption with keys stored in the macOS Keychain to protect your sensitive history.
+* **Encrypted Storage**: AES-GCM encryption. Apple-signed builds keep the key in the macOS Keychain; the self-signed local/customer build uses a user-only (`0600`) key file so updates do not repeatedly prompt for credentials. Clipboard payloads never enter logs.
 * **Vision Framework OCR**: Copy any screenshot or image, and OpenFind automatically extracts and lets you search text inside images.
 * **Sequential Paste Stack**: Copy 10 items in order, then paste them sequentially with a single shortcut.
 * **Snippet Expansion & Auto-Privacy**: Pin frequent snippets and automatically ignore 1Password, Keychain, and sensitive app data.

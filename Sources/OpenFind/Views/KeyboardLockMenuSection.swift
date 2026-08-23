@@ -17,6 +17,22 @@ struct KeyboardLockMenuSection: View {
                         : "keyboard"
                 )
             }
+
+            if let error = controller.lastErrorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if case .permissionRequired = controller.state {
+                    Button(L("Open Accessibility Settings")) {
+                        AccessibilityPermission.openSettings()
+                    }
+                }
+
+                Button(L("Dismiss Error")) {
+                    controller.clearError()
+                }
+            }
         }
     }
 }

@@ -21,7 +21,7 @@ jobs:
           swift --version
 
       - name: Run tests
-        run: xcrun --sdk macosx swift test --no-parallel
+        run: bash Scripts/test.sh
 
       - name: Run Drive Alive production scheduling integration
         env:

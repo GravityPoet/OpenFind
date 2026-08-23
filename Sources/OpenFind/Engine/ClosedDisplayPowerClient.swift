@@ -16,6 +16,7 @@ enum ClosedDisplayPowerError: Error, Equatable, LocalizedError {
     case outputInvalid
     case outputTooLarge
     case timedOut
+    case testAccessBlocked
 
     var errorDescription: String? {
         switch self {
@@ -27,7 +28,28 @@ enum ClosedDisplayPowerError: Error, Equatable, LocalizedError {
             return "The power-management command returned too much output."
         case .timedOut:
             return "The power-management command timed out and was stopped."
+        case .testAccessBlocked:
+            return "System power access is disabled while OpenFind tests are running."
         }
+    }
+}
+
+struct ClosedDisplayPowerAccessPolicy {
+    static let explicitTestModeKey = "OPENFIND_TEST_MODE"
+    static let testIntegrationOptInKey = "OPENFIND_ALLOW_REAL_POWER_ACCESS_IN_TESTS"
+
+    static func isAllowed(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        mainBundleURL: URL = Bundle.main.bundleURL,
+        executablePath: String = CommandLine.arguments.first ?? ""
+    ) -> Bool {
+        if environment[testIntegrationOptInKey] == "1" { return true }
+        if environment[explicitTestModeKey] == "1" { return false }
+        if mainBundleURL.pathExtension == "xctest" { return false }
+        if executablePath.contains(".xctest/") || executablePath.hasSuffix(".xctest") {
+            return false
+        }
+        return true
     }
 }
 
@@ -53,12 +75,22 @@ final class PMSetClosedDisplayPowerClient: ClosedDisplayPowerClient {
     private static let sudoPath = "/usr/bin/sudo"
     private nonisolated static let maximumOutputBytes = 64 * 1_024
     private let powerProtect: any PowerProtectServicing
+    private let systemPowerAccessAllowed: () -> Bool
 
-    init(powerProtect: any PowerProtectServicing = SudoersPowerProtectService()) {
+    init(
+        powerProtect: any PowerProtectServicing = SudoersPowerProtectService(),
+        systemPowerAccessAllowed: @escaping () -> Bool = {
+            ClosedDisplayPowerAccessPolicy.isAllowed()
+        }
+    ) {
         self.powerProtect = powerProtect
+        self.systemPowerAccessAllowed = systemPowerAccessAllowed
     }
 
     func readSleepDisabled() async throws -> Bool {
+        guard systemPowerAccessAllowed() else {
+            throw ClosedDisplayPowerError.testAccessBlocked
+        }
         let output = try await run(
             command: Self.pmsetPath,
             arguments: ["-g"],
@@ -71,6 +103,9 @@ final class PMSetClosedDisplayPowerClient: ClosedDisplayPowerClient {
     }
 
     func setSleepDisabled(_ disabled: Bool) async throws {
+        guard systemPowerAccessAllowed() else {
+            throw ClosedDisplayPowerError.testAccessBlocked
+        }
         let value = disabled ? "1" : "0"
         do {
             if try await setSleepDisabledWithoutPrompt(disabled) { return }
@@ -87,6 +122,9 @@ final class PMSetClosedDisplayPowerClient: ClosedDisplayPowerClient {
     }
 
     func setSleepDisabledWithoutPrompt(_ disabled: Bool) async throws -> Bool {
+        guard systemPowerAccessAllowed() else {
+            throw ClosedDisplayPowerError.testAccessBlocked
+        }
         guard powerProtect.status() == .installed else { return false }
         let value = disabled ? "1" : "0"
         _ = try await run(

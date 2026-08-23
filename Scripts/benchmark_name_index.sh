@@ -23,14 +23,14 @@ echo "Generating persisted name index: $NODES nodes..."
 OPENFIND_NAME_BENCHMARK_CACHE="$CACHE_PATH" \
 OPENFIND_NAME_BENCHMARK_NODES="$NODES" \
 OPENFIND_NAME_BENCHMARK_MAX_GENERATE_PHYSICAL_MB="$MAX_GENERATE_PHYSICAL_MB" \
-    xcrun --sdk macosx swift test -c release \
+    bash Scripts/test.sh -c release \
     --filter TemporarySearchPerformanceTests.generateConfiguredPersistedNameIndex
 
 echo "Measuring searchable compact-topology replacement..."
 OPENFIND_NAME_BENCHMARK_CACHE="$CACHE_PATH" \
 OPENFIND_NAME_BENCHMARK_NODES="$NODES" \
 OPENFIND_TOPOLOGY_BENCHMARK_MAX_PHYSICAL_MB="$MAX_REBUILD_PHYSICAL_MB" \
-    xcrun --sdk macosx swift test -c release --skip-build \
+    bash Scripts/test.sh -c release --skip-build \
     --filter TemporarySearchPerformanceTests.measureConfiguredCompactTopologyReplacement
 
 echo "Measuring mmap load and lossless query..."
@@ -39,7 +39,7 @@ OPENFIND_NAME_BENCHMARK_NODES="$NODES" \
 OPENFIND_NAME_BENCHMARK_MAX_LOAD_MS="$MAX_LOAD_MS" \
 OPENFIND_NAME_BENCHMARK_MAX_QUERY_MS="$MAX_QUERY_MS" \
 OPENFIND_NAME_BENCHMARK_MAX_RSS_MB="$MAX_RSS_MB" \
-    xcrun --sdk macosx swift test -c release --skip-build \
+    bash Scripts/test.sh -c release --skip-build \
     --filter TemporarySearchPerformanceTests.measureConfiguredPersistedNameIndex
 
 echo "OK: topology replacement and persisted name index stayed within memory/load/query budgets"

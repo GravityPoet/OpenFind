@@ -77,7 +77,10 @@ final class AwakeSessionPreferences {
         screenSaverExceptionIdentifiers = Self.normalizedIdentifiers(
             defaults.stringArray(forKey: Self.screenSaverExceptionsKey) ?? []
         )
-        allowsClosedDisplaySleep = defaults.object(forKey: Self.closedDisplaySleepKey) as? Bool ?? true
+        // A keep-awake session should also survive lid closure by default.
+        // Existing users who explicitly allowed closed-display sleep keep
+        // their stored choice; only an unset preference receives this default.
+        allowsClosedDisplaySleep = defaults.object(forKey: Self.closedDisplaySleepKey) as? Bool ?? false
         let storedDuration = defaults.object(forKey: Self.defaultDurationKey) as? Int ?? 0
         defaultDurationMinutes = storedDuration > 0
             ? min(7 * 24 * 60, max(1, storedDuration)) : nil

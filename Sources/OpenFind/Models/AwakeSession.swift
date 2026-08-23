@@ -109,6 +109,9 @@ struct AwakeSessionOptions: Equatable, Codable, Sendable {
         allowsDisplaySleep: Bool,
         screenSaverPolicy: ScreenSaverPolicy = .prevent,
         screenSaverExceptionIdentifiers: Set<String> = [],
+        // Keep the low-level initializer compatible with existing callers.
+        // User-facing settings and trigger-creation paths explicitly disable
+        // closed-display sleep for newly created sessions.
         allowsClosedDisplaySleep: Bool = true,
         endTimeCalculation: AwakeEndTimeCalculation = .timer
     ) {
@@ -173,7 +176,10 @@ struct AwakeSessionOptions: Equatable, Codable, Sendable {
         ) ?? .timer
     }
 
-    static let defaultValue = AwakeSessionOptions(allowsDisplaySleep: false)
+    static let defaultValue = AwakeSessionOptions(
+        allowsDisplaySleep: false,
+        allowsClosedDisplaySleep: false
+    )
 }
 
 struct AwakeSessionRequest: Equatable, Sendable {
@@ -183,7 +189,13 @@ struct AwakeSessionRequest: Equatable, Sendable {
 
     init(
         endCondition: AwakeSessionEndCondition = .indefinitely,
-        options: AwakeSessionOptions = .defaultValue,
+        // A bare low-level request must remain synchronous and non-privileged.
+        // Product entry points use AwakeSessionPreferences or an explicit
+        // trigger configuration when they want closed-display protection.
+        options: AwakeSessionOptions = AwakeSessionOptions(
+            allowsDisplaySleep: false,
+            allowsClosedDisplaySleep: true
+        ),
         source: AwakeSessionSource = .manual
     ) {
         self.endCondition = endCondition

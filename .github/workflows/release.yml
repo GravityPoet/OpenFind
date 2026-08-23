@@ -41,20 +41,23 @@ jobs:
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
           echo "RELEASE_SHA=$CHECKOUT_SHA" >> "$GITHUB_ENV"
+          RELEASE_NOTES_PATH="docs/releases/v${VERSION}.md"
+          test -s "$RELEASE_NOTES_PATH"
+          echo "RELEASE_NOTES_PATH=$RELEASE_NOTES_PATH" >> "$GITHUB_ENV"
           echo "DOWNLOAD_PREFIX=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/" >> "$GITHUB_ENV"
 
       - name: Run tests at the macOS 14 deployment target
-        run: MACOSX_DEPLOYMENT_TARGET=14.0 xcrun --sdk macosx swift test --no-parallel
+        run: MACOSX_DEPLOYMENT_TARGET=14.0 bash Scripts/test.sh
 
       - name: Run Drive Alive production scheduling integration
         env:
           OPENFIND_RUN_DRIVE_ALIVE_INTEGRATION: "1"
-        run: MACOSX_DEPLOYMENT_TARGET=14.0 xcrun --sdk macosx swift test --no-parallel --filter DriveAliveIntegrationTests
+        run: MACOSX_DEPLOYMENT_TARGET=14.0 bash Scripts/test.sh --filter DriveAliveIntegrationTests
 
       - name: Run visual regression at the macOS 14 deployment target
         env:
           OPENFIND_RUN_VISUAL_REGRESSION: "1"
-        run: MACOSX_DEPLOYMENT_TARGET=14.0 xcrun --sdk macosx swift test --filter VisualRegressionTests
+        run: MACOSX_DEPLOYMENT_TARGET=14.0 bash Scripts/test.sh --filter VisualRegressionTests
 
       - name: Import pinned OpenFind customer certificate
         timeout-minutes: 3
@@ -147,11 +150,7 @@ jobs:
           APPCAST_DIR="$RUNNER_TEMP/openfind-appcast"
           mkdir -p "$APPCAST_DIR"
           cp dist/OpenFind.zip "$APPCAST_DIR/OpenFind.zip"
-          cat > "$APPCAST_DIR/OpenFind.md" <<NOTES
-          OpenFind ${APP_VERSION}
-
-          See the GitHub release for verified changes and compatibility details.
-          NOTES
+          cp "$RELEASE_NOTES_PATH" "$APPCAST_DIR/OpenFind.md"
           printf '%s' "$SPARKLE_PRIVATE_KEY" | \
             .build/artifacts/sparkle/Sparkle/bin/generate_appcast \
               --ed-key-file - \
@@ -181,4 +180,4 @@ jobs:
             dist/appcast.xml.sha256 \
             --verify-tag \
             --title "OpenFind ${APP_VERSION}" \
-            --generate-notes
+            --notes-file "$RELEASE_NOTES_PATH"

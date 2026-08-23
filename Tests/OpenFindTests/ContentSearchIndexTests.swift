@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import SQLite3
 import Testing
 @testable import OpenFind
@@ -375,7 +376,7 @@ struct ContentSearchIndexTests {
         #expect(provenNonMatch.skippedFreshNonMatches == 1)
 
         let diagnostics = await index.diagnostics()
-        #expect(diagnostics.schemaVersion == 4)
+        #expect(diagnostics.schemaVersion == 5)
         #expect(diagnostics.recordTransactions == 1)
         #expect(diagnostics.walAutoCheckpointPages == 0)
         #expect(diagnostics.tempStoreMode == 1)
@@ -637,5 +638,118 @@ struct ContentSearchIndexTests {
         #expect(diagnostics.uniqueContentBodies == 1)
         #expect(diagnostics.deduplicatedDocuments == 1)
         #expect(diagnostics.sourceIdentityReuses == 1)
+    }
+
+    @Test func protectedPathsNeverPersistBodyPostingsOrRows() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let protectedRoot = try #require(
+            SearchPath.protectedPrivacyPaths.first(where: { $0.hasSuffix("/Documents") })
+        )
+        let protectedPath = protectedRoot + "/openfind-private-test.txt"
+        let node = ResolvedNode(
+            node: IndexedFileNode(
+                name: "openfind-private-test.txt",
+                parentIndex: -1,
+                isDirectory: false,
+                size: 32,
+                modifiedTime: 1,
+                creationTime: 1,
+                isHiddenScope: false,
+                isPackageDescendant: false
+            ),
+            path: protectedPath
+        )
+        let databaseURL = root.appendingPathComponent("content.sqlite3")
+        let index = ContentSearchIndex(databaseURL: databaseURL)
+        let signature = SearchIndexSignature(
+            scopes: [URL(fileURLWithPath: protectedRoot)],
+            hasFullDiskAccess: false
+        )
+
+        await index.configure(for: signature)
+        #expect(await index.record([
+            ContentIndexRecord(node: node, text: "secret body must not persist")
+        ]))
+        let diagnostics = await index.diagnostics()
+        #expect(diagnostics.indexedDocuments == 0)
+        #expect(diagnostics.uniqueContentBodies == 0)
+
+        let plan = await index.plan(
+            candidates: [ContentIndexCandidate(node: node, forceRefresh: false)],
+            requiredLiteral: "secret"
+        )
+        #expect(plan.workItems.map(\.node.path) == [protectedPath])
+        #expect(plan.workItems.first?.shouldRecord == false)
+        await index.close()
+
+        #expect(sqliteScalarText(
+            databaseURL: databaseURL,
+            sql: "SELECT count(*) FROM documents"
+        ) == "0")
+        var information = stat()
+        #expect(lstat(databaseURL.path, &information) == 0)
+        #expect(information.st_mode & mode_t(0o077) == 0)
+    }
+
+    @Test func changingSearchAuthorizationPurgesThePreviousContentCache() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let firstRoot = root.appendingPathComponent("first", isDirectory: true)
+        let secondRoot = root.appendingPathComponent("second", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondRoot, withIntermediateDirectories: true)
+        let firstURL = firstRoot.appendingPathComponent("first.txt")
+        try "first authorization body".write(to: firstURL, atomically: true, encoding: .utf8)
+        let firstNode = try resolvedNode(for: firstURL)
+        let databaseURL = root.appendingPathComponent("content.sqlite3")
+        let index = ContentSearchIndex(databaseURL: databaseURL)
+        let firstSignature = SearchIndexSignature(scopes: [firstRoot], hasFullDiskAccess: true)
+        let secondSignature = SearchIndexSignature(scopes: [secondRoot], hasFullDiskAccess: true)
+
+        await index.configure(for: firstSignature)
+        await index.record([ContentIndexRecord(node: firstNode, text: "first authorization body")])
+        #expect((await index.diagnostics()).indexedDocuments == 1)
+
+        await index.configure(for: secondSignature)
+        #expect((await index.diagnostics()).indexedDocuments == 0)
+        await index.close()
+        #expect(sqliteScalarText(
+            databaseURL: databaseURL,
+            sql: "SELECT count(*) FROM documents"
+        ) == "0")
+    }
+
+    @Test func openingAnOlderContentSchemaRebuildsItBeforeUse() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let databaseURL = root.appendingPathComponent("content.sqlite3")
+        var database: OpaquePointer?
+        #expect(sqlite3_open_v2(
+            databaseURL.path,
+            &database,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+            nil
+        ) == SQLITE_OK)
+        if let database {
+            #expect(sqlite3_exec(
+                database,
+                "CREATE TABLE old_rows(secret TEXT); INSERT INTO old_rows VALUES('legacy body'); PRAGMA user_version=4;",
+                nil,
+                nil,
+                nil
+            ) == SQLITE_OK)
+            sqlite3_close_v2(database)
+        }
+
+        let index = ContentSearchIndex(databaseURL: databaseURL)
+        let diagnostics = await index.diagnostics()
+        #expect(diagnostics.schemaVersion == 5)
+        #expect(diagnostics.indexedDocuments == 0)
+        await index.close()
+        #expect(sqliteScalarText(
+            databaseURL: databaseURL,
+            sql: "SELECT count(*) FROM sqlite_master WHERE name='old_rows'"
+        ) == "0")
     }
 }

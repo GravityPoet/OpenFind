@@ -24,6 +24,7 @@ struct ClipboardHistoryHeader: View {
                         frequentItemsButton
                     }
 
+                    previewToggleButton
                     actionsButton
                 }
             }
@@ -138,13 +139,41 @@ struct ClipboardHistoryHeader: View {
         .popover(isPresented: $isActionPanelPresented, arrowEdge: .top) {
             ClipboardActionPanel(
                 itemActions: actionContext.itemActions,
+                frequentAction: frequentAction,
                 contentActions: contentActions,
                 historyActions: ClipboardPanelActionContext.historyActions,
                 onPerform: onPerformAction,
+                onToggleFrequentlyUsed: toggleSelectedEntryFrequentlyUsed,
                 onPerformContentAction: onPerformContentAction,
                 onDismiss: { isActionPanelPresented = false }
             )
         }
+    }
+
+    private var previewToggleButton: some View {
+        Button {
+            store.isPreviewVisible.toggle()
+        } label: {
+            Image(systemName: "sidebar.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(store.isPreviewVisible ? Color.accentColor : Color.secondary)
+                .frame(width: 32, height: 32)
+                .openFindInteractiveGlassRoundedRectangle(cornerRadius: 10)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(
+                            Color.primary.opacity(
+                                colorSchemeContrast == .increased ? 0.34 : 0.10
+                            ),
+                            lineWidth: colorSchemeContrast == .increased ? 1.1 : 0.7
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .help(L("Clipboard Preview Shortcut"))
+        .accessibilityLabel(Text(L("Clipboard Preview Shortcut")))
+        .accessibilityIdentifier("clipboard.toggle-preview")
     }
 
     private func frequentTriggerHoverChanged(_ hovering: Bool) {
@@ -242,6 +271,23 @@ struct ClipboardHistoryHeader: View {
         guard actionContext.selectedEntries.count == 1,
               let entry = actionContext.entry else { return [] }
         return store.availableContentActions(for: entry)
+    }
+
+    private var frequentAction: ClipboardFrequentAction? {
+        let context = actionContext
+        guard let entry = context.entry else { return nil }
+        return ClipboardFrequentAction.resolve(
+            selectedItemCount: context.selectedEntries.count,
+            isFrequentlyUsed: entry.frequentOverride == true || store.isFrequentlyUsed(entry)
+        )
+    }
+
+    private func toggleSelectedEntryFrequentlyUsed() {
+        let context = actionContext
+        guard context.selectedEntries.count == 1,
+              let entry = context.entry else { return }
+        store.toggleFrequentlyUsed(entry)
+        isActionPanelPresented = false
     }
 
     private var actionContext: ClipboardPanelActionContext {

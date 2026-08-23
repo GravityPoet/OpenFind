@@ -12,7 +12,13 @@ struct AwakeTrigger: Identifiable, Equatable, Codable, Sendable {
         name: String,
         isEnabled: Bool = true,
         criteria: [TriggerCriterion],
-        sessionOptions: AwakeSessionOptions = .defaultValue
+        // Preserve the non-privileged low-level trigger initializer. The
+        // settings editor supplies the product's safer closed-display default
+        // explicitly when creating a new user trigger.
+        sessionOptions: AwakeSessionOptions = AwakeSessionOptions(
+            allowsDisplaySleep: false,
+            allowsClosedDisplaySleep: true
+        )
     ) {
         self.id = id
         self.name = name

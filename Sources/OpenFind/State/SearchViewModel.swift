@@ -103,7 +103,11 @@ final class SearchViewModel {
         indexStore: SearchIndexStore = .shared,
         startIndexing: Bool = true,
         resultPageSize: Int = 2_000,
-        automaticSearchQuietPeriod: Duration = .seconds(3)
+        automaticSearchQuietPeriod: Duration = .seconds(3),
+        initialOptions: SearchOptions? = nil,
+        initialScopes: [URL]? = nil,
+        initialRecentSearches: [String]? = nil,
+        initialFullDiskAccess: Bool? = nil
     ) {
         let pageSize = max(1, resultPageSize)
         self.resultPageSize = pageSize
@@ -111,11 +115,15 @@ final class SearchViewModel {
         visibleResultLimit = pageSize
         self.indexStore = indexStore
         self.automaticSearchQuietPeriod = automaticSearchQuietPeriod
-        options = Preferences.loadOptions()
-        let stored = ScopeStore.load()
-        scopes = stored.isEmpty ? [SearchScopes.wholeMacURL] : stored
-        recentSearches = Preferences.recentSearches
-        hasFullDiskAccess = SearchPermissions.hasFullDiskAccess()
+        options = initialOptions ?? Preferences.loadOptions()
+        if let initialScopes {
+            scopes = initialScopes
+        } else {
+            let stored = ScopeStore.load()
+            scopes = stored.isEmpty ? [SearchScopes.wholeMacURL] : stored
+        }
+        recentSearches = initialRecentSearches ?? Preferences.recentSearches
+        hasFullDiskAccess = initialFullDiskAccess ?? SearchPermissions.hasFullDiskAccess()
         if startIndexing {
             refreshIndex()
             startIndexStatsObserver()

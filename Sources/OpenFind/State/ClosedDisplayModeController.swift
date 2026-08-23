@@ -37,6 +37,16 @@ final class ClosedDisplayModeController: ClosedDisplayModeManaging {
     private let support: any ClosedDisplaySupportDetecting
     @ObservationIgnored private let defaults: UserDefaults
 
+    private static let isolatedTestDefaults: UserDefaults? = {
+        guard ProcessInfo.processInfo.environment["OPENFIND_TEST_MODE"] == "1" else {
+            return nil
+        }
+        let suite = "OpenFindTests.ClosedDisplay.\(ProcessInfo.processInfo.processIdentifier)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return nil }
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }()
+
     private(set) var state: State = .disabled
 
     init(
@@ -48,6 +58,10 @@ final class ClosedDisplayModeController: ClosedDisplayModeManaging {
         self.support = support
         self.defaults = defaults
         if !support.supportsClosedDisplayMode() { state = .unsupported }
+    }
+
+    static func defaultInstance() -> ClosedDisplayModeController {
+        ClosedDisplayModeController(defaults: isolatedTestDefaults ?? .standard)
     }
 
     var isEnabled: Bool {
