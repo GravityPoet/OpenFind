@@ -285,7 +285,10 @@ private struct ClipboardHistoryRowSurface: ViewModifier {
     func body(content: Content) -> some View {
         if isSelected {
             content
-                .openFindSelectedGlassRoundedRectangle(cornerRadius: 9)
+                .openFindSelectedGlassRoundedRectangle(
+                    cornerRadius: 9,
+                    tintOpacity: colorSchemeContrast == .increased ? 0 : 0.08
+                )
                 .overlay {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .strokeBorder(
