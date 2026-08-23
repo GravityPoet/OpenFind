@@ -49,14 +49,17 @@ extension View {
     }
 
     @ViewBuilder
-    func openFindSelectedGlassRoundedRectangle(cornerRadius: CGFloat) -> some View {
+    func openFindSelectedGlassRoundedRectangle(
+        cornerRadius: CGFloat,
+        tintOpacity: Double = 0.08
+    ) -> some View {
         if #available(macOS 26.0, *) {
             glassEffect(
                 // A selected row is an information state, not a primary CTA.
                 // Keep the accent as a translucent tint so the row remains
                 // legible over the panel's material instead of becoming a
                 // solid system-blue block.
-                .regular.tint(Color.accentColor.opacity(0.18)).interactive(),
+                .regular.tint(Color.accentColor.opacity(tintOpacity)).interactive(),
                 in: .rect(cornerRadius: cornerRadius)
             )
         } else {
@@ -66,7 +69,7 @@ extension View {
             ))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.12))
+                    .fill(Color.accentColor.opacity(tintOpacity * 0.75))
             }
         }
     }
