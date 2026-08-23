@@ -247,7 +247,10 @@ struct ClipboardHistoryRow: View {
     }
 
     private var selectedTextColor: Color {
-        Color(nsColor: .selectedControlTextColor)
+        // Liquid Glass selection uses a tinted surface with emphasis, not a
+        // filled blue control. Keep text in the normal label role so it stays
+        // calm in light mode and automatically inverts in dark mode.
+        Color(nsColor: .labelColor)
     }
 
     private var sourceHelp: String {
@@ -282,15 +285,12 @@ private struct ClipboardHistoryRowSurface: ViewModifier {
     func body(content: Content) -> some View {
         if isSelected {
             content
-                .background(
-                    Color(nsColor: .selectedContentBackgroundColor),
-                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                )
+                .openFindSelectedGlassRoundedRectangle(cornerRadius: 9)
                 .overlay {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .strokeBorder(
-                            Color(nsColor: .selectedControlTextColor)
-                                .opacity(colorSchemeContrast == .increased ? 0.72 : 0.24),
+                            Color.primary
+                                .opacity(colorSchemeContrast == .increased ? 0.34 : 0.10),
                             lineWidth: colorSchemeContrast == .increased ? 1.2 : 0.7
                         )
                 }

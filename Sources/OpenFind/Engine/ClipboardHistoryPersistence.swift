@@ -5,6 +5,11 @@ import Security
 
 protocol ClipboardHistoryPersisting: AnyObject {
     var requiresExplicitMigration: Bool { get }
+    /// True only for a populated v3 database that can finish a previously
+    /// interrupted key migration without waiting for a user confirmation.
+    /// Empty containers intentionally remain on the explicit-migration path so
+    /// stale legacy ciphertext can never resurrect a history the user cleared.
+    var hasRecoverableDatabase: Bool { get }
     var unloadedPayloadEntryIDs: Set<UUID> { get }
     func load() throws -> [ClipboardEntry]
     func loadResidentHistory() throws -> [ClipboardEntry]
@@ -19,6 +24,7 @@ protocol ClipboardHistoryPersisting: AnyObject {
 
 extension ClipboardHistoryPersisting {
     var requiresExplicitMigration: Bool { false }
+    var hasRecoverableDatabase: Bool { false }
     var unloadedPayloadEntryIDs: Set<UUID> { [] }
 
     func loadResidentHistory() throws -> [ClipboardEntry] { try load() }
@@ -139,6 +145,11 @@ final class EncryptedClipboardHistoryPersistence: ClipboardHistoryPersisting {
         !usesStableKeychainIdentity
             && defaults.data(forKey: Self.ciphertextKey) != nil
             && !localKeyPathExists
+    }
+
+    var hasRecoverableDatabase: Bool {
+        guard database.exists else { return false }
+        return (try? database.storedEntryCount()).map { $0 > 0 } ?? false
     }
 
     func load() throws -> [ClipboardEntry] {
