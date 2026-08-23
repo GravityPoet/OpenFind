@@ -52,14 +52,22 @@ extension View {
     func openFindSelectedGlassRoundedRectangle(cornerRadius: CGFloat) -> some View {
         if #available(macOS 26.0, *) {
             glassEffect(
-                .regular.tint(Color.accentColor).interactive(),
+                // A selected row is an information state, not a primary CTA.
+                // Keep the accent as a translucent tint so the row remains
+                // legible over the panel's material instead of becoming a
+                // solid system-blue block.
+                .regular.tint(Color.accentColor.opacity(0.18)).interactive(),
                 in: .rect(cornerRadius: cornerRadius)
             )
         } else {
-            background(
-                Color.accentColor.opacity(0.86),
-                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            )
+            background(.regularMaterial, in: RoundedRectangle(
+                cornerRadius: cornerRadius,
+                style: .continuous
+            ))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.12))
+            }
         }
     }
 

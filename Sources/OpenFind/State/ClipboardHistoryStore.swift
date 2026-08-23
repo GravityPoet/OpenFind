@@ -147,11 +147,17 @@ final class ClipboardHistoryStore {
         preferences = ClipboardPreferencesPersistence.load(from: defaults)
         let enabled = defaults.object(forKey: Self.persistenceEnabledKey) as? Bool ?? true
         isPersistenceEnabled = enabled
-        requiresPersistenceMigration = enabled && persistence.requiresExplicitMigration
-        guard enabled, !requiresPersistenceMigration else { return }
+        let migrationRequired = enabled && persistence.requiresExplicitMigration
+        requiresPersistenceMigration = migrationRequired
+        guard enabled,
+              !migrationRequired || persistence.hasRecoverableDatabase else { return }
         do {
             entries = try persistence.loadResidentHistory()
             nonresidentPayloadEntryIDs = persistence.unloadedPayloadEntryIDs
+            // A populated v3 database can finish the key commit on its own;
+            // only a legacy-only store should remain behind the explicit
+            // migration button.
+            requiresPersistenceMigration = false
             let trimmed = trimToLimits()
             let normalizedKinds = normalizeContentKinds()
             let normalizedPins = normalizePinnedKeys()
@@ -162,6 +168,12 @@ final class ClipboardHistoryStore {
             }
             enqueueMissingImageTextRecognition()
         } catch {
+            if migrationRequired {
+                // Keep the explicit-migration surface available if the
+                // crash-window recovery cannot authenticate the database.
+                lastErrorMessage = error.localizedDescription
+                return
+            }
             // A transient load failure must degrade this session to
             // memory-only capture: any later persist would rewrite the store
             // from the empty in-memory state and permanently delete every

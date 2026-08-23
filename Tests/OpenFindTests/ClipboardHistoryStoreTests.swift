@@ -509,6 +509,26 @@ struct ClipboardHistoryStoreTests {
         #expect(FileManager.default.fileExists(atPath: keyURL.path))
         #expect(!reader.requiresExplicitMigration)
         #expect(defaults.data(forKey: EncryptedClipboardHistoryPersistence.ciphertextKey) == nil)
+
+        // Recreate the same crash window and verify the real Store initializer
+        // performs the safe populated-database recovery instead of stopping at
+        // the explicit-migration screen with an empty in-memory history.
+        try FileManager.default.removeItem(at: keyURL)
+        try seedLegacyHistory([existing], defaults: defaults, keychain: keychain)
+        keychain.data = keyData
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: EncryptedClipboardHistoryPersistence(
+                defaults: defaults,
+                keyFileURL: keyURL,
+                databaseURL: databaseURL,
+                keychain: keychain,
+                signingTeamIdentifier: nil
+            ),
+            pasteboard: NSPasteboard(name: .init("OpenFindTests.PopulatedRecovery.\(UUID())"))
+        )
+        #expect(!store.requiresPersistenceMigration)
+        #expect(store.entries.map(\.previewText) == [existing.previewText])
     }
 
     @Test func newSelfSignedHistoryCreatesAFileKeyWithoutOpeningKeychain() throws {
