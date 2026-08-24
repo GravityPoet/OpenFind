@@ -116,7 +116,7 @@ private func makeTitleCard(outro: Bool) -> NSImage {
         drawIcon(size: outro ? 154 : 184, y: outro ? 660 : 668)
 
         drawText(
-            outro ? "OpenFind v1.1.0" : "OpenFind",
+            outro ? "OpenFind v1.1.1" : "OpenFind",
             in: NSRect(x: 240, y: 516, width: 1440, height: 104),
             font: .systemFont(ofSize: outro ? 66 : 78, weight: .semibold),
             color: .white

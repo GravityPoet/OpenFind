@@ -7,7 +7,7 @@ compatibility entry point and must not contain an independent procedure.
 
 - Repository: `GravityPoet/OpenFind`
 - Default and release branch: `main`
-- Public version format: semantic tags such as `v1.1.0`
+- Public version format: semantic tags such as `v1.1.1`
 - Product version source: the tag without the leading `v`
 - Build number: `major * 1_000_000 + minor * 1_000 + patch`
 - Supported platform: macOS 14 or later, Apple silicon and Intel
@@ -79,10 +79,10 @@ Run every command from the repository root.
    NODES=250000 bash Scripts/benchmark_name_index.sh
    ```
 
-3. Build the exact customer artifact. For `v1.1.0`, use:
+3. Build the exact customer artifact. For the current `v1.1.1` target, use:
 
    ```bash
-   APP_VERSION=1.1.0 BUILD_NUMBER=1001000 \
+   APP_VERSION=1.1.1 BUILD_NUMBER=1001001 \
      bash Scripts/build_customer_app.sh
    ```
 
@@ -121,7 +121,7 @@ Run every command from the repository root.
    ```bash
    git status --short --branch
    git add <intended-files>
-   git commit -m "release: prepare v1.1.0"
+   git commit -m "release: prepare v1.1.1"
    git push origin main
    RELEASE_SHA="$(git rev-parse HEAD)"
    gh run list --workflow ci.yml --commit "${RELEASE_SHA}" --limit 1
@@ -253,3 +253,4 @@ cause, correction, and prevention.
 | 2026-07-25 | Accept the first 60-second demo after checking only duration and dimensions | Freeze analysis later found three 18.83-second static spans, so customers could mistake the demo for a still image | Rebuild with real interactions, continuous screenshot motion, and a 1.5-second freeze gate | Presentation media is releasable only after both technical probing and motion regression checks pass |
 | 2026-07-25 | Validate the first real-interaction demo encode | The script expected stream metadata and format duration on one CSV row, but `ffprobe` emits them as separate sections | Query the video stream and format duration independently, then compare each exact value | Keep `ffprobe` acceptance checks section-specific instead of depending on multi-section output formatting |
 | 2026-07-25 | Run the freeze gate on the first real-interaction cut | Window-only capture omitted pointer movement, leaving several visually static spans while the operator moved between controls | Add restrained continuous camera movement to every captured scene and strengthen the outro motion | Real interaction footage must still pass pixel-level motion analysis; pointer activity alone is not visible proof |
+| 2026-08-24 | Assert the packaged CLI smoke result | OpenFind emits canonical absolute paths, while the first check expected a relative path; a temporary-directory template also preserved a trailing slash that differed from the CLI's normalized path | Normalize the temporary root with `pwd -P` and assert the returned marker filename plus the result-count contract | Release smoke checks must compare canonical paths or stable basenames and must not assume the caller's relative-path spelling |
