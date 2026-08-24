@@ -129,6 +129,11 @@ final class ClipboardController {
         windowController.prepareForBackgroundResidence()
     }
 
+    func resumeFromBackgroundResidence() {
+        windowController.resumeForForegroundResidence()
+        store.resumePayloadsForForeground()
+    }
+
     func setClipboardCheckInterval(_ interval: TimeInterval) {
         store.setClipboardCheckInterval(interval)
         if hasStarted {

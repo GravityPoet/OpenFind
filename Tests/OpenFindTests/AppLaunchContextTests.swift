@@ -97,6 +97,26 @@ struct AppLaunchContextTests {
         #expect(delegate.viewModel.isIndexLifecycleStarted)
     }
 
+    @Test func openingThePrimaryWindowResumesClipboardPayloadResidence() throws {
+        let application = NSApplication.shared
+        let existingWindows = Set(application.windows.map(ObjectIdentifier.init))
+        let context = makeContext(shouldPresentFirstRunGuide: false)
+        let delegate = context.delegate
+        defer { closeTestWindows(application, excluding: existingWindows) }
+
+        delegate.clipboardStore.hibernatePayloadsForBackground()
+        #expect(delegate.clipboardStore.isClipboardBackgroundResident)
+
+        delegate.showOpenFindWindow(nil)
+        #expect(!delegate.clipboardStore.isClipboardBackgroundResident)
+        #expect(delegate.clipboardStore.ingest(
+            representations: ["public.utf8-plain-text": Data("foreground clip".utf8)],
+            previewText: "foreground clip",
+            kind: .text
+        ))
+        #expect(delegate.clipboardStore.entries.first?.hasResidentPayload == true)
+    }
+
     private func closeTestWindows(
         _ application: NSApplication,
         excluding existingWindows: Set<ObjectIdentifier>

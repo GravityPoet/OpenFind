@@ -23,7 +23,9 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     var isUserMovingPanel = false
     var isUserResizingPanel = false
     private let backgroundReleaseDelay: Duration
+    private let backgroundPayloadHibernateDelay: Duration
     private var backgroundReleaseTask: Task<Void, Never>?
+    private var backgroundPayloadHibernateTask: Task<Void, Never>?
 
     init(
         store: ClipboardHistoryStore,
@@ -35,13 +37,19 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
             if NSApp.isActive { NSApp.hide(nil) }
         },
         notificationCenter: NotificationCenter = .default,
-        backgroundReleaseDelay: Duration = .seconds(5)
+        // Keep the panel and hot clipboard set warm for short, repeated use.
+        // Long idle still falls through to the bounded background hibernation.
+        backgroundReleaseDelay: Duration = .seconds(30),
+        // Do not retain large clipboard payloads merely because the panel
+        // surface is being kept warm for a quick second invocation.
+        backgroundPayloadHibernateDelay: Duration = .seconds(8)
     ) {
         self.store = store
         self.frameAutosaveName = frameAutosaveName
         self.applicationActivator = applicationActivator
         self.applicationDeactivator = applicationDeactivator
         self.backgroundReleaseDelay = backgroundReleaseDelay
+        self.backgroundPayloadHibernateDelay = backgroundPayloadHibernateDelay
         super.init()
         notificationCenter.addObserver(
             self,
@@ -92,6 +100,8 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     func prepare() {
         backgroundReleaseTask?.cancel()
         backgroundReleaseTask = nil
+        backgroundPayloadHibernateTask?.cancel()
+        backgroundPayloadHibernateTask = nil
         let panel = makePanelIfNeeded()
         configureMinimumSize(panel, showingPreview: true)
         if !restoreSavedFrameIfNeeded(panel) {
@@ -101,7 +111,31 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     }
 
     func prepareForBackgroundResidence() {
-        releaseForBackgroundResidence()
+        guard !store.isPanelPresented else { return }
+        // Drop the cold payloads as soon as the app becomes menu-bar-only;
+        // the store keeps its bounded hot set, while the panel surface below
+        // remains warm for a quick clipboard invocation.
+        store.hibernatePayloadsForBackground()
+        if let panel {
+            park(panel, keepCompositorWarm: true)
+        }
+        if !store.isClipboardBackgroundResident {
+            scheduleBackgroundPayloadHibernate()
+        }
+        scheduleBackgroundRelease()
+    }
+
+    func resumeForForegroundResidence() {
+        // A background release task would otherwise hibernate a foreground
+        // store after the app has resumed. Drop both timers and release only
+        // the hidden panel surface; payload residency is restored by the
+        // controller after this call.
+        backgroundReleaseTask?.cancel()
+        backgroundReleaseTask = nil
+        backgroundPayloadHibernateTask?.cancel()
+        backgroundPayloadHibernateTask = nil
+        guard !store.isPanelPresented else { return }
+        releasePanelOnly()
     }
 
     func present(
@@ -110,6 +144,8 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     ) {
         backgroundReleaseTask?.cancel()
         backgroundReleaseTask = nil
+        backgroundPayloadHibernateTask?.cancel()
+        backgroundPayloadHibernateTask = nil
         pasteService.captureTargetApplication()
         store.query = ""
         store.kindFilter = .all
@@ -171,6 +207,7 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         store.endPresentation()
         if let panel {
             park(panel, keepCompositorWarm: true)
+            scheduleBackgroundPayloadHibernate()
             scheduleBackgroundRelease()
         }
         shortcutCycleState.reset()
@@ -184,8 +221,16 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         guard !store.isPanelPresented else { return }
         backgroundReleaseTask?.cancel()
         backgroundReleaseTask = nil
+        backgroundPayloadHibernateTask?.cancel()
+        backgroundPayloadHibernateTask = nil
         quickLook.close()
-        store.hibernatePayloadsForBackground()
+        if !store.isClipboardBackgroundResident {
+            store.hibernatePayloadsForBackground()
+        }
+        releasePanelOnly()
+    }
+
+    private func releasePanelOnly() {
         guard let panel else { return }
         park(panel, keepCompositorWarm: false)
         panel.delegate = nil
@@ -212,6 +257,23 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
             guard let self, !self.store.isPanelPresented else { return }
             self.backgroundReleaseTask = nil
             self.releaseForBackgroundResidence()
+        }
+    }
+
+    private func scheduleBackgroundPayloadHibernate() {
+        backgroundPayloadHibernateTask?.cancel()
+        let delay = backgroundPayloadHibernateDelay
+        backgroundPayloadHibernateTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+            guard let self else { return }
+            self.backgroundPayloadHibernateTask = nil
+            guard !self.store.isPanelPresented,
+                  !self.store.isClipboardBackgroundResident else { return }
+            self.store.hibernatePayloadsForBackground()
         }
     }
 
