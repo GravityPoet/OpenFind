@@ -73,6 +73,94 @@ struct ClipboardPayloadResidencyTests {
         #expect(store.residentPayloadBytes == 0)
     }
 
+    @Test func backgroundHibernateRetainsSmallHotPayloadAndDropsColdLargePayload() throws {
+        let suite = "OpenFindTests.PayloadHotSet.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let persistence = ResidencyMemoryPersistence()
+        let pasteboard = NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: persistence,
+            pasteboard: pasteboard
+        )
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("frequent clip".utf8)],
+            previewText: "frequent clip",
+            kind: .text
+        ))
+        let hot = try #require(store.entries.first)
+        #expect(store.saveForReuse(hot))
+
+        let pinnedImagePayload = Data(repeating: 8, count: 2 * 1_024 * 1_024)
+        #expect(store.ingest(
+            representations: ["public.png": pinnedImagePayload],
+            previewText: "pinned image",
+            kind: .image
+        ))
+        let pinnedImage = try #require(store.entries.first)
+        #expect(store.saveForReuse(pinnedImage))
+
+        let coldPayload = Data(repeating: 9, count: 2 * 1_024 * 1_024)
+        #expect(store.ingest(
+            representations: ["public.png": coldPayload],
+            previewText: "cold image",
+            kind: .image
+        ))
+        let coldID = try #require(store.entries.first?.id)
+
+        store.hibernatePayloadsForBackground()
+
+        let retainedHot = try #require(store.entries.first { $0.id == hot.id })
+        let retainedPinnedImage = try #require(
+            store.entries.first { $0.id == pinnedImage.id }
+        )
+        let releasedCold = try #require(store.entries.first { $0.id == coldID })
+        #expect(retainedHot.isPinned)
+        #expect(retainedHot.hasResidentPayload)
+        #expect(retainedPinnedImage.isPinned)
+        #expect(retainedPinnedImage.hasResidentPayload)
+        #expect(!releasedCold.hasResidentPayload)
+        #expect(store.residentPayloadBytes > 0)
+        #expect(
+            store.residentPayloadBytes
+                <= ClipboardHistoryStore.backgroundPayloadRetentionBudget
+        )
+    }
+
+    @Test func automaticallyFrequentlyUsedPayloadStaysWarmForRepeatedCopy() throws {
+        let suite = "OpenFindTests.PayloadFrequentHotSet.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let persistence = ResidencyMemoryPersistence()
+        let pasteboard = NSPasteboard(name: .init("OpenFindTests.\(UUID())"))
+        let store = ClipboardHistoryStore(
+            defaults: defaults,
+            persistence: persistence,
+            pasteboard: pasteboard
+        )
+        #expect(store.ingest(
+            representations: ["public.utf8-plain-text": Data("frequent text".utf8)],
+            previewText: "frequent text",
+            kind: .text
+        ))
+        let entry = try #require(store.entries.first)
+        for _ in 0..<3 {
+            try store.copy(entry)
+        }
+        #expect(store.entries.first?.numberOfUses == 3)
+
+        store.hibernatePayloadsForBackground()
+        let retained = try #require(store.entries.first)
+        #expect(retained.hasResidentPayload)
+
+        let loadsBeforeRepeatedCopy = persistence.loadEntryCount
+        for _ in 0..<5 {
+            try store.copy(retained)
+        }
+        #expect(persistence.loadEntryCount == loadsBeforeRepeatedCopy)
+    }
+
     @Test func failedSaveKeepsNewPayloadResidentInsteadOfCreatingAnUnrecoverableSummary() throws {
         let suite = "OpenFindTests.PayloadSaveFailure.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -122,7 +210,12 @@ struct ClipboardPayloadResidencyTests {
 
 private final class ResidencyMemoryPersistence: ClipboardHistoryPersisting {
     private var stored: [ClipboardEntry] = []
+    private(set) var loadEntryCount = 0
     func load() throws -> [ClipboardEntry] { stored }
+    func loadEntry(id: UUID) throws -> ClipboardEntry? {
+        loadEntryCount += 1
+        return stored.first { $0.id == id }
+    }
     func save(_ entries: [ClipboardEntry]) throws { stored = entries }
     func remove() throws { stored = [] }
 }

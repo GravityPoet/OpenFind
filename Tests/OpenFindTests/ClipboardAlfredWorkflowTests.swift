@@ -242,6 +242,80 @@ struct ClipboardAlfredWorkflowTests {
         controller.releaseForBackgroundResidence()
     }
 
+    @Test func recentlyClosedClipboardPanelStaysWarmDuringGracePeriod() async throws {
+        let context = try makeContext()
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            applicationActivator: {},
+            applicationDeactivator: {},
+            backgroundReleaseDelay: .milliseconds(60)
+        )
+
+        controller.present(positionOverride: .center, hideApplicationWindows: true)
+        let firstPanel = try #require(controller.panel)
+        controller.close()
+
+        try await Task.sleep(for: .milliseconds(10))
+        #expect(controller.panel === firstPanel)
+        #expect(firstPanel.contentView != nil)
+
+        try await Task.sleep(for: .milliseconds(90))
+        #expect(controller.panel == nil)
+        #expect(firstPanel.contentView == nil)
+    }
+
+    @Test func panelGraceOutlivesPayloadHibernate() async throws {
+        let context = try makeContext()
+        #expect(context.store.ingest(
+            representations: ["public.utf8-plain-text": Data("hot clip".utf8)],
+            previewText: "hot clip",
+            kind: .text
+        ))
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            applicationActivator: {},
+            applicationDeactivator: {},
+            backgroundReleaseDelay: .milliseconds(200),
+            backgroundPayloadHibernateDelay: .milliseconds(40)
+        )
+
+        controller.present(positionOverride: .center, hideApplicationWindows: true)
+        controller.close()
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(context.store.isClipboardBackgroundResident)
+        #expect(context.store.entries.first?.hasResidentPayload == true)
+        #expect(controller.panel != nil)
+
+        try await Task.sleep(for: .milliseconds(180))
+        #expect(controller.panel == nil)
+    }
+
+    @Test func foregroundResumeCancelsPendingBackgroundHibernate() async throws {
+        let context = try makeContext()
+        #expect(context.store.ingest(
+            representations: ["public.utf8-plain-text": Data("foreground hot clip".utf8)],
+            previewText: "foreground hot clip",
+            kind: .text
+        ))
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            applicationActivator: {},
+            applicationDeactivator: {},
+            backgroundReleaseDelay: .milliseconds(100),
+            backgroundPayloadHibernateDelay: .milliseconds(20)
+        )
+
+        controller.present(positionOverride: .center, hideApplicationWindows: true)
+        controller.close()
+        controller.resumeForForegroundResidence()
+        try await Task.sleep(for: .milliseconds(150))
+
+        #expect(!context.store.isClipboardBackgroundResident)
+        #expect(context.store.entries.first?.hasResidentPayload == true)
+        #expect(controller.panel == nil)
+    }
+
     @Test func clipboardShortcutDoesNotRequireApplicationActivation() throws {
         let context = try makeContext()
         var activationCount = 0

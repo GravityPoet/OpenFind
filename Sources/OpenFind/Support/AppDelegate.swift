@@ -371,6 +371,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applyActivationPolicy(.accessory)
         backgroundHibernateTask?.cancel()
         backgroundHibernateTask = nil
+        // Leaving menu-bar-only mode must restore clipboard payload
+        // residency and cancel any delayed background timers; otherwise a
+        // just-closed panel could hibernate new foreground captures later.
+        clipboard.resumeFromBackgroundResidence()
         if resumesSearch {
             viewModel.resumeFromBackground()
         }
