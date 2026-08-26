@@ -11,9 +11,8 @@
 
 OpenFind 让你不再被多工具卡顿折磨：**零延迟穿透代码与 ZIP 包**、**复制截图瞬间提取文字且全加密防护**、**合上 MacBook 屏幕编译与下载绝不断开**、**彻底解决外接硬盘与 NAS 假死掉盘**。
 
-[**🚀 立即下载 OpenFind v1.1.1 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.1) ·
-[观看 60 秒演示](docs/assets/OpenFind-60s-demo.mp4) ·
-[查看 v1.1.1 发布说明](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.1)
+[**🚀 立即下载 OpenFind v1.1.2 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.2) ·
+[查看 v1.1.2 发布说明](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.2)
 
 ![OpenFind 首次引导：五项能力及其快捷键](docs/assets/openfind-welcome.png)
 
@@ -72,6 +71,7 @@ OpenFind 将这 5 大刚需工具集成为一个统一、隐私优先的 macOS �
 * **Vision 框架 OCR 文字识别**: 复制任何截图，OpenFind 自动识别图片中的文字并支持搜索。
 * **顺序粘贴栈 (Paste Stack)**: 连续复制 10 条内容，通过快捷键按顺序一次性连续粘贴。
 * **Snippet 片段快捷替换**: 常用文本固定，自动排除 1Password、Keychain 等敏感应用。
+* **唤醒即双栏预览**: 剪贴板历史会同时显示列表和当前项目预览，并记住你调整后的窗口大小。
 
 ### 3. ☕ 智能防休眠与合盖运行 (Clamshell Mode)
 * **系统/屏幕防休眠**: 自定义时长或无限期保持 Mac 处于唤醒状态。
@@ -121,14 +121,14 @@ brew install --cask GravityPoet/tap/openfind
 shasum -a 256 -c OpenFind.zip.sha256
 ```
 
-3. 解压后将 `OpenFind.app` 移入 `/Applications`。
-4. **⚡ 终端一行命令一键解封并启动**（无需前往系统设置繁琐授权）：
+3. 双击 ZIP 解压，把 `OpenFind.app` 移入 **“应用程序”**，然后从
+   **Finder → 应用程序** 打开 OpenFind。
+4. 如果 macOS 拦截首次启动，请关闭提示并打开
+   **“系统设置 → 隐私与安全性”**，在 **“安全性”** 区域点击 OpenFind
+   旁边的 **“仍要打开”**，最后确认 **“打开”**。
 
-```bash
-xattr -cr /Applications/OpenFind.app && open /Applications/OpenFind.app
-```
-
-> **备用手动授权**：若不使用终端，可前往 **系统设置 → 隐私与安全性**，在底部点击一次 **“仍要打开”** 即可。
+> **“仍要打开”只会在 OpenFind 被拦截过一次后出现，通常只需操作一次。**
+> 如果没有看到，请先从“应用程序”尝试打开一次 OpenFind，再返回“隐私与安全性”。
 
 如需从源码构建，请克隆仓库后运行 `bash Scripts/build_customer_app.sh`；
 维护者可用 `bash Scripts/install_local_app.sh` 原子安装。
@@ -166,7 +166,7 @@ OpenFind 使用 **Swift 6 & SwiftUI** 构建，严格遵循隐私第一原则：
 
 ## 📦 打包与签名
 
-官方 v1.1.1 客户包同时支持 `arm64` 与 `x86_64`，并使用 OpenFind 固定客户
+官方 v1.1.2 客户包同时支持 `arm64` 与 `x86_64`，并使用 OpenFind 固定客户
 证书签名。该版本尚未经过 Apple 公证，首次启动按上方说明放行属于预期流程。
 
 ```bash
