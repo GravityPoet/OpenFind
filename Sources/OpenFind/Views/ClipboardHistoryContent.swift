@@ -48,6 +48,7 @@ struct ClipboardHistoryContent: View {
     let onToggleFrequentlyUsed: (ClipboardEntry) -> Void
     let onPin: (ClipboardEntry) -> Void
     let onDelete: (ClipboardEntry) -> Void
+    let onRevealPreview: () -> Void
 
     var body: some View {
         if store.requiresPersistenceMigration {
@@ -105,7 +106,8 @@ struct ClipboardHistoryContent: View {
             onEditNote: onEditNote,
             onToggleFrequentlyUsed: onToggleFrequentlyUsed,
             onPin: onPin,
-            onDelete: onDelete
+            onDelete: onDelete,
+            onRevealPreview: onRevealPreview
         )
     }
 

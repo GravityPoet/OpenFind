@@ -101,7 +101,10 @@ struct ClipboardPreferences: Codable, Equatable, Sendable {
     var popupPosition = ClipboardPopupPosition.center
     var popupScreen = 0
     var openPreviewAutomatically = true
-    var previewDelayMilliseconds = 1_500
+    // Dwell time before a row's preview is revealed. Keeping this preference
+    // key preserves existing settings while changing the trigger from an
+    // automatic presentation timer to deliberate pointer hover.
+    var previewDelayMilliseconds = 600
     var previewWidth = 400.0
     var imageRowHeight = 40
     var highlightStyle = ClipboardHighlightStyle.bold

@@ -102,10 +102,11 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         backgroundReleaseTask = nil
         backgroundPayloadHibernateTask?.cancel()
         backgroundPayloadHibernateTask = nil
+        store.isPreviewVisible = false
         let panel = makePanelIfNeeded()
-        configureMinimumSize(panel, showingPreview: true)
+        configureMinimumSize(panel, showingPreview: false)
         if !restoreSavedFrameIfNeeded(panel) {
-            resize(panel, showingPreview: true, animated: false)
+            resize(panel, showingPreview: false, animated: false)
         }
         park(panel, keepCompositorWarm: false)
     }
@@ -159,9 +160,12 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         // accept search input while another app owns Secure Input, so opening
         // it never depends on NSApp becoming active.
         isPanelInteractionReady = true
-        configureMinimumSize(panel, showingPreview: store.isPreviewVisible)
+        // Set the presentation state before laying out the panel so the first
+        // rendered frame is always the compact, single-column surface.
+        store.beginPresentation()
+        configureMinimumSize(panel, showingPreview: false)
         if !restoreSavedFrameIfNeeded(panel, override: positionOverride) {
-            resize(panel, showingPreview: store.isPreviewVisible, animated: false)
+            resize(panel, showingPreview: false, animated: false)
             position(panel, override: positionOverride)
         }
         panel.alphaValue = 1
@@ -175,7 +179,6 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         if hideApplicationWindows {
             orderOutApplicationWindows(except: panel)
         }
-        store.beginPresentation()
         if let searchField = firstTextField(in: panel.contentView) {
             panel.initialFirstResponder = searchField
             _ = panel.makeFirstResponder(searchField)

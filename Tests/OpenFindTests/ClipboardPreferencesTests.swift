@@ -12,6 +12,8 @@ struct ClipboardPreferencesTests {
         #expect(preferences.allowedBundleIdentifiers.isEmpty)
         #expect(!preferences.captureOnlyFromAllowedApplications)
         #expect(preferences.popupPosition == .center)
+        #expect(preferences.openPreviewAutomatically)
+        #expect(preferences.previewDelayMilliseconds == 600)
     }
 
     @Test func legacyCursorDefaultMigratesToCenterExactlyOnce() throws {

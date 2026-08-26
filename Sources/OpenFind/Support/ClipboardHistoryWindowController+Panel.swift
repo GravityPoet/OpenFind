@@ -1,6 +1,13 @@
 import AppKit
 import SwiftUI
 
+enum ClipboardHistoryPanelMetrics {
+    static let compactDefaultSize = NSSize(width: 520, height: 560)
+    static let expandedDefaultSize = NSSize(width: 900, height: 560)
+    static let compactMinimumSize = NSSize(width: 460, height: 480)
+    static let expandedMinimumSize = NSSize(width: 680, height: 480)
+}
+
 extension ClipboardHistoryWindowController {
     func activateForClipboardPanel(hideApplicationWindows: Bool) {
         guard hideApplicationWindows else {
@@ -28,7 +35,10 @@ extension ClipboardHistoryWindowController {
     func makePanelIfNeeded() -> NSPanel {
         if let panel { return panel }
         let panel = ClipboardHistoryPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 500),
+            contentRect: NSRect(
+                origin: .zero,
+                size: ClipboardHistoryPanelMetrics.compactDefaultSize
+            ),
             styleMask: [.titled, .resizable, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -49,7 +59,7 @@ extension ClipboardHistoryWindowController {
         panel.isMovableByWindowBackground = true
         panel.animationBehavior = .none
         panel.collectionBehavior = [.transient, .moveToActiveSpace, .fullScreenAuxiliary]
-        panel.minSize = NSSize(width: 420, height: 440)
+        panel.minSize = ClipboardHistoryPanelMetrics.compactMinimumSize
         panel.setFrameAutosaveName(frameAutosaveName)
         panel.delegate = self
         panel.onToggleActions = { [weak self] in
@@ -192,17 +202,37 @@ extension ClipboardHistoryWindowController {
 
     func resize(_ panel: NSPanel, showingPreview: Bool, animated: Bool) {
         configureMinimumSize(panel, showingPreview: showingPreview)
-        let targetWidth = showingPreview
-            ? min(960, max(720, 350 + store.preferences.previewWidth)) : 450
-        guard abs(panel.frame.width - targetWidth) > 1 else { return }
+
+        // Once a user has moved or resized the panel, preserve that exact
+        // personalized frame on every wake and across the compact/expanded
+        // transition. Only enforce the minimum needed to render the split
+        // view if their saved frame is narrower than it.
+        if store.preferences.popupPosition == .lastPosition {
+            ensurePanelFrameIsVisible(panel)
+            return
+        }
+
+        let targetSize = showingPreview
+            ? ClipboardHistoryPanelMetrics.expandedDefaultSize
+            : ClipboardHistoryPanelMetrics.compactDefaultSize
+        guard abs(panel.frame.width - targetSize.width) > 1
+            || abs(panel.frame.height - targetSize.height) > 1 else { return }
         var frame = panel.frame
-        frame.origin.x += (frame.width - targetWidth) / 2
-        frame.size.width = targetWidth
+        let leftEdge = frame.minX
+        let topEdge = frame.maxY
+        frame.size = targetSize
+        // Keep the list's left edge and the panel's top edge stable while the
+        // preview appears, so the hovered row does not jump under the pointer.
+        frame.origin.x = leftEdge
+        frame.origin.y = topEdge - targetSize.height
         panel.setFrame(frame, display: true, animate: animated)
+        ensurePanelFrameIsVisible(panel)
     }
 
     func configureMinimumSize(_ panel: NSPanel, showingPreview: Bool) {
-        panel.minSize = NSSize(width: showingPreview ? 680 : 420, height: 440)
+        panel.minSize = showingPreview
+            ? ClipboardHistoryPanelMetrics.expandedMinimumSize
+            : ClipboardHistoryPanelMetrics.compactMinimumSize
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {

@@ -11,7 +11,10 @@ struct ClipboardHistoryList: View {
     let onToggleFrequentlyUsed: (ClipboardEntry) -> Void
     let onPin: (ClipboardEntry) -> Void
     let onDelete: (ClipboardEntry) -> Void
+    let onRevealPreview: () -> Void
     @State private var selectionOrigin = SelectionOrigin.other
+    @State private var hoverRevealTask: Task<Void, Never>?
+    @State private var hoveredEntryID: UUID?
 
     var body: some View {
         let visibleEntries = store.filteredEntries
@@ -92,6 +95,9 @@ struct ClipboardHistoryList: View {
                                             selectionOrigin = .other
                                         }
                                     },
+                                    onHoverChanged: { hovering in
+                                        handleHoverChanged(for: entry, hovering: hovering)
+                                    },
                                     onCopy: { onCopy(entry) },
                                     onPaste: { onPaste(entry) },
                                     onPastePlainText: { onPastePlainText(entry) },
@@ -131,6 +137,41 @@ struct ClipboardHistoryList: View {
             }
         }
         .background(Color.clear)
+        .onDisappear {
+            hoverRevealTask?.cancel()
+            hoverRevealTask = nil
+            hoveredEntryID = nil
+        }
+    }
+
+    private func handleHoverChanged(for entry: ClipboardEntry, hovering: Bool) {
+        hoverRevealTask?.cancel()
+        hoverRevealTask = nil
+
+        guard hovering else {
+            hoveredEntryID = nil
+            return
+        }
+        guard store.preferences.openPreviewAutomatically,
+              store.isPanelPresented,
+              !store.isPreviewVisible else {
+            hoveredEntryID = entry.id
+            return
+        }
+
+        let entryID = entry.id
+        let delay = max(200, store.preferences.previewDelayMilliseconds)
+        hoveredEntryID = entryID
+        hoverRevealTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(delay))
+            guard !Task.isCancelled,
+                  hoveredEntryID == entryID,
+                  store.isPanelPresented,
+                  !store.isPreviewVisible,
+                  store.preferences.openPreviewAutomatically else { return }
+            onRevealPreview()
+            hoverRevealTask = nil
+        }
     }
 
     private struct AnnotatedEntry {

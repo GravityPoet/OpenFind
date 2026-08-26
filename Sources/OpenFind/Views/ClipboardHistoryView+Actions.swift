@@ -168,6 +168,5 @@ extension ClipboardHistoryView {
     func togglePreview() {
         let visible = !store.isPreviewVisible
         store.isPreviewVisible = visible
-        onPreviewVisibilityChange(visible)
     }
 }

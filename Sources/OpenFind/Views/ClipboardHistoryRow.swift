@@ -15,6 +15,7 @@ struct ClipboardHistoryRow: View {
     let isFrequentlyUsed: Bool
     let onUse: () -> Void
     let onHoverSelection: () -> Void
+    let onHoverChanged: (Bool) -> Void
     let onCopy: () -> Void
     let onPaste: () -> Void
     let onPastePlainText: () -> Void
@@ -172,8 +173,10 @@ struct ClipboardHistoryRow: View {
         .onTapGesture(perform: onUse)
         .onHover { hovering in
             isHovered = hovering
+            onHoverChanged(hovering)
             if hovering { onHoverSelection() }
         }
+        .onDisappear { onHoverChanged(false) }
         .help(sourceHelp)
     }
 

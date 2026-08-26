@@ -620,8 +620,8 @@
 "Clipboard Popup Center" = "屏幕中央";
 "Clipboard Popup Last Position" = "上次位置";
 "Clipboard Show Preview" = "显示预览";
-"Clipboard Open Preview Automatically" = "自动打开预览";
-"Clipboard Preview Delay" = "预览延迟";
+"Clipboard Open Preview Automatically" = "悬停展开预览";
+"Clipboard Preview Delay" = "悬停停留时间";
 "Clipboard Image Row Height" = "图片行高";
 "Clipboard Match Highlight" = "匹配高亮";
 "Clipboard Highlight Bold" = "粗体";
