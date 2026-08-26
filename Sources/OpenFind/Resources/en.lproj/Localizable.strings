@@ -620,8 +620,8 @@
 "Clipboard Popup Center" = "Screen center";
 "Clipboard Popup Last Position" = "Last position";
 "Clipboard Show Preview" = "Show preview";
-"Clipboard Open Preview Automatically" = "Open preview automatically";
-"Clipboard Preview Delay" = "Preview delay";
+"Clipboard Open Preview Automatically" = "Reveal preview on hover";
+"Clipboard Preview Delay" = "Hover dwell time";
 "Clipboard Image Row Height" = "Image row height";
 "Clipboard Match Highlight" = "Match highlight";
 "Clipboard Highlight Bold" = "Bold";

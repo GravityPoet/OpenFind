@@ -106,7 +106,6 @@ final class ClipboardHistoryStore {
     }()
     @ObservationIgnored var pendingImageTextRecognitionIDs: Set<UUID> = []
     @ObservationIgnored var imageTextRecognitionTask: Task<Void, Never>?
-    @ObservationIgnored var previewPresentationTask: Task<Void, Never>?
     @ObservationIgnored var deletionUndoBannerDismissTask: Task<Void, Never>?
     @ObservationIgnored var deletionUndoBannerGeneration: UInt64 = 0
     @ObservationIgnored var nonresidentPayloadEntryIDs: Set<UUID> = []
@@ -122,7 +121,10 @@ final class ClipboardHistoryStore {
     var deletionUndo: ClipboardDeletionUndo?
     var isDeletionUndoBannerPresented = false
     var isSearchPresented = false
-    var isPreviewVisible = true
+    // The panel always wakes in its compact, single-column state. Preview
+    // expansion is an intentional interaction (hover dwell, keyboard, or the
+    // preview button), rather than a timer that fires after presentation.
+    var isPreviewVisible = false
     var isActionPanelPresented = false
     var isPanelPresented = false
     var presentationGeneration = 0
@@ -275,8 +277,6 @@ final class ClipboardHistoryStore {
 
     func beginPresentation() {
         resumePayloadsForPresentation()
-        previewPresentationTask?.cancel()
-        previewPresentationTask = nil
         // Refresh time-decayed usage periodically without throwing away the
         // warm projection on every open; opening the panel must stay instant.
         if let cachedUsageRankingDate,
@@ -287,25 +287,9 @@ final class ClipboardHistoryStore {
         isPreviewVisible = false
         isActionPanelPresented = false
         presentationGeneration &+= 1
-
-        guard preferences.openPreviewAutomatically else { return }
-        let generation = presentationGeneration
-        let delay = max(0, preferences.previewDelayMilliseconds)
-        previewPresentationTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(delay))
-            guard let self,
-                  !Task.isCancelled,
-                  self.isPanelPresented,
-                  self.presentationGeneration == generation else { return }
-            self.isPreviewVisible = true
-            self.previewPresentationTask = nil
-            self.presentationGeneration &+= 1
-        }
     }
 
     func endPresentation() {
-        previewPresentationTask?.cancel()
-        previewPresentationTask = nil
         isPanelPresented = false
         isActionPanelPresented = false
         presentationGeneration &+= 1

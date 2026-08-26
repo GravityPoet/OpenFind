@@ -167,7 +167,7 @@ struct ClipboardParityModelTests {
         ) == "first\tline second")
     }
 
-    @Test func everyPresentationOpensPreviewAfterTheConfiguredDelay() async throws {
+    @Test func everyPresentationStartsCompactAndDoesNotAutoReveal() async throws {
         let context = try makeContext()
         context.store.setPreference(\.previewDelayMilliseconds, to: 200)
 
@@ -175,9 +175,8 @@ struct ClipboardParityModelTests {
         #expect(context.store.isPanelPresented)
         #expect(!context.store.isPreviewVisible)
         try await Task.sleep(for: .milliseconds(250))
-        #expect(context.store.isPreviewVisible)
+        #expect(!context.store.isPreviewVisible)
         let firstGeneration = context.store.presentationGeneration
-        context.store.isPreviewVisible = false
 
         context.store.endPresentation()
         #expect(!context.store.isPanelPresented)
