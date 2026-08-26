@@ -11,9 +11,8 @@
 
 OpenFind frees you from multi-app lag: **Zero-latency search inside ZIPs and PDFs**, **Instant text extraction from screenshot clipboards with AES encryption**, **Keep servers and builds running with lid closed**, and **Prevent external SSD/NAS disconnects**.
 
-[**🚀 Download OpenFind v1.1.1 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.1) ·
-[Watch 60s Demo](docs/assets/OpenFind-60s-demo.mp4) ·
-[v1.1.1 Release Notes](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.1)
+[**🚀 Download OpenFind v1.1.2 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.2) ·
+[v1.1.2 Release Notes](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.2)
 
 ![OpenFind first-run guide showing five capabilities and their shortcuts](docs/assets/openfind-welcome-en.png)
 
@@ -72,6 +71,7 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 * **Vision Framework OCR**: Copy any screenshot or image, and OpenFind automatically extracts and lets you search text inside images.
 * **Sequential Paste Stack**: Copy 10 items in order, then paste them sequentially with a single shortcut.
 * **Snippet Expansion & Auto-Privacy**: Pin frequent snippets and automatically ignore 1Password, Keychain, and sensitive app data.
+* **Immediate Two-Column Preview**: Clipboard history opens with the list and selected-item preview side by side; your resized window frame is remembered.
 
 ### 3. ☕ Smart Keep-Awake & Clamshell (Lid-Closed) Mode
 * **Sleep Prevention**: Keep your Mac display or system awake for custom durations or indefinitely.
@@ -121,14 +121,15 @@ brew install --cask GravityPoet/tap/openfind
 shasum -a 256 -c OpenFind.zip.sha256
 ```
 
-3. Open the ZIP and move `OpenFind.app` to `/Applications`.
-4. **⚡ One-Liner Instant Unquarantine & Launch** (Bypass macOS System Settings dialogs):
+3. Double-click the ZIP, move `OpenFind.app` to **Applications**, then open it
+   from **Finder → Applications**.
+4. If macOS blocks that first launch, close the alert and open
+   **System Settings → Privacy & Security**. In the **Security** section, click
+   **Open Anyway** next to OpenFind, then confirm **Open**.
 
-```bash
-xattr -cr /Applications/OpenFind.app && open /Applications/OpenFind.app
-```
-
-> **Manual Fallback**: If macOS blocks direct double-click, open **System Settings → Privacy & Security → Open Anyway** once.
+> **Open Anyway** appears only after one blocked launch attempt and is normally
+> needed once. If it is missing, try opening OpenFind once from Applications,
+> then return to Privacy & Security.
 
 To build from source instead, clone the repository and run
 `bash Scripts/build_customer_app.sh`; maintainers can install atomically with
@@ -167,7 +168,7 @@ OpenFind is built using **Swift 6 & SwiftUI** with strict privacy guarantees:
 
 ## 📦 Packaging & Code Signing
 
-The official v1.1.1 customer artifact is a universal (`arm64` + `x86_64`) build
+The official v1.1.2 customer artifact is a universal (`arm64` + `x86_64`) build
 signed by OpenFind's pinned customer certificate. It is not Apple-notarized;
 the one-time first-launch override above is expected.
 
