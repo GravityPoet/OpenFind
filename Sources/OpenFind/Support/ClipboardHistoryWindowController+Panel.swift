@@ -3,9 +3,9 @@ import SwiftUI
 
 enum ClipboardHistoryPanelMetrics {
     static let compactDefaultSize = NSSize(width: 520, height: 560)
-    static let expandedDefaultSize = NSSize(width: 900, height: 560)
+    static let expandedDefaultSize = NSSize(width: 1080, height: 680)
     static let compactMinimumSize = NSSize(width: 460, height: 480)
-    static let expandedMinimumSize = NSSize(width: 680, height: 480)
+    static let expandedMinimumSize = NSSize(width: 760, height: 520)
 }
 
 extension ClipboardHistoryWindowController {
@@ -37,7 +37,7 @@ extension ClipboardHistoryWindowController {
         let panel = ClipboardHistoryPanel(
             contentRect: NSRect(
                 origin: .zero,
-                size: ClipboardHistoryPanelMetrics.compactDefaultSize
+                size: ClipboardHistoryPanelMetrics.expandedDefaultSize
             ),
             styleMask: [.titled, .resizable, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
@@ -59,7 +59,7 @@ extension ClipboardHistoryWindowController {
         panel.isMovableByWindowBackground = true
         panel.animationBehavior = .none
         panel.collectionBehavior = [.transient, .moveToActiveSpace, .fullScreenAuxiliary]
-        panel.minSize = ClipboardHistoryPanelMetrics.compactMinimumSize
+        panel.minSize = ClipboardHistoryPanelMetrics.expandedMinimumSize
         panel.setFrameAutosaveName(frameAutosaveName)
         panel.delegate = self
         panel.onToggleActions = { [weak self] in
@@ -222,7 +222,7 @@ extension ClipboardHistoryWindowController {
         let topEdge = frame.maxY
         frame.size = targetSize
         // Keep the list's left edge and the panel's top edge stable while the
-        // preview appears, so the hovered row does not jump under the pointer.
+        // layout mode changes, so the current selection does not jump.
         frame.origin.x = leftEdge
         frame.origin.y = topEdge - targetSize.height
         panel.setFrame(frame, display: true, animate: animated)

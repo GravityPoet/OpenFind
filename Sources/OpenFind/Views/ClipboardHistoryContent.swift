@@ -48,7 +48,6 @@ struct ClipboardHistoryContent: View {
     let onToggleFrequentlyUsed: (ClipboardEntry) -> Void
     let onPin: (ClipboardEntry) -> Void
     let onDelete: (ClipboardEntry) -> Void
-    let onRevealPreview: () -> Void
 
     var body: some View {
         if store.requiresPersistenceMigration {
@@ -64,7 +63,7 @@ struct ClipboardHistoryContent: View {
             if store.isPreviewVisible {
                 HSplitView {
                     historyList
-                        .frame(minWidth: 310, idealWidth: 350, maxWidth: 410)
+                        .frame(minWidth: 320, idealWidth: 390, maxWidth: 460)
                         .background(
                             Color(nsColor: .controlBackgroundColor).opacity(0.18)
                         )
@@ -75,8 +74,8 @@ struct ClipboardHistoryContent: View {
                         onTogglePin: onPin
                     )
                         .frame(
-                            minWidth: 300,
-                            idealWidth: store.preferences.previewWidth,
+                            minWidth: 360,
+                            idealWidth: max(480, store.preferences.previewWidth),
                             maxWidth: .infinity,
                             maxHeight: .infinity
                         )
@@ -106,8 +105,7 @@ struct ClipboardHistoryContent: View {
             onEditNote: onEditNote,
             onToggleFrequentlyUsed: onToggleFrequentlyUsed,
             onPin: onPin,
-            onDelete: onDelete,
-            onRevealPreview: onRevealPreview
+            onDelete: onDelete
         )
     }
 
