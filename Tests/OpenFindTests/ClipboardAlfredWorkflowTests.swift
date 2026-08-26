@@ -203,9 +203,9 @@ struct ClipboardAlfredWorkflowTests {
         #expect(!panel.hasShadow)
         #expect(!panel.isKeyWindow)
         #expect(panel.contentView != nil)
-        #expect(!context.store.isPreviewVisible)
-        #expect(panel.frame.size == ClipboardHistoryPanelMetrics.compactDefaultSize)
-        #expect(panel.minSize == ClipboardHistoryPanelMetrics.compactMinimumSize)
+        #expect(context.store.isPreviewVisible)
+        #expect(panel.frame.size == ClipboardHistoryPanelMetrics.expandedDefaultSize)
+        #expect(panel.minSize == ClipboardHistoryPanelMetrics.expandedMinimumSize)
     }
 
     @Test func backgroundResidenceDoesNotCreateOrRetainAClipboardPanel() throws {

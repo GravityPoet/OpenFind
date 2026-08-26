@@ -102,11 +102,11 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         backgroundReleaseTask = nil
         backgroundPayloadHibernateTask?.cancel()
         backgroundPayloadHibernateTask = nil
-        store.isPreviewVisible = false
+        store.isPreviewVisible = true
         let panel = makePanelIfNeeded()
-        configureMinimumSize(panel, showingPreview: false)
+        configureMinimumSize(panel, showingPreview: true)
         if !restoreSavedFrameIfNeeded(panel) {
-            resize(panel, showingPreview: false, animated: false)
+            resize(panel, showingPreview: true, animated: false)
         }
         park(panel, keepCompositorWarm: false)
     }
@@ -161,11 +161,11 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         // it never depends on NSApp becoming active.
         isPanelInteractionReady = true
         // Set the presentation state before laying out the panel so the first
-        // rendered frame is always the compact, single-column surface.
+        // rendered frame is always the expanded, two-column surface.
         store.beginPresentation()
-        configureMinimumSize(panel, showingPreview: false)
+        configureMinimumSize(panel, showingPreview: true)
         if !restoreSavedFrameIfNeeded(panel, override: positionOverride) {
-            resize(panel, showingPreview: false, animated: false)
+            resize(panel, showingPreview: true, animated: false)
             position(panel, override: positionOverride)
         }
         panel.alphaValue = 1

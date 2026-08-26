@@ -60,8 +60,7 @@ struct ClipboardHistoryView: View {
                 onEditNote: beginEditingNote,
                 onToggleFrequentlyUsed: { store.toggleFrequentlyUsed($0) },
                 onPin: { store.togglePinned($0) },
-                onDelete: { store.delete($0) },
-                onRevealPreview: revealPreview
+                onDelete: { store.delete($0) }
             )
             if store.preferences.showFooter {
                 ClipboardHistoryFooter(store: store)
@@ -74,8 +73,12 @@ struct ClipboardHistoryView: View {
             idealWidth: store.isPreviewVisible
                 ? ClipboardHistoryPanelMetrics.expandedDefaultSize.width
                 : ClipboardHistoryPanelMetrics.compactDefaultSize.width,
-            minHeight: ClipboardHistoryPanelMetrics.compactMinimumSize.height,
-            idealHeight: ClipboardHistoryPanelMetrics.compactDefaultSize.height
+            minHeight: store.isPreviewVisible
+                ? ClipboardHistoryPanelMetrics.expandedMinimumSize.height
+                : ClipboardHistoryPanelMetrics.compactMinimumSize.height,
+            idealHeight: store.isPreviewVisible
+                ? ClipboardHistoryPanelMetrics.expandedDefaultSize.height
+                : ClipboardHistoryPanelMetrics.compactDefaultSize.height
         )
         .background {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -169,11 +172,6 @@ struct ClipboardHistoryView: View {
             searchFocused = true
             searchFocusTask = nil
         }
-    }
-
-    private func revealPreview() {
-        guard store.isPanelPresented, !store.isPreviewVisible else { return }
-        store.isPreviewVisible = true
     }
 
     private var panelSurface: AnyShapeStyle {

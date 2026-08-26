@@ -121,10 +121,10 @@ final class ClipboardHistoryStore {
     var deletionUndo: ClipboardDeletionUndo?
     var isDeletionUndoBannerPresented = false
     var isSearchPresented = false
-    // The panel always wakes in its compact, single-column state. Preview
-    // expansion is an intentional interaction (hover dwell, keyboard, or the
-    // preview button), rather than a timer that fires after presentation.
-    var isPreviewVisible = false
+    // The clipboard panel opens with its list and detail panes visible. The
+    // toolbar button and preview shortcut can still hide the detail pane for
+    // a focused, single-column view during the current presentation.
+    var isPreviewVisible = true
     var isActionPanelPresented = false
     var isPanelPresented = false
     var presentationGeneration = 0
@@ -284,7 +284,7 @@ final class ClipboardHistoryStore {
             invalidateClipboardProjection()
         }
         isPanelPresented = true
-        isPreviewVisible = false
+        isPreviewVisible = true
         isActionPanelPresented = false
         presentationGeneration &+= 1
     }
