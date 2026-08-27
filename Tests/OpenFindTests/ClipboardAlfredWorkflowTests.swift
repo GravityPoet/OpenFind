@@ -429,10 +429,11 @@ struct ClipboardAlfredWorkflowTests {
         let hostingView = try #require(
             panel.contentView as? NSHostingView<ClipboardHistoryView>
         )
+        let expectedSize = try expectedExpandedPanelSize()
         #expect(hostingView.rootView.store.isPreviewVisible)
         #expect(context.store.isPreviewVisible)
         #expect(context.store.preferences.popupPosition == .center)
-        #expect(panel.frame.size == ClipboardHistoryPanelMetrics.expandedDefaultSize)
+        #expect(panel.frame.size == expectedSize)
     }
 
     @Test func closingPresentedClipboardPanelReturnsApplicationFocus() throws {
@@ -579,9 +580,10 @@ struct ClipboardAlfredWorkflowTests {
         defer { controller.close() }
 
         let panel = try #require(controller.panel)
+        let expectedSize = try expectedExpandedPanelSize()
         #expect(panel.frame.width >= legacyFrame.width)
-        #expect(panel.frame.width == ClipboardHistoryPanelMetrics.expandedDefaultSize.width)
-        #expect(panel.frame.height == ClipboardHistoryPanelMetrics.expandedDefaultSize.height)
+        #expect(panel.frame.width == expectedSize.width)
+        #expect(panel.frame.height == expectedSize.height)
         #expect(
             context.store.defaults.integer(
                 forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
@@ -835,6 +837,20 @@ struct ClipboardAlfredWorkflowTests {
             y: visibleFrame.maxY - size.height - 40,
             width: size.width,
             height: size.height
+        )
+    }
+
+    private func expectedExpandedPanelSize() throws -> NSSize {
+        let visibleFrame = try #require(NSScreen.main?.visibleFrame)
+        return NSSize(
+            width: min(
+                ClipboardHistoryPanelMetrics.expandedDefaultSize.width,
+                visibleFrame.width
+            ),
+            height: min(
+                ClipboardHistoryPanelMetrics.expandedDefaultSize.height,
+                visibleFrame.height
+            )
         )
     }
 
