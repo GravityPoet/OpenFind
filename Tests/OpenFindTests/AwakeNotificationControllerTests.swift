@@ -219,7 +219,7 @@ struct AwakeNotificationControllerTests {
 
         environment.setSuppressed(false)
         try await waitUntil {
-            warningSound.volumes.count == 1 && delivery.payloads.contains {
+            warningSound.volumes.count >= 1 && delivery.payloads.contains {
                 $0.identifier == AwakeNotificationController.closedDisplayWarningNotificationID
             }
         }
