@@ -8,6 +8,11 @@ enum ClipboardHistoryPanelMetrics {
     static let expandedMinimumSize = NSSize(width: 760, height: 520)
 }
 
+enum ClipboardHistoryPanelGeometryMigration {
+    static let defaultsKey = "OpenFind.clipboardPanelGeometryMigrationVersionV1"
+    static let currentVersion = 1
+}
+
 extension ClipboardHistoryWindowController {
     func activateForClipboardPanel(hideApplicationWindows: Bool) {
         guard hideApplicationWindows else {
@@ -126,10 +131,14 @@ extension ClipboardHistoryWindowController {
     func position(_ panel: NSPanel, override: ClipboardPopupPosition? = nil) {
         let popupPosition = override ?? store.preferences.popupPosition
         if popupPosition == .lastPosition,
-           panel.setFrameUsingName(frameAutosaveName) { return }
+           withProgrammaticPanelFrameChange({
+               panel.setFrameUsingName(frameAutosaveName)
+           }) { return }
         let mouseLocation = NSEvent.mouseLocation
         guard let screen = selectedScreen(at: mouseLocation) else {
-            panel.center()
+            withProgrammaticPanelFrameChange {
+                panel.center()
+            }
             return
         }
         let visible = screen.visibleFrame
@@ -146,7 +155,9 @@ extension ClipboardHistoryWindowController {
                 y: visible.midY - panel.frame.height / 2
             )
         }
-        panel.setFrameOrigin(origin)
+        withProgrammaticPanelFrameChange {
+            panel.setFrameOrigin(origin)
+        }
     }
 
     func restoreSavedFrameIfNeeded(
@@ -155,9 +166,64 @@ extension ClipboardHistoryWindowController {
     ) -> Bool {
         let popupPosition = override ?? store.preferences.popupPosition
         guard popupPosition == .lastPosition,
-              panel.setFrameUsingName(frameAutosaveName) else { return false }
+              withProgrammaticPanelFrameChange({
+                  panel.setFrameUsingName(frameAutosaveName)
+              }) else { return false }
         ensurePanelFrameIsVisible(panel)
         return true
+    }
+
+    /// The split preview needs more horizontal room than the pre-v1.1.2
+    /// single-column panel. Upgrade an existing autosaved frame once, while
+    /// keeping its top-left placement and all later user adjustments intact.
+    func migrateSavedPanelFrameIfNeeded(_ panel: NSPanel) {
+        guard store.defaults.integer(
+            forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+        ) < ClipboardHistoryPanelGeometryMigration.currentVersion else { return }
+
+        defer {
+            store.defaults.set(
+                ClipboardHistoryPanelGeometryMigration.currentVersion,
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            )
+        }
+
+        guard store.preferences.popupPosition == .lastPosition,
+              withProgrammaticPanelFrameChange({
+                  panel.setFrameUsingName(frameAutosaveName)
+              }) else { return }
+
+        let oldFrame = panel.frame
+        let visibleFrame = NSScreen.screens.first {
+            $0.visibleFrame.intersects(oldFrame)
+        }?.visibleFrame ?? selectedScreen(at: NSEvent.mouseLocation)?.visibleFrame
+        guard let visibleFrame else { return }
+
+        var frame = oldFrame
+        frame.size.width = min(
+            max(frame.width, ClipboardHistoryPanelMetrics.expandedDefaultSize.width),
+            visibleFrame.width
+        )
+        frame.size.height = min(
+            max(frame.height, ClipboardHistoryPanelMetrics.expandedDefaultSize.height),
+            visibleFrame.height
+        )
+        // Preserve the user's visual anchor while the panel grows.
+        frame.origin.y = oldFrame.maxY - frame.height
+        frame.origin.x = oldFrame.minX
+        frame.origin.x = min(
+            max(frame.minX, visibleFrame.minX),
+            visibleFrame.maxX - frame.width
+        )
+        frame.origin.y = min(
+            max(frame.minY, visibleFrame.minY),
+            visibleFrame.maxY - frame.height
+        )
+        guard frame != oldFrame else { return }
+        withProgrammaticPanelFrameChange {
+            panel.setFrame(frame, display: false)
+            panel.saveFrame(usingName: frameAutosaveName)
+        }
     }
 
     func ensurePanelFrameIsVisible(_ panel: NSPanel) {
@@ -166,7 +232,9 @@ extension ClipboardHistoryWindowController {
         }
         guard let visibleFrame = matchingScreen?.visibleFrame
             ?? selectedScreen(at: NSEvent.mouseLocation)?.visibleFrame else {
-            panel.center()
+            withProgrammaticPanelFrameChange {
+                panel.center()
+            }
             return
         }
 
@@ -188,7 +256,9 @@ extension ClipboardHistoryWindowController {
             visibleFrame.maxY - frame.height
         )
         if frame != panel.frame {
-            panel.setFrame(frame, display: false)
+            withProgrammaticPanelFrameChange {
+                panel.setFrame(frame, display: false)
+            }
         }
     }
 
@@ -225,7 +295,9 @@ extension ClipboardHistoryWindowController {
         // layout mode changes, so the current selection does not jump.
         frame.origin.x = leftEdge
         frame.origin.y = topEdge - targetSize.height
-        panel.setFrame(frame, display: true, animate: animated)
+        withProgrammaticPanelFrameChange {
+            panel.setFrame(frame, display: true, animate: animated)
+        }
         ensurePanelFrameIsVisible(panel)
     }
 
@@ -248,26 +320,30 @@ extension ClipboardHistoryWindowController {
     }
 
     func windowWillMove(_ notification: Notification) {
-        guard notification.object as? NSWindow === panel else { return }
+        guard notification.object as? NSWindow === panel,
+              !isApplyingProgrammaticPanelFrame else { return }
         isUserMovingPanel = true
     }
 
     func windowDidMove(_ notification: Notification) {
         guard let movedPanel = notification.object as? NSPanel,
               movedPanel === panel,
+              !isApplyingProgrammaticPanelFrame,
               isUserMovingPanel else { return }
         isUserMovingPanel = false
         persistUserAdjustedFrame(movedPanel)
     }
 
     func windowWillStartLiveResize(_ notification: Notification) {
-        guard notification.object as? NSWindow === panel else { return }
+        guard notification.object as? NSWindow === panel,
+              !isApplyingProgrammaticPanelFrame else { return }
         isUserResizingPanel = true
     }
 
     func windowDidEndLiveResize(_ notification: Notification) {
         guard let resizedPanel = notification.object as? NSPanel,
               resizedPanel === panel,
+              !isApplyingProgrammaticPanelFrame,
               isUserResizingPanel else { return }
         isUserResizingPanel = false
         persistUserAdjustedFrame(resizedPanel)

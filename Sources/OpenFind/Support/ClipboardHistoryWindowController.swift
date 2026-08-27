@@ -22,6 +22,10 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
     var pasteStackAdvanceTask: Task<Void, Never>?
     var isUserMovingPanel = false
     var isUserResizingPanel = false
+    // AppKit sends windowDidMove/windowDidResize for programmatic frame
+    // changes too. Keep those callbacks from being mistaken for a user's
+    // drag while the wake-up layout is being restored.
+    var isApplyingProgrammaticPanelFrame = false
     private let backgroundReleaseDelay: Duration
     private let backgroundPayloadHibernateDelay: Duration
     private var backgroundReleaseTask: Task<Void, Never>?
@@ -65,6 +69,28 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         )
     }
 
+    @discardableResult
+    func withProgrammaticPanelFrameChange<T>(
+        _ body: () throws -> T
+    ) rethrows -> T {
+        let previousApplyingState = isApplyingProgrammaticPanelFrame
+        isApplyingProgrammaticPanelFrame = true
+        isUserMovingPanel = false
+        isUserResizingPanel = false
+        defer {
+            isApplyingProgrammaticPanelFrame = previousApplyingState
+            if !previousApplyingState {
+                // A programmatic setFrame can synchronously deliver didMove
+                // and didResize. Never carry a stale user gesture over that
+                // boundary and promote the next callback to a preference
+                // change.
+                isUserMovingPanel = false
+                isUserResizingPanel = false
+            }
+        }
+        return try body()
+    }
+
     @objc private func applicationDidBecomeActive(_ notification: Notification) {
         guard store.isPanelPresented else { return }
         isPanelInteractionReady = true
@@ -104,6 +130,7 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         backgroundPayloadHibernateTask = nil
         store.isPreviewVisible = true
         let panel = makePanelIfNeeded()
+        migrateSavedPanelFrameIfNeeded(panel)
         configureMinimumSize(panel, showingPreview: true)
         if !restoreSavedFrameIfNeeded(panel) {
             resize(panel, showingPreview: true, animated: false)
@@ -153,16 +180,20 @@ final class ClipboardHistoryWindowController: NSObject, NSWindowDelegate {
         store.selectedIndex = 0
         store.clearMultiSelection()
         store.isSearchPresented = true
+        // Reset the observable presentation state before constructing the
+        // hosting view. This matters when the previous presentation used the
+        // temporary single-column mode: SwiftUI otherwise creates one frame
+        // from the stale value and only switches to the split view on its
+        // next update pass.
+        store.beginPresentation()
         let panel = makePanelIfNeeded()
+        migrateSavedPanelFrameIfNeeded(panel)
         shouldCloseWhenApplicationResigns = !hideApplicationWindows
         activateForClipboardPanel(hideApplicationWindows: hideApplicationWindows)
         // The panel is non-activating by design. It can still become key and
         // accept search input while another app owns Secure Input, so opening
         // it never depends on NSApp becoming active.
         isPanelInteractionReady = true
-        // Set the presentation state before laying out the panel so the first
-        // rendered frame is always the expanded, two-column surface.
-        store.beginPresentation()
         configureMinimumSize(panel, showingPreview: true)
         if !restoreSavedFrameIfNeeded(panel, override: positionOverride) {
             resize(panel, showingPreview: true, animated: false)

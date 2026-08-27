@@ -1,6 +1,7 @@
 import AppKit
 import Carbon
 import Foundation
+import SwiftUI
 import Testing
 @testable import OpenFind
 
@@ -204,6 +205,7 @@ struct ClipboardAlfredWorkflowTests {
         #expect(!panel.isKeyWindow)
         #expect(panel.contentView != nil)
         #expect(context.store.isPreviewVisible)
+        #expect(context.store.preferences.popupPosition == .center)
         #expect(panel.frame.size == ClipboardHistoryPanelMetrics.expandedDefaultSize)
         #expect(panel.minSize == ClipboardHistoryPanelMetrics.expandedMinimumSize)
     }
@@ -411,6 +413,28 @@ struct ClipboardAlfredWorkflowTests {
         #expect(searchIsFirstResponder)
     }
 
+    @Test func presentingAfterTemporarySingleColumnStartsWithSplitRootView() throws {
+        let context = try makeContext()
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            applicationActivator: {},
+            applicationDeactivator: {}
+        )
+        context.store.isPreviewVisible = false
+
+        controller.present(positionOverride: .center, hideApplicationWindows: true)
+        defer { controller.close() }
+
+        let panel = try #require(controller.panel)
+        let hostingView = try #require(
+            panel.contentView as? NSHostingView<ClipboardHistoryView>
+        )
+        #expect(hostingView.rootView.store.isPreviewVisible)
+        #expect(context.store.isPreviewVisible)
+        #expect(context.store.preferences.popupPosition == .center)
+        #expect(panel.frame.size == ClipboardHistoryPanelMetrics.expandedDefaultSize)
+    }
+
     @Test func closingPresentedClipboardPanelReturnsApplicationFocus() throws {
         let context = try makeContext()
         var deactivationCount = 0
@@ -441,6 +465,10 @@ struct ClipboardAlfredWorkflowTests {
         writer.setFrame(expectedFrame, display: false)
         writer.saveFrame(usingName: frameName)
         context.store.setPreference(\.popupPosition, to: .lastPosition)
+        context.store.defaults.set(
+            ClipboardHistoryPanelGeometryMigration.currentVersion,
+            forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+        )
         let controller = ClipboardHistoryWindowController(
             store: context.store,
             frameAutosaveName: frameName
@@ -462,6 +490,15 @@ struct ClipboardAlfredWorkflowTests {
             store: context.store,
             frameAutosaveName: frameName
         )
+        context.store.defaults.set(
+            ClipboardHistoryPanelGeometryMigration.currentVersion,
+            forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+        )
+        #expect(
+            context.store.defaults.integer(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            ) == ClipboardHistoryPanelGeometryMigration.currentVersion
+        )
         let panel = controller.makePanelIfNeeded()
         let resizedFrame = try testPanelFrame(width: 900, height: 600)
 
@@ -471,6 +508,12 @@ struct ClipboardAlfredWorkflowTests {
         panel.setFrame(resizedFrame, display: false)
         controller.windowDidEndLiveResize(
             Notification(name: NSWindow.didEndLiveResizeNotification, object: panel)
+        )
+
+        #expect(
+            context.store.defaults.integer(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            ) == ClipboardHistoryPanelGeometryMigration.currentVersion
         )
 
         #expect(context.store.preferences.popupPosition == .lastPosition)
@@ -489,6 +532,11 @@ struct ClipboardAlfredWorkflowTests {
 
         #expect(context.store.preferences.popupPosition == .lastPosition)
         controller.close()
+        #expect(
+            context.store.defaults.integer(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            ) == ClipboardHistoryPanelGeometryMigration.currentVersion
+        )
 
         let reopenedController = ClipboardHistoryWindowController(
             store: context.store,
@@ -500,6 +548,45 @@ struct ClipboardAlfredWorkflowTests {
 
         let reopenedPanel = try #require(reopenedController.panel)
         #expect(framesMatch(reopenedPanel.frame, movedFrame))
+    }
+
+    @Test func legacySavedPanelFrameIsExpandedOnceForSplitPreview() throws {
+        let context = try makeContext()
+        let frameName = "OpenFindTests.ClipboardLegacyFrame.\(UUID())"
+        defer {
+            removeSavedFrame(named: frameName)
+            context.store.defaults.removeObject(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            )
+        }
+
+        let legacyFrame = try testPanelFrame(width: 815, height: 647)
+        let writer = ClipboardHistoryPanel(
+            contentRect: .zero,
+            styleMask: [.titled, .resizable, .fullSizeContentView, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        writer.setFrame(legacyFrame, display: false)
+        writer.saveFrame(usingName: frameName)
+        context.store.setPreference(\.popupPosition, to: .lastPosition)
+
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            frameAutosaveName: frameName
+        )
+        controller.present(positionOverride: nil, hideApplicationWindows: true)
+        defer { controller.close() }
+
+        let panel = try #require(controller.panel)
+        #expect(panel.frame.width >= legacyFrame.width)
+        #expect(panel.frame.width == ClipboardHistoryPanelMetrics.expandedDefaultSize.width)
+        #expect(panel.frame.height == ClipboardHistoryPanelMetrics.expandedDefaultSize.height)
+        #expect(
+            context.store.defaults.integer(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            ) == ClipboardHistoryPanelGeometryMigration.currentVersion
+        )
     }
 
     @Test func commandActionsPrecedeTheIMECompositionGuard() throws {
