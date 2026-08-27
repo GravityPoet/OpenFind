@@ -63,7 +63,11 @@ struct ClipboardHistoryContent: View {
             if store.isPreviewVisible {
                 HSplitView {
                     historyList
-                        .frame(minWidth: 320, idealWidth: 390, maxWidth: 460)
+                        .frame(
+                            minWidth: ClipboardHistoryPanelMetrics.historyMinimumWidth,
+                            idealWidth: ClipboardHistoryPanelMetrics.historyIdealWidth,
+                            maxWidth: ClipboardHistoryPanelMetrics.historyMaximumWidth
+                        )
                         .background(
                             Color(nsColor: .controlBackgroundColor).opacity(0.18)
                         )
@@ -74,8 +78,14 @@ struct ClipboardHistoryContent: View {
                         onTogglePin: onPin
                     )
                         .frame(
-                            minWidth: 360,
-                            idealWidth: max(480, store.preferences.previewWidth),
+                            minWidth: ClipboardHistoryPanelMetrics.previewMinimumWidth,
+                            idealWidth: min(
+                                max(
+                                    ClipboardHistoryPanelMetrics.previewIdealWidth,
+                                    store.preferences.previewWidth
+                                ),
+                                ClipboardHistoryPanelMetrics.previewMaximumIdealWidth
+                            ),
                             maxWidth: .infinity,
                             maxHeight: .infinity
                         )
@@ -131,7 +141,8 @@ struct ClipboardHistoryContent: View {
     }
 
     private func retainPreviewWidth(_ width: CGFloat) {
-        guard (260...800).contains(width),
+        guard width >= ClipboardHistoryPanelMetrics.previewMinimumWidth,
+              width <= ClipboardHistoryPanelMetrics.previewMaximumIdealWidth,
               abs(store.preferences.previewWidth - width) >= 4 else { return }
         store.setPreference(\.previewWidth, to: width)
     }

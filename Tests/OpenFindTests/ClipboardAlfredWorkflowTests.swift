@@ -581,9 +581,72 @@ struct ClipboardAlfredWorkflowTests {
 
         let panel = try #require(controller.panel)
         let expectedSize = try expectedExpandedPanelSize()
+        let visibleFrame = try #require(NSScreen.main?.visibleFrame)
         #expect(panel.frame.width >= legacyFrame.width)
         #expect(panel.frame.width == expectedSize.width)
         #expect(panel.frame.height == expectedSize.height)
+        #expect(abs(panel.frame.midX - visibleFrame.midX) < 1)
+        #expect(abs(panel.frame.midY - visibleFrame.midY) < 1)
+        #expect(
+            context.store.defaults.integer(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            ) == ClipboardHistoryPanelGeometryMigration.currentVersion
+        )
+    }
+
+    @Test func previousOverexpandedMigrationFrameIsRepairedAndCenteredOnce() throws {
+        let context = try makeContext()
+        let frameName = "OpenFindTests.ClipboardOverexpandedFrame.\(UUID())"
+        defer {
+            removeSavedFrame(named: frameName)
+            context.store.defaults.removeObject(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            )
+        }
+
+        let visibleFrame = try #require(NSScreen.main?.visibleFrame)
+        let oldSize = NSSize(
+            width: min(
+                ClipboardHistoryPanelGeometryMigration.previousExpandedDefaultSize.width,
+                visibleFrame.width
+            ),
+            height: min(
+                ClipboardHistoryPanelGeometryMigration.previousExpandedDefaultSize.height,
+                visibleFrame.height
+            )
+        )
+        let oldFrame = NSRect(
+            x: visibleFrame.minX + 120,
+            y: visibleFrame.maxY - oldSize.height - 40,
+            width: oldSize.width,
+            height: oldSize.height
+        )
+        let writer = ClipboardHistoryPanel(
+            contentRect: .zero,
+            styleMask: [.titled, .resizable, .fullSizeContentView, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        writer.setFrame(oldFrame, display: false)
+        writer.saveFrame(usingName: frameName)
+        context.store.setPreference(\.popupPosition, to: .lastPosition)
+        context.store.defaults.set(
+            1,
+            forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+        )
+
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            frameAutosaveName: frameName
+        )
+        controller.present(positionOverride: nil, hideApplicationWindows: true)
+        defer { controller.close() }
+
+        let panel = try #require(controller.panel)
+        let expectedSize = try expectedExpandedPanelSize()
+        #expect(panel.frame.size == expectedSize)
+        #expect(abs(panel.frame.midX - visibleFrame.midX) < 1)
+        #expect(abs(panel.frame.midY - visibleFrame.midY) < 1)
         #expect(
             context.store.defaults.integer(
                 forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey

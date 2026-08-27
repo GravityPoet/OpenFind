@@ -3,14 +3,26 @@ import SwiftUI
 
 enum ClipboardHistoryPanelMetrics {
     static let compactDefaultSize = NSSize(width: 520, height: 560)
-    static let expandedDefaultSize = NSSize(width: 1080, height: 680)
+    // The split view needs more room than the compact list, but it should
+    // remain a quick palette rather than consume most of a laptop display.
+    static let expandedDefaultSize = NSSize(width: 920, height: 600)
     static let compactMinimumSize = NSSize(width: 460, height: 480)
-    static let expandedMinimumSize = NSSize(width: 760, height: 520)
+    static let expandedMinimumSize = NSSize(width: 700, height: 500)
+
+    // Keep the list slightly wider than the preview so long history labels
+    // remain scannable without letting an empty preview dominate the palette.
+    static let historyMinimumWidth: CGFloat = 320
+    static let historyIdealWidth: CGFloat = 440
+    static let historyMaximumWidth: CGFloat = 460
+    static let previewMinimumWidth: CGFloat = 300
+    static let previewIdealWidth: CGFloat = 400
+    static let previewMaximumIdealWidth: CGFloat = 460
 }
 
 enum ClipboardHistoryPanelGeometryMigration {
     static let defaultsKey = "OpenFind.clipboardPanelGeometryMigrationVersionV1"
-    static let currentVersion = 1
+    static let currentVersion = 2
+    static let previousExpandedDefaultSize = NSSize(width: 1080, height: 680)
 }
 
 extension ClipboardHistoryWindowController {
@@ -173,13 +185,18 @@ extension ClipboardHistoryWindowController {
         return true
     }
 
-    /// The split preview needs more horizontal room than the pre-v1.1.2
-    /// single-column panel. Upgrade an existing autosaved frame once, while
-    /// keeping its top-left placement and all later user adjustments intact.
+    /// Upgrade a legacy autosaved frame once. The previous migration enlarged
+    /// the frame while keeping its left edge fixed, which moved the visual
+    /// center and made the preview pane appear disproportionately large.
+    /// Repair only that known automatic frame; a frame that the user changed
+    /// after the migration remains untouched.
     func migrateSavedPanelFrameIfNeeded(_ panel: NSPanel) {
-        guard store.defaults.integer(
+        let migrationVersion = store.defaults.integer(
             forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
-        ) < ClipboardHistoryPanelGeometryMigration.currentVersion else { return }
+        )
+        guard migrationVersion < ClipboardHistoryPanelGeometryMigration.currentVersion else {
+            return
+        }
 
         defer {
             store.defaults.set(
@@ -193,33 +210,37 @@ extension ClipboardHistoryWindowController {
                   panel.setFrameUsingName(frameAutosaveName)
               }) else { return }
 
-        let oldFrame = panel.frame
         let visibleFrame = NSScreen.screens.first {
-            $0.visibleFrame.intersects(oldFrame)
+            $0.visibleFrame.intersects(panel.frame)
         }?.visibleFrame ?? selectedScreen(at: NSEvent.mouseLocation)?.visibleFrame
         guard let visibleFrame else { return }
 
-        var frame = oldFrame
-        frame.size.width = min(
-            max(frame.width, ClipboardHistoryPanelMetrics.expandedDefaultSize.width),
+        let oldFrame = panel.frame
+        let previousAutomaticWidth = min(
+            ClipboardHistoryPanelGeometryMigration.previousExpandedDefaultSize.width,
             visibleFrame.width
         )
-        frame.size.height = min(
-            max(frame.height, ClipboardHistoryPanelMetrics.expandedDefaultSize.height),
+        let previousAutomaticHeight = min(
+            ClipboardHistoryPanelGeometryMigration.previousExpandedDefaultSize.height,
             visibleFrame.height
         )
-        // Preserve the user's visual anchor while the panel grows.
-        frame.origin.y = oldFrame.maxY - frame.height
-        frame.origin.x = oldFrame.minX
-        frame.origin.x = min(
-            max(frame.minX, visibleFrame.minX),
-            visibleFrame.maxX - frame.width
+        let wasPreviousAutomaticFrame = abs(oldFrame.width - previousAutomaticWidth) < 1
+            && abs(oldFrame.height - previousAutomaticHeight) < 1
+        let needsInitialLegacyUpgrade = migrationVersion == 0
+            && (oldFrame.width < ClipboardHistoryPanelMetrics.expandedDefaultSize.width
+                || oldFrame.height < ClipboardHistoryPanelMetrics.expandedDefaultSize.height)
+        guard wasPreviousAutomaticFrame || needsInitialLegacyUpgrade else { return }
+
+        let targetSize = NSSize(
+            width: min(ClipboardHistoryPanelMetrics.expandedDefaultSize.width, visibleFrame.width),
+            height: min(ClipboardHistoryPanelMetrics.expandedDefaultSize.height, visibleFrame.height)
         )
-        frame.origin.y = min(
-            max(frame.minY, visibleFrame.minY),
-            visibleFrame.maxY - frame.height
+        let frame = NSRect(
+            x: visibleFrame.midX - targetSize.width / 2,
+            y: visibleFrame.midY - targetSize.height / 2,
+            width: targetSize.width,
+            height: targetSize.height
         )
-        guard frame != oldFrame else { return }
         withProgrammaticPanelFrameChange {
             panel.setFrame(frame, display: false)
             panel.saveFrame(usingName: frameAutosaveName)
