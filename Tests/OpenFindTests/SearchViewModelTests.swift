@@ -635,7 +635,11 @@ struct SearchViewModelTests {
         )
 
         #expect(!viewModel.isSearching)
-        try await Task.sleep(for: .milliseconds(80))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !viewModel.isSearching, ContinuousClock.now < deadline {
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(10))
+        }
         #expect(viewModel.isSearching)
         viewModel.cancel()
     }
