@@ -29,20 +29,32 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 mkdir -p "$TEST_HOME" "$TEST_TMP"
-# Keep the caller's HOME for Xcode-owned downloads and mounted toolchains.
-# Foundation honors CFFIXED_USER_HOME for the tested app's user-domain paths,
-# so preferences and Application Support remain isolated without placing
-# Xcode's read-only Metal mounts inside the disposable test directory.
-export CFFIXED_USER_HOME="$TEST_HOME"
 export TMPDIR="$TEST_TMP"
 export OPENFIND_TEST_MODE=1
 
 cd "$ROOT_DIR"
+# Build the test bundle before applying the isolated Foundation home. Xcode
+# may mount its read-only Metal toolchain below CFFIXED_USER_HOME while it
+# resolves/builds Swift packages; that mount must stay outside TEST_ROOT.
+unset CFFIXED_USER_HOME
 if [ -n "${OPENFIND_TEST_SCRATCH_PATH:-}" ]; then
     xcrun --sdk macosx swift test \
         --scratch-path "$OPENFIND_TEST_SCRATCH_PATH" \
+        --list-tests > "$TEST_ROOT/list-tests.log"
+else
+    xcrun --sdk macosx swift test --list-tests > "$TEST_ROOT/list-tests.log"
+fi
+
+# Keep the tested process' user-domain state disposable while reusing the
+# already-built test bundle. Foundation resolves NSHomeDirectory and related
+# paths from CFFIXED_USER_HOME, without changing Xcode's build-time home.
+export CFFIXED_USER_HOME="$TEST_HOME"
+if [ -n "${OPENFIND_TEST_SCRATCH_PATH:-}" ]; then
+    xcrun --sdk macosx swift test \
+        --scratch-path "$OPENFIND_TEST_SCRATCH_PATH" \
+        --skip-build \
         --no-parallel \
         "$@"
 else
-    xcrun --sdk macosx swift test --no-parallel "$@"
+    xcrun --sdk macosx swift test --skip-build --no-parallel "$@"
 fi
