@@ -9,7 +9,7 @@ TEST_HOME="$TEST_ROOT/home"
 TEST_TMP="$TEST_ROOT/tmp"
 
 cleanup() {
-    status=$?
+    test_exit_code=$?
     trap - EXIT INT TERM
     case "$TEST_ROOT" in
         "$BASE_TMP"/openfind-tests.*)
@@ -19,17 +19,20 @@ cleanup() {
             ;;
         *)
             echo "Error: refusing to clean unexpected test path: $TEST_ROOT" >&2
-            status=64
+            test_exit_code=64
             ;;
     esac
-    exit "$status"
+    exit "$test_exit_code"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
 mkdir -p "$TEST_HOME" "$TEST_TMP"
-export HOME="$TEST_HOME"
+# Keep the caller's HOME for Xcode-owned downloads and mounted toolchains.
+# Foundation honors CFFIXED_USER_HOME for the tested app's user-domain paths,
+# so preferences and Application Support remain isolated without placing
+# Xcode's read-only Metal mounts inside the disposable test directory.
 export CFFIXED_USER_HOME="$TEST_HOME"
 export TMPDIR="$TEST_TMP"
 export OPENFIND_TEST_MODE=1

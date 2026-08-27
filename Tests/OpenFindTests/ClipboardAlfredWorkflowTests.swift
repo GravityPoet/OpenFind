@@ -230,7 +230,7 @@ struct ClipboardAlfredWorkflowTests {
         controller.present(positionOverride: .center, hideApplicationWindows: true)
         let firstPanel = try #require(controller.panel)
         controller.close()
-        try await Task.sleep(for: .milliseconds(30))
+        try await waitUntil { controller.panel == nil }
 
         #expect(controller.panel == nil)
         #expect(firstPanel.contentView == nil)
@@ -250,18 +250,18 @@ struct ClipboardAlfredWorkflowTests {
             store: context.store,
             applicationActivator: {},
             applicationDeactivator: {},
-            backgroundReleaseDelay: .milliseconds(60)
+            backgroundReleaseDelay: .milliseconds(500)
         )
 
         controller.present(positionOverride: .center, hideApplicationWindows: true)
         let firstPanel = try #require(controller.panel)
         controller.close()
 
-        try await Task.sleep(for: .milliseconds(10))
+        try await Task.sleep(for: .milliseconds(20))
         #expect(controller.panel === firstPanel)
         #expect(firstPanel.contentView != nil)
 
-        try await Task.sleep(for: .milliseconds(90))
+        try await waitUntil { controller.panel == nil }
         #expect(controller.panel == nil)
         #expect(firstPanel.contentView == nil)
     }
@@ -277,19 +277,19 @@ struct ClipboardAlfredWorkflowTests {
             store: context.store,
             applicationActivator: {},
             applicationDeactivator: {},
-            backgroundReleaseDelay: .milliseconds(200),
+            backgroundReleaseDelay: .seconds(1),
             backgroundPayloadHibernateDelay: .milliseconds(40)
         )
 
         controller.present(positionOverride: .center, hideApplicationWindows: true)
         controller.close()
-        try await Task.sleep(for: .milliseconds(80))
+        try await waitUntil { context.store.isClipboardBackgroundResident }
 
         #expect(context.store.isClipboardBackgroundResident)
         #expect(context.store.entries.first?.hasResidentPayload == true)
         #expect(controller.panel != nil)
 
-        try await Task.sleep(for: .milliseconds(180))
+        try await waitUntil { controller.panel == nil }
         #expect(controller.panel == nil)
     }
 
@@ -770,6 +770,18 @@ struct ClipboardAlfredWorkflowTests {
             try? await Task.sleep(for: .milliseconds(50))
         }
         return false
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(3),
+        condition: @escaping @MainActor () -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while !condition(), ContinuousClock.now < deadline {
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(condition())
     }
 
     private func keyEvent(
