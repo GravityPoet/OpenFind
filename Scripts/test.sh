@@ -66,14 +66,24 @@ for test_arg in "$@"; do
     esac
 done
 if [ -n "${OPENFIND_TEST_SCRATCH_PATH:-}" ]; then
-    xcrun --sdk macosx swift test \
-        --scratch-path "$OPENFIND_TEST_SCRATCH_PATH" \
-        "${build_args[@]}" \
-        --list-tests > "$TEST_ROOT/list-tests.log"
+    if [ "${#build_args[@]}" -gt 0 ]; then
+        xcrun --sdk macosx swift test \
+            --scratch-path "$OPENFIND_TEST_SCRATCH_PATH" \
+            "${build_args[@]}" \
+            --list-tests > "$TEST_ROOT/list-tests.log"
+    else
+        xcrun --sdk macosx swift test \
+            --scratch-path "$OPENFIND_TEST_SCRATCH_PATH" \
+            --list-tests > "$TEST_ROOT/list-tests.log"
+    fi
 else
-    xcrun --sdk macosx swift test \
-        "${build_args[@]}" \
-        --list-tests > "$TEST_ROOT/list-tests.log"
+    if [ "${#build_args[@]}" -gt 0 ]; then
+        xcrun --sdk macosx swift test \
+            "${build_args[@]}" \
+            --list-tests > "$TEST_ROOT/list-tests.log"
+    else
+        xcrun --sdk macosx swift test --list-tests > "$TEST_ROOT/list-tests.log"
+    fi
 fi
 
 # Keep the tested process' user-domain state disposable while reusing the
