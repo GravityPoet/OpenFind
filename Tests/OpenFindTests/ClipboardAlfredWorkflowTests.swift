@@ -654,6 +654,66 @@ struct ClipboardAlfredWorkflowTests {
         )
     }
 
+    @Test func previousBalancedMigrationFrameIsResizedAndCenteredOnce() throws {
+        let context = try makeContext()
+        let frameName = "OpenFindTests.ClipboardBalancedFrame.\(UUID())"
+        defer {
+            removeSavedFrame(named: frameName)
+            context.store.defaults.removeObject(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            )
+        }
+
+        let visibleFrame = try #require(NSScreen.main?.visibleFrame)
+        let oldSize = NSSize(
+            width: min(
+                ClipboardHistoryPanelGeometryMigration.previousBalancedDefaultSize.width,
+                visibleFrame.width
+            ),
+            height: min(
+                ClipboardHistoryPanelGeometryMigration.previousBalancedDefaultSize.height,
+                visibleFrame.height
+            )
+        )
+        let oldFrame = NSRect(
+            x: visibleFrame.minX + 96,
+            y: visibleFrame.maxY - oldSize.height - 32,
+            width: oldSize.width,
+            height: oldSize.height
+        )
+        let writer = ClipboardHistoryPanel(
+            contentRect: .zero,
+            styleMask: [.titled, .resizable, .fullSizeContentView, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        writer.setFrame(oldFrame, display: false)
+        writer.saveFrame(usingName: frameName)
+        context.store.setPreference(\.popupPosition, to: .lastPosition)
+        context.store.defaults.set(
+            2,
+            forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+        )
+
+        let controller = ClipboardHistoryWindowController(
+            store: context.store,
+            frameAutosaveName: frameName
+        )
+        controller.present(positionOverride: nil, hideApplicationWindows: true)
+        defer { controller.close() }
+
+        let panel = try #require(controller.panel)
+        let expectedSize = try expectedExpandedPanelSize()
+        #expect(panel.frame.size == expectedSize)
+        #expect(abs(panel.frame.midX - visibleFrame.midX) < 1)
+        #expect(abs(panel.frame.midY - visibleFrame.midY) < 1)
+        #expect(
+            context.store.defaults.integer(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            ) == ClipboardHistoryPanelGeometryMigration.currentVersion
+        )
+    }
+
     @Test func commandActionsPrecedeTheIMECompositionGuard() throws {
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),

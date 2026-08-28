@@ -5,24 +5,25 @@ enum ClipboardHistoryPanelMetrics {
     static let compactDefaultSize = NSSize(width: 520, height: 560)
     // The split view needs more room than the compact list, but it should
     // remain a quick palette rather than consume most of a laptop display.
-    static let expandedDefaultSize = NSSize(width: 920, height: 600)
+    static let expandedDefaultSize = NSSize(width: 850, height: 600)
     static let compactMinimumSize = NSSize(width: 460, height: 480)
     static let expandedMinimumSize = NSSize(width: 700, height: 500)
 
-    // Keep the list slightly wider than the preview so long history labels
-    // remain scannable without letting an empty preview dominate the palette.
+    // Keep both columns balanced at the default 850pt frame. The maximums
+    // leave room for a user to widen either side after resizing the window.
     static let historyMinimumWidth: CGFloat = 320
-    static let historyIdealWidth: CGFloat = 440
+    static let historyIdealWidth: CGFloat = 424
     static let historyMaximumWidth: CGFloat = 460
     static let previewMinimumWidth: CGFloat = 300
-    static let previewIdealWidth: CGFloat = 400
+    static let previewIdealWidth: CGFloat = 424
     static let previewMaximumIdealWidth: CGFloat = 460
 }
 
 enum ClipboardHistoryPanelGeometryMigration {
     static let defaultsKey = "OpenFind.clipboardPanelGeometryMigrationVersionV1"
-    static let currentVersion = 2
+    static let currentVersion = 3
     static let previousExpandedDefaultSize = NSSize(width: 1080, height: 680)
+    static let previousBalancedDefaultSize = NSSize(width: 920, height: 600)
 }
 
 extension ClipboardHistoryWindowController {
@@ -185,11 +186,11 @@ extension ClipboardHistoryWindowController {
         return true
     }
 
-    /// Upgrade a legacy autosaved frame once. The previous migration enlarged
+    /// Upgrade a legacy autosaved frame once. The earlier migrations enlarged
     /// the frame while keeping its left edge fixed, which moved the visual
     /// center and made the preview pane appear disproportionately large.
-    /// Repair only that known automatic frame; a frame that the user changed
-    /// after the migration remains untouched.
+    /// Repair only known automatic frames; a frame that the user changed
+    /// after a migration remains untouched.
     func migrateSavedPanelFrameIfNeeded(_ panel: NSPanel) {
         let migrationVersion = store.defaults.integer(
             forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
@@ -226,10 +227,23 @@ extension ClipboardHistoryWindowController {
         )
         let wasPreviousAutomaticFrame = abs(oldFrame.width - previousAutomaticWidth) < 1
             && abs(oldFrame.height - previousAutomaticHeight) < 1
+        let previousBalancedWidth = min(
+            ClipboardHistoryPanelGeometryMigration.previousBalancedDefaultSize.width,
+            visibleFrame.width
+        )
+        let previousBalancedHeight = min(
+            ClipboardHistoryPanelGeometryMigration.previousBalancedDefaultSize.height,
+            visibleFrame.height
+        )
+        let wasPreviousBalancedAutomaticFrame = migrationVersion == 2
+            && abs(oldFrame.width - previousBalancedWidth) < 1
+            && abs(oldFrame.height - previousBalancedHeight) < 1
         let needsInitialLegacyUpgrade = migrationVersion == 0
             && (oldFrame.width < ClipboardHistoryPanelMetrics.expandedDefaultSize.width
                 || oldFrame.height < ClipboardHistoryPanelMetrics.expandedDefaultSize.height)
-        guard wasPreviousAutomaticFrame || needsInitialLegacyUpgrade else { return }
+        guard wasPreviousAutomaticFrame
+            || wasPreviousBalancedAutomaticFrame
+            || needsInitialLegacyUpgrade else { return }
 
         let targetSize = NSSize(
             width: min(ClipboardHistoryPanelMetrics.expandedDefaultSize.width, visibleFrame.width),
