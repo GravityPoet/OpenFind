@@ -9,21 +9,23 @@ enum ClipboardHistoryPanelMetrics {
     static let compactMinimumSize = NSSize(width: 460, height: 480)
     static let expandedMinimumSize = NSSize(width: 700, height: 500)
 
-    // Keep both columns balanced at the default 850pt frame. The maximums
-    // leave room for a user to widen either side after resizing the window.
+    // At the default 850pt frame, the split-position helper applies the
+    // requested 430pt list + 1pt divider + 419pt preview. Keep the ordinary
+    // minimum at 320pt so a user can still drag the divider either direction.
     static let historyMinimumWidth: CGFloat = 320
-    static let historyIdealWidth: CGFloat = 424
+    static let historyIdealWidth: CGFloat = 430
     static let historyMaximumWidth: CGFloat = 460
     static let previewMinimumWidth: CGFloat = 300
-    static let previewIdealWidth: CGFloat = 424
+    static let previewIdealWidth: CGFloat = 419
     static let previewMaximumIdealWidth: CGFloat = 460
 }
 
 enum ClipboardHistoryPanelGeometryMigration {
     static let defaultsKey = "OpenFind.clipboardPanelGeometryMigrationVersionV1"
-    static let currentVersion = 3
+    static let currentVersion = 5
     static let previousExpandedDefaultSize = NSSize(width: 1080, height: 680)
     static let previousBalancedDefaultSize = NSSize(width: 920, height: 600)
+    static let previousBalancedPreviewWidth: CGFloat = 424.5
 }
 
 extension ClipboardHistoryWindowController {
@@ -203,6 +205,20 @@ extension ClipboardHistoryWindowController {
             store.defaults.set(
                 ClipboardHistoryPanelGeometryMigration.currentVersion,
                 forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            )
+        }
+
+        // Previous balanced builds seeded an even 424.5/424.5 split. Move
+        // only that known automatic divider position to the new 430/419
+        // default; any other saved width is a user adjustment and remains.
+        if migrationVersion >= 3,
+           abs(
+               CGFloat(store.preferences.previewWidth)
+                   - ClipboardHistoryPanelGeometryMigration.previousBalancedPreviewWidth
+           ) < 1 {
+            store.setPreference(
+                \.previewWidth,
+                to: Double(ClipboardHistoryPanelMetrics.previewIdealWidth)
             )
         }
 

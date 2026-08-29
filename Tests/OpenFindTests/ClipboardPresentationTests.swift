@@ -1,3 +1,4 @@
+import SwiftUI
 import Testing
 @testable import OpenFind
 
@@ -41,5 +42,12 @@ struct ClipboardPresentationTests {
         #expect(ClipboardPreviewDelayFormatter.label(milliseconds: 200) == "200 ms")
         #expect(ClipboardPreviewDelayFormatter.label(milliseconds: 1_000) == "1.0 s")
         #expect(ClipboardPreviewDelayFormatter.label(milliseconds: 1_500) == "1500 ms")
+    }
+
+    @Test func previewBodyInsetsStaySymmetric() {
+        let insets = ClipboardEntryPreviewMetrics.bodyInsets
+        #expect(insets.leading == 22)
+        #expect(insets.trailing == 22)
+        #expect(insets.leading == insets.trailing)
     }
 }

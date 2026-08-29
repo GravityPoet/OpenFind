@@ -1,6 +1,15 @@
 import AppKit
 import SwiftUI
 
+enum ClipboardEntryPreviewMetrics {
+    static let bodyInsets = EdgeInsets(
+        top: 20,
+        leading: 22,
+        bottom: 20,
+        trailing: 22
+    )
+}
+
 struct ClipboardEntryPreviewBody: View {
     let entry: ClipboardEntry
     let previewImage: NSImage?
@@ -76,15 +85,9 @@ struct ClipboardEntryPreviewBody: View {
 
                     Divider()
 
-                    Text(url.absoluteString)
-                        .font(.system(size: 15.5, weight: .medium))
-                        .foregroundStyle(ClipboardTypography.primaryText)
-                        .lineSpacing(4)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                    adaptiveLinkText(url.absoluteString)
                 }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 20)
+                .padding(ClipboardEntryPreviewMetrics.bodyInsets)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         } else {
@@ -105,8 +108,7 @@ struct ClipboardEntryPreviewBody: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 20)
+                .padding(ClipboardEntryPreviewMetrics.bodyInsets)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
@@ -115,5 +117,29 @@ struct ClipboardEntryPreviewBody: View {
     private func linkTitle(for url: URL) -> String {
         if entry.hasCustomTitle { return entry.displayTitle }
         return url.host ?? entry.kind.localizedTitle
+    }
+
+    /// Keep a final short path component from being orphaned on a second line.
+    /// The content inset remains symmetric; only medium-length links step down
+    /// one readable size, while genuinely long links still wrap normally.
+    private func adaptiveLinkText(_ value: String) -> some View {
+        ViewThatFits(in: .horizontal) {
+            linkText(value, size: 15.5)
+                .fixedSize(horizontal: true, vertical: false)
+
+            linkText(value, size: 14)
+                .fixedSize(horizontal: true, vertical: false)
+
+            linkText(value, size: 15.5)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func linkText(_ value: String, size: CGFloat) -> some View {
+        Text(value)
+            .font(.system(size: size, weight: .medium))
+            .foregroundStyle(ClipboardTypography.primaryText)
+            .lineSpacing(4)
+            .textSelection(.enabled)
     }
 }
