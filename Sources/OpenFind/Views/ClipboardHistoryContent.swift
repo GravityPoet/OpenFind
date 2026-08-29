@@ -68,6 +68,12 @@ struct ClipboardHistoryContent: View {
                             idealWidth: ClipboardHistoryPanelMetrics.historyIdealWidth,
                             maxWidth: ClipboardHistoryPanelMetrics.historyMaximumWidth
                         )
+                        .background {
+                            ClipboardHistorySplitPositioner(
+                                preferredPreviewWidth: CGFloat(store.preferences.previewWidth)
+                            )
+                            .frame(width: 0, height: 0)
+                        }
                         .background(
                             Color(nsColor: .controlBackgroundColor).opacity(0.18)
                         )

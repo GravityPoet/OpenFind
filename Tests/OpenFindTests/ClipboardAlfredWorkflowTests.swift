@@ -210,6 +210,61 @@ struct ClipboardAlfredWorkflowTests {
         #expect(panel.minSize == ClipboardHistoryPanelMetrics.expandedMinimumSize)
     }
 
+    @Test func defaultSplitUsesRequestedFourThirtyByFourTwentyProportion() {
+        #expect(ClipboardHistoryPanelMetrics.expandedDefaultSize.width == 850)
+        #expect(ClipboardHistoryPanelMetrics.historyMinimumWidth == 320)
+        #expect(ClipboardHistoryPanelMetrics.historyIdealWidth == 430)
+        #expect(ClipboardHistoryPanelMetrics.previewIdealWidth == 419)
+        #expect(
+            ClipboardHistoryPanelMetrics.historyIdealWidth
+                + 1
+                + ClipboardHistoryPanelMetrics.previewIdealWidth
+                == ClipboardHistoryPanelMetrics.expandedDefaultSize.width
+        )
+    }
+
+    @Test func balancedSplitMigrationRebalancesOnlyTheAutomaticDividerPosition() throws {
+        let automaticContext = try makeContext()
+        automaticContext.store.setPreference(
+            \.previewWidth,
+            to: Double(ClipboardHistoryPanelGeometryMigration.previousBalancedPreviewWidth)
+        )
+        automaticContext.store.defaults.set(
+            3,
+            forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+        )
+        let automaticController = ClipboardHistoryWindowController(store: automaticContext.store)
+        automaticController.migrateSavedPanelFrameIfNeeded(automaticController.makePanelIfNeeded())
+        defer { automaticController.close() }
+
+        #expect(
+            automaticContext.store.preferences.previewWidth
+                == Double(ClipboardHistoryPanelMetrics.previewIdealWidth)
+        )
+        #expect(
+            automaticContext.store.defaults.integer(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            ) == ClipboardHistoryPanelGeometryMigration.currentVersion
+        )
+
+        let customizedContext = try makeContext()
+        customizedContext.store.setPreference(\.previewWidth, to: 380)
+        customizedContext.store.defaults.set(
+            3,
+            forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+        )
+        let customizedController = ClipboardHistoryWindowController(store: customizedContext.store)
+        customizedController.migrateSavedPanelFrameIfNeeded(customizedController.makePanelIfNeeded())
+        defer { customizedController.close() }
+
+        #expect(customizedContext.store.preferences.previewWidth == 380)
+        #expect(
+            customizedContext.store.defaults.integer(
+                forKey: ClipboardHistoryPanelGeometryMigration.defaultsKey
+            ) == ClipboardHistoryPanelGeometryMigration.currentVersion
+        )
+    }
+
     @Test func backgroundResidenceDoesNotCreateOrRetainAClipboardPanel() throws {
         let context = try makeContext()
         let controller = ClipboardHistoryWindowController(store: context.store)
@@ -434,6 +489,25 @@ struct ClipboardAlfredWorkflowTests {
         #expect(context.store.isPreviewVisible)
         #expect(context.store.preferences.popupPosition == .center)
         #expect(panel.frame.size == expectedSize)
+    }
+
+    @Test func presentedSplitUsesTheRequestedFourThirtyByFourTwentyWidths() async throws {
+        let context = try makeContext()
+        try ingest(["split geometry"], into: context.store)
+        let controller = ClipboardHistoryWindowController(store: context.store)
+
+        controller.present(positionOverride: .center, hideApplicationWindows: true)
+        defer { controller.close() }
+
+        let panel = try #require(controller.panel)
+        try await Task.sleep(for: .milliseconds(120))
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let splitView = try #require(findSplitView(in: panel.contentView))
+        let panes = Array(splitView.subviews.prefix(2))
+        #expect(panes.count == 2)
+        #expect(abs(panes[0].frame.width - 430) < 1)
+        #expect(abs(panes[1].frame.width - 419) < 1)
+        #expect(abs(splitView.frame.width - 850) < 1)
     }
 
     @Test func closingPresentedClipboardPanelReturnsApplicationFocus() throws {
@@ -975,6 +1049,15 @@ struct ClipboardAlfredWorkflowTests {
                 visibleFrame.height
             )
         )
+    }
+
+    private func findSplitView(in view: NSView?) -> NSSplitView? {
+        guard let view else { return nil }
+        if let splitView = view as? NSSplitView { return splitView }
+        for child in view.subviews {
+            if let splitView = findSplitView(in: child) { return splitView }
+        }
+        return nil
     }
 
     private func framesMatch(_ lhs: NSRect, _ rhs: NSRect) -> Bool {
