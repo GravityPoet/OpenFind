@@ -11,8 +11,8 @@
 
 OpenFind 让你不再被多工具卡顿折磨：**零延迟穿透代码与 ZIP 包**、**复制截图瞬间提取文字且全加密防护**、**合上 MacBook 屏幕编译与下载绝不断开**、**彻底解决外接硬盘与 NAS 假死掉盘**。
 
-[**🚀 立即下载 OpenFind v1.1.2 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.2) ·
-[查看 v1.1.2 发布说明](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.2)
+[**🚀 立即下载 OpenFind v1.1.3 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.3) ·
+[查看 v1.1.3 发布说明](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.3)
 
 ![OpenFind 首次引导：五项能力及其快捷键](docs/assets/openfind-welcome.png)
 
@@ -86,6 +86,7 @@ OpenFind 将这 5 大刚需工具集成为一个统一、隐私优先的 macOS �
 
 ### 5. 🔒 一键键盘锁
 * **一键安全清理**: 快捷键瞬间锁定所有键盘输入，方便清理键盘键帽，或防止宠物踏过造成误操作。
+* **识别安全输入状态**: macOS 正在保护安全输入时不会误报“锁定成功”，并会给出清晰提示。
 
 ---
 
@@ -166,7 +167,7 @@ OpenFind 使用 **Swift 6 & SwiftUI** 构建，严格遵循隐私第一原则：
 
 ## 📦 打包与签名
 
-官方 v1.1.2 客户包同时支持 `arm64` 与 `x86_64`，并使用 OpenFind 固定客户
+官方 v1.1.3 客户包同时支持 `arm64` 与 `x86_64`，并使用 OpenFind 固定客户
 证书签名。该版本尚未经过 Apple 公证，首次启动按上方说明放行属于预期流程。
 
 ```bash

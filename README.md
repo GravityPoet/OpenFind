@@ -11,8 +11,8 @@
 
 OpenFind frees you from multi-app lag: **Zero-latency search inside ZIPs and PDFs**, **Instant text extraction from screenshot clipboards with AES encryption**, **Keep servers and builds running with lid closed**, and **Prevent external SSD/NAS disconnects**.
 
-[**🚀 Download OpenFind v1.1.2 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.2) ·
-[v1.1.2 Release Notes](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.2)
+[**🚀 Download OpenFind v1.1.3 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.3) ·
+[v1.1.3 Release Notes](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.3)
 
 ![OpenFind first-run guide showing five capabilities and their shortcuts](docs/assets/openfind-welcome-en.png)
 
@@ -86,6 +86,7 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 
 ### 5. 🔒 Instant Keyboard Lock
 * **One-Click Cleaning**: Instantly lock all keyboard inputs with a customizable hotkey to safely wipe your MacBook keyboard or protect against accidental pet typing.
+* **Secure Input Awareness**: Detects macOS secure-input sessions and avoids claiming a lock when the system cannot deliver keyboard events to the app.
 
 ---
 
@@ -168,7 +169,7 @@ OpenFind is built using **Swift 6 & SwiftUI** with strict privacy guarantees:
 
 ## 📦 Packaging & Code Signing
 
-The official v1.1.2 customer artifact is a universal (`arm64` + `x86_64`) build
+The official v1.1.3 customer artifact is a universal (`arm64` + `x86_64`) build
 signed by OpenFind's pinned customer certificate. It is not Apple-notarized;
 the one-time first-launch override above is expected.
 
