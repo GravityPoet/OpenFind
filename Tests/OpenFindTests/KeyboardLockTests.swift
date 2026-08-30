@@ -62,6 +62,21 @@ struct KeyboardLockTests {
     }
 
     @MainActor
+    @Test func secureInputPreventsMisleadingLockedState() {
+        let controller = KeyboardLockController(
+            registry: GlobalHotKeyRegistry(),
+            accessibilityChecker: { true },
+            secureInputChecker: { true }
+        )
+
+        controller.enable()
+
+        #expect(controller.state == .secureInputActive)
+        #expect(!controller.isEngaged)
+        #expect(controller.lastErrorMessage == KeyboardLockError.secureInputActive.localizedDescription)
+    }
+
+    @MainActor
     @Test func autoUnlockPreferencePersistsOnlySupportedValues() throws {
         let suite = "OpenFindTests.KeyboardLock.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))

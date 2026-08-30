@@ -21,6 +21,7 @@ final class KeyboardLockController {
         case arming(Int)
         case locked
         case permissionRequired
+        case secureInputActive
         case unavailable
     }
 
@@ -36,7 +37,10 @@ final class KeyboardLockController {
     private var runLoopSource: CFRunLoopSource?
     @ObservationIgnored private var armingTask: Task<Void, Never>?
     @ObservationIgnored private var autoUnlockTask: Task<Void, Never>?
+    @ObservationIgnored private var secureInputMonitorTask: Task<Void, Never>?
     @ObservationIgnored private var lifecycleTokens: [NSObjectProtocol] = []
+    @ObservationIgnored private let accessibilityChecker: () -> Bool
+    @ObservationIgnored private let secureInputChecker: () -> Bool
     private var hasStarted = false
     private(set) var state: State = .disabled
     private(set) var autoUnlockMinutes: Int
@@ -44,9 +48,16 @@ final class KeyboardLockController {
     private(set) var lastErrorMessage: String?
     private(set) var registrationState: GlobalHotKeyRegistry.State = .disabled
 
-    init(registry: GlobalHotKeyRegistry, defaults: UserDefaults = .standard) {
+    init(
+        registry: GlobalHotKeyRegistry,
+        defaults: UserDefaults = .standard,
+        accessibilityChecker: @escaping () -> Bool = { AccessibilityPermission.isTrusted },
+        secureInputChecker: @escaping () -> Bool = { IsSecureEventInputEnabled() }
+    ) {
         self.registry = registry
         self.defaults = defaults
+        self.accessibilityChecker = accessibilityChecker
+        self.secureInputChecker = secureInputChecker
         let stored = defaults.object(forKey: Self.autoUnlockKey) as? Int ?? 5
         autoUnlockMinutes = [0, 5, 15, 30, 60].contains(stored) ? stored : 5
         shortcut = Self.loadShortcut(from: defaults)
@@ -87,12 +98,13 @@ final class KeyboardLockController {
         countdownSeconds: Int = KeyboardLockController.defaultActivationCountdownSeconds
     ) {
         guard !isEngaged else { return }
-        guard AccessibilityPermission.isTrusted else {
+        guard accessibilityChecker() else {
             state = .permissionRequired
             lastErrorMessage = KeyboardLockError.permissionRequired.localizedDescription
             return
         }
 
+        lastErrorMessage = nil
         let countdown = max(0, min(10, countdownSeconds))
         guard countdown > 0 else {
             activateLock()
@@ -117,9 +129,14 @@ final class KeyboardLockController {
     }
 
     private func activateLock() {
-        guard AccessibilityPermission.isTrusted else {
+        guard accessibilityChecker() else {
             state = .permissionRequired
             lastErrorMessage = KeyboardLockError.permissionRequired.localizedDescription
+            return
+        }
+        guard !secureInputChecker() else {
+            state = .secureInputActive
+            lastErrorMessage = KeyboardLockError.secureInputActive.localizedDescription
             return
         }
 
@@ -155,15 +172,39 @@ final class KeyboardLockController {
         }
         state = .locked
         lastErrorMessage = nil
+        startSecureInputMonitor()
         scheduleAutoUnlock()
     }
 
     func disable() {
+        let wasLocked = tearDownEngagement()
+        state = .disabled
+        lastErrorMessage = nil
+        if wasLocked, hasStarted {
+            registrationState = bindShortcut()
+        }
+    }
+
+    private func failLock(with error: KeyboardLockError) {
+        guard isLocked else { return }
+        let wasLocked = tearDownEngagement()
+        guard wasLocked else { return }
+        state = .secureInputActive
+        lastErrorMessage = error.localizedDescription
+        if hasStarted {
+            registrationState = bindShortcut()
+        }
+    }
+
+    @discardableResult
+    private func tearDownEngagement() -> Bool {
         let wasLocked = isLocked
         armingTask?.cancel()
         armingTask = nil
         autoUnlockTask?.cancel()
         autoUnlockTask = nil
+        secureInputMonitorTask?.cancel()
+        secureInputMonitorTask = nil
         gate.setEnabled(false)
         gate.clearTap()
         if let tap {
@@ -176,9 +217,25 @@ final class KeyboardLockController {
             self.runLoopSource = nil
         }
         unlockPanel.hide()
-        if state != .disabled { state = .disabled }
-        if wasLocked, hasStarted {
-            registrationState = bindShortcut()
+        return wasLocked
+    }
+
+    private func startSecureInputMonitor() {
+        secureInputMonitorTask?.cancel()
+        secureInputMonitorTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .milliseconds(250))
+                } catch {
+                    return
+                }
+                guard let self else { return }
+                guard self.isLocked else { return }
+                if self.secureInputChecker() {
+                    self.failLock(with: .secureInputActive)
+                    return
+                }
+            }
         }
     }
 
@@ -285,12 +342,15 @@ final class KeyboardLockController {
 
 enum KeyboardLockError: Error, Equatable, LocalizedError {
     case permissionRequired
+    case secureInputActive
     case tapUnavailable
 
     var errorDescription: String? {
         switch self {
         case .permissionRequired:
             return L("Keyboard Cleaning Lock Accessibility Permission Required")
+        case .secureInputActive:
+            return L("Keyboard Cleaning Lock Secure Input Active")
         case .tapUnavailable:
             return L("Keyboard Cleaning Lock Event Monitor Unavailable")
         }

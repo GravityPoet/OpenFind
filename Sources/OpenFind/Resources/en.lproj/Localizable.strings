@@ -656,6 +656,7 @@
 "Never" = "Never";
 "Keyboard Lock Hardware Limitation" = "macOS does not expose the hardware power or Touch ID buttons to event taps; those controls cannot be blocked.";
 "Keyboard Cleaning Lock Accessibility Permission Required" = "Keyboard Cleaning Lock requires Accessibility permission.";
+"Keyboard Cleaning Lock Secure Input Active" = "Keyboard Cleaning Lock is unavailable while macOS is protecting secure input. Finish password entry, or log out and back in, then try again.";
 "Keyboard Cleaning Lock Event Monitor Unavailable" = "OpenFind could not start the event monitor for Keyboard Cleaning Lock.";
 "Allow Display Sleep When Screen Is Locked" = "Allow display sleep when the screen is locked";
 "Closed Display Unsupported" = "This Mac does not expose a supported portable closed-display power state.";

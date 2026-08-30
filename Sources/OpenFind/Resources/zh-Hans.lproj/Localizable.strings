@@ -656,6 +656,7 @@
 "Never" = "永不";
 "Keyboard Lock Hardware Limitation" = "macOS 不会把硬件电源键或 Touch ID 按钮暴露给事件 tap，因此无法拦截这些控制。";
 "Keyboard Cleaning Lock Accessibility Permission Required" = "键盘清洁锁定需要辅助功能权限。";
+"Keyboard Cleaning Lock Secure Input Active" = "键盘清洁锁定暂不可用：macOS 正在保护安全输入，系统不会把按键交给事件监听。请结束密码输入，或注销并重新登录后再试。";
 "Keyboard Cleaning Lock Event Monitor Unavailable" = "OpenFind 无法启动键盘清洁锁定的事件监听。";
 "Allow Display Sleep When Screen Is Locked" = "屏幕锁定后允许显示器休眠";
 "Closed Display Unsupported" = "此 Mac 未暴露受支持的便携式闭盖电源状态。";
