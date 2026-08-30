@@ -7,7 +7,7 @@ compatibility entry point and must not contain an independent procedure.
 
 - Repository: `GravityPoet/OpenFind`
 - Default and release branch: `main`
-- Public version format: semantic tags such as `v1.1.2`
+- Public version format: semantic tags such as `v1.1.3`
 - Product version source: the tag without the leading `v`
 - Build number: `major * 1_000_000 + minor * 1_000 + patch`
 - Supported platform: macOS 14 or later, Apple silicon and Intel
@@ -79,10 +79,10 @@ Run every command from the repository root.
    NODES=250000 bash Scripts/benchmark_name_index.sh
    ```
 
-3. Build the exact customer artifact. For the current `v1.1.2` target, use:
+3. Build the exact customer artifact. For the current `v1.1.3` target, use:
 
    ```bash
-   APP_VERSION=1.1.2 BUILD_NUMBER=1001002 \
+   APP_VERSION=1.1.3 BUILD_NUMBER=1001003 \
      bash Scripts/build_customer_app.sh
    ```
 
@@ -121,7 +121,7 @@ Run every command from the repository root.
    ```bash
    git status --short --branch
    git add <intended-files>
-   git commit -m "release: prepare v1.1.2"
+   git commit -m "release: prepare v1.1.3"
    git push origin main
    RELEASE_SHA="$(git rev-parse HEAD)"
    gh run list --workflow ci.yml --commit "${RELEASE_SHA}" --limit 1
