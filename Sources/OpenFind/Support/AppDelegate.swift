@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let driveAlive: DriveAliveController
     let triggerCoordinator: TriggerCoordinator
     let triggerScheduler: TriggerMonitorScheduler
+    private var quickSearchWindow: QuickSearchWindowController?
     private let shouldPresentFirstRunGuide: Bool
     let quickLook = QuickLookController()
     private let mainWindowFrameAutosaveName = NSWindow.FrameAutosaveName("OpenFind.mainWindow")
@@ -127,6 +128,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         triggerCoordinator = TriggerCoordinator(store: triggerStore, sessions: awakeSession)
         triggerScheduler = TriggerMonitorScheduler(coordinator: triggerCoordinator)
         super.init()
+        quickSearchWindow = QuickSearchWindowController(
+            viewModel: QuickSearchViewModel(searchFiles: { [weak viewModel] query in
+                await viewModel?.quickFileSearch(query) ?? QuickSearchFileResponse()
+            }),
+            onShowFullSearch: { [weak self] query in
+                self?.showFullSearch(query: query)
+            },
+            onDismiss: { [weak self] in self?.enterBackgroundMode() }
+        )
         Self.shared = self
     }
 
@@ -141,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         configureUpdaterIfAvailable()
         presentInitialInterface()
         startRuntimeServices(includeTriggerScheduler: false)
+        Task { await ApplicationSearchIndex.shared.prewarm() }
         closedDisplayRecoveryTask = Task { [weak self] in
             guard let self else { return }
             let recovered = await self.awakeSession.recoverClosedDisplayState()
@@ -171,6 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         backgroundHibernateTask?.cancel()
         backgroundHibernateTask = nil
         clipboardStore.prepareForTermination()
+        quickSearchWindow?.close()
         stopRuntimeServices()
         if Self.shared === self { Self.shared = nil }
     }
@@ -220,7 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sessionActivity.start()
         awakeHotKeys.start()
         globalHotKey.start { [weak self] in
-            self?.toggleMainWindow()
+            self?.toggleQuickSearch()
         }
         if includeTriggerScheduler {
             triggerScheduler.start()
@@ -228,6 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func stopRuntimeServices() {
+        quickSearchWindow?.close()
         closedDisplayRecoveryTask?.cancel()
         closedDisplayRecoveryTask = nil
         triggerScheduler.stop()
@@ -243,6 +256,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // Reopen events can arrive while a menu-bar palette is becoming key.
+        // A visible quick search must never promote the full search behind it.
+        if quickSearchWindow?.isVisible == true { return true }
         showMainWindow()
         return true
     }
@@ -257,6 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         hotKeyRegistry.retryFailedRegistrations()
+        globalHotKey.retryIfNeeded()
     }
 
     func applicationDidResignActive(_ notification: Notification) {
@@ -272,7 +289,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         showMainWindow()
     }
 
+    @objc func showQuickSearch(_ sender: Any? = nil) {
+        if NSApp.isHidden { NSApp.unhideWithoutActivation() }
+        quickLook.close()
+        mainWindow?.orderOut(nil)
+        settingsWindow?.orderOut(nil)
+        enterForegroundMode(resumesSearch: false)
+        quickSearchWindow?.show()
+    }
+
+    private func toggleQuickSearch() {
+        if quickSearchWindow?.isVisible == true { quickSearchWindow?.close() }
+        else { showQuickSearch(nil) }
+    }
+
+    func showFullSearch(query: String) {
+        viewModel.displayMode = .files
+        viewModel.options.query = query
+        viewModel.options.target = .name
+        viewModel.options.matchMode = .substring
+        showMainWindow()
+        viewModel.scheduleSearch(delay: .zero)
+    }
+
     @objc func showSettingsWindow(_ sender: Any?) {
+        quickSearchWindow?.close()
         let window = makeSettingsWindowIfNeeded()
         enterForegroundMode(resumesSearch: false)
         NSApp.unhide(nil)
@@ -312,21 +353,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
     }
 
-    private func toggleMainWindow() {
-        let window = makeMainWindowIfNeeded()
-
-        if window.isVisible && NSApp.isActive {
-            quickLook.close()
-            window.orderOut(nil)
-            if !hasVisiblePrimaryWindow {
-                enterBackgroundMode()
-            }
-            return
-        }
-
-        showMainWindow(window)
-    }
-
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender === mainWindow || sender === settingsWindow else { return true }
         if sender === mainWindow { quickLook.close() }
@@ -353,6 +379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func showMainWindow(_ window: NSWindow? = nil) {
+        quickSearchWindow?.close()
         let window = window ?? makeMainWindowIfNeeded()
 
         enterForegroundMode()
@@ -363,7 +390,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private var hasVisiblePrimaryWindow: Bool {
-        [mainWindow, settingsWindow].compactMap { $0 }.contains { $0.isVisible }
+        quickSearchWindow?.isVisible == true
+            || [mainWindow, settingsWindow].compactMap { $0 }.contains { $0.isVisible }
     }
 
     private func enterForegroundMode(resumesSearch: Bool = true) {
@@ -381,6 +409,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func enterBackgroundMode() {
+        guard !terminationReplyPending else { return }
         guard !hasVisiblePrimaryWindow else { return }
         guard !isBackgroundResident else { return }
         isBackgroundResident = true
@@ -412,6 +441,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func workspaceDidWake(_ notification: Notification) {
         hotKeyRegistry.retryFailedRegistrations()
+        globalHotKey.retryIfNeeded()
     }
 
     private func makeMainWindowIfNeeded() -> NSWindow {
@@ -465,7 +495,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 systemImage: "magnifyingglass",
                 title: L("Guide Search Title"),
                 detail: L("Guide Search Detail"),
-                shortcut: globalHotKey.shortcut.displayText
+                shortcut: globalHotKey.displayText
             ),
             FirstRunCapability(
                 id: .clipboard,

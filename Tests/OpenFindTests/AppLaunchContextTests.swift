@@ -129,6 +129,41 @@ struct AppLaunchContextTests {
             }
     }
 
+    @Test func quickSearchDoesNotCreateMainWindowOrStartFileIndexOnPresentation() throws {
+        let application = NSApplication.shared
+        let existing = Set(application.windows.map(ObjectIdentifier.init))
+        let context = makeContext(shouldPresentFirstRunGuide: false)
+        defer { closeTestWindows(application, excluding: existing) }
+        context.delegate.presentInitialInterface()
+        context.delegate.showQuickSearch(nil)
+        let windows = application.windows.filter { !existing.contains(ObjectIdentifier($0)) }
+        #expect(windows.contains { $0.identifier?.rawValue == "OpenFind.quickSearch" && $0.isVisible })
+        #expect(!windows.contains { $0.identifier?.rawValue == "OpenFind.main" })
+        #expect(!context.delegate.viewModel.isIndexLifecycleStarted)
+    }
+
+    @Test func quickSearchHidesExistingFullWindowAndOnlyExplicitFullSearchRestoresIt() throws {
+        let application = NSApplication.shared
+        let existing = Set(application.windows.map(ObjectIdentifier.init))
+        let context = makeContext(shouldPresentFirstRunGuide: false)
+        defer { closeTestWindows(application, excluding: existing) }
+        context.delegate.showOpenFindWindow(nil)
+        let main = try #require(application.windows.first {
+            !existing.contains(ObjectIdentifier($0)) && $0.identifier?.rawValue == "OpenFind.main"
+        })
+        context.delegate.showQuickSearch(nil)
+        #expect(!main.isVisible)
+        _ = context.delegate.applicationShouldHandleReopen(application, hasVisibleWindows: true)
+        #expect(!main.isVisible)
+        context.delegate.showFullSearch(query: "Sample")
+        #expect(main.isVisible)
+        #expect(context.delegate.viewModel.options.query == "Sample")
+        #expect(!application.windows.contains {
+            !existing.contains(ObjectIdentifier($0))
+                && $0.identifier?.rawValue == "OpenFind.quickSearch" && $0.isVisible
+        })
+    }
+
     private func makeContext(shouldPresentFirstRunGuide: Bool) -> AppLaunchTestContext {
         let suiteName = "OpenFindTests.AppLaunchContext"
         let defaults = UserDefaults(suiteName: suiteName)!

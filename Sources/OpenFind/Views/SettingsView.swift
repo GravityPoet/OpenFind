@@ -162,18 +162,28 @@ struct SettingsView: View {
             Section(header: Text(L("Keyboard"))) {
                 Toggle(L("Global Shortcut"), isOn: globalHotKeyBinding)
 
-                LabeledContent(L("Toggle OpenFind")) {
+                Picker(L("Quick Search Trigger"), selection: Binding(
+                    get: { globalHotKey.trigger },
+                    set: { globalHotKey.setTrigger($0) }
+                )) {
+                    Text(L("Shortcut Combination")).tag(GlobalHotKeyController.Trigger.shortcut)
+                    Text(L("Double Control")).tag(GlobalHotKeyController.Trigger.doubleControl)
+                }
+
+                LabeledContent(L("Quick Search")) {
                     HStack(spacing: 6) {
                         ShortcutRecorder(
                             shortcut: globalHotKey.shortcut,
                             prompt: L("Press Shortcut"),
-                            accessibilityLabel: L("Toggle OpenFind")
+                            accessibilityLabel: L("Quick Search"),
+                            displayOverride: globalHotKey.displayText,
+                            onDoubleControl: { globalHotKey.setTrigger(.doubleControl) }
                         ) { shortcut in
                             globalHotKey.setShortcut(shortcut)
                         }
                         .frame(width: 132)
 
-                        if globalHotKey.shortcut != .defaultValue {
+                        if globalHotKey.shortcut != .defaultValue || globalHotKey.trigger != .shortcut {
                             Button {
                                 globalHotKey.resetShortcut()
                             } label: {
@@ -185,6 +195,10 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                Label(L("Quick Search Shortcut Help"), systemImage: "info.circle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
 
                 switch globalHotKey.registrationState {
                 case .disabled:
@@ -198,9 +212,15 @@ struct SettingsView: View {
                 case .failed:
                     Label(L("Shortcut Unavailable"), systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
+                case .permissionRequired:
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(L("Double Control Permission Help"))
+                        Button(L("Open Accessibility Settings")) { AccessibilityPermission.openSettings() }
+                    }
+                    .font(.footnote)
                 }
 
-                Text(L("Shortcut Recording Help"))
+                Text(L("Quick Search Recording Help"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

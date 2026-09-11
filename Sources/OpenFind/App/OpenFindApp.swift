@@ -8,6 +8,12 @@ struct OpenFindApp: App {
 
     var body: some Scene {
         MenuBarExtra {
+            Button(L("Quick Search")) {
+                appDelegate.showQuickSearch(nil)
+            }
+
+            Divider()
+
             Button(L("File Search")) {
                 appDelegate.showOpenFindWindow(nil)
             }

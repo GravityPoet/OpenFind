@@ -16,6 +16,10 @@ struct SearchUsageSnapshot: Sendable {
 
     var isEmpty: Bool { ranksByPath.isEmpty }
 
+    func rank(for applicationURL: URL) -> SearchUsageRank? {
+        ranksByPath[SearchPath.canonicalIndexedPath(applicationURL.path)]
+    }
+
     /// Avoids resolving a deferred full path for virtually every result. Only
     /// names shared by one of the small number of local history records need a
     /// path lookup and exact-path verification.
