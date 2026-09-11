@@ -34,6 +34,11 @@ struct AppCommands: Commands {
         }
 
         CommandMenu(L("Search")) {
+            Button(L("Quick Search")) {
+                AppDelegate.shared?.showQuickSearch(nil)
+            }
+            Divider()
+
             Button(viewModel.isSearching ? L("Cancel Search") : L("Start Search")) {
                 if viewModel.isSearching {
                     viewModel.cancel()

@@ -331,6 +331,16 @@ final class SearchViewModel {
         refreshIndex()
     }
 
+    /// Quick search shares this scope and index without changing the main
+    /// window's query, filters, results, or durable preferences.
+    func quickFileSearch(_ query: String) async -> QuickSearchFileResponse {
+        guard let quickOptions = QuickFileSearch.options(for: query, using: options) else {
+            return QuickSearchFileResponse(needsFullSearch: true)
+        }
+        resumeFromBackground()
+        return await QuickFileSearch.search(scopes: scopes, options: quickOptions, store: indexStore)
+    }
+
     private func cancel(preservingResultPageExpansion: Bool) {
         if preservingResultPageExpansion, isExpandingResults {
             if pendingResultPageExpansions < Int.max {

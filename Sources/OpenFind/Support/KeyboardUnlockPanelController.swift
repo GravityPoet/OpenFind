@@ -36,6 +36,8 @@ final class KeyboardUnlockPanelController: NSObject {
             defer: false
         )
         panel.title = L("Keyboard Locked")
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
         panel.level = .statusBar
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = true

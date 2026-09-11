@@ -150,7 +150,11 @@ size:>10mb dm:today     # 按大小与修改 (dm:) / 创建 (dc:) 日期过滤
 report AND NOT draft    # 布尔运算符：AND / OR / NOT
 
 # --- 快捷键 ---
-⌃⌥F                     # 唤起/隐藏 OpenFind 搜索框
+⌃⌥F                     # 快速搜索应用、文件和文件夹
+⌃ ⌃                    # 可在“设置 → 搜索 → 触发方式”中改为连按两次 Control
+⌘1…9                   # 直接打开对应快捷结果
+⌘↩                     # 在 Finder 中显示选中的结果
+⌥↩                     # 从快速搜索进入全量文件搜索
 Space (选中结果时)       # 调起原生 Quick Look 快速预览
 ```
 

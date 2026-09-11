@@ -152,7 +152,11 @@ size:>10mb dm:today     # Filter by size and modified (dm:) / created (dc:) date
 report AND NOT draft    # Boolean operators: AND / OR / NOT
 
 # --- SHORTCUT CHEAT SHEET ---
-⌃⌥F                     # Toggle OpenFind Search Bar
+⌃⌥F                     # Quick search: apps, files, and folders
+⌃ ⌃                    # Optional: double-tap Control (Settings → Search → Trigger)
+⌘1…9                   # Open a quick result directly
+⌘↩                     # Reveal the selected result in Finder
+⌥↩                     # From quick search, open full file search
 Space (on result)       # Native Quick Look preview
 ```
 

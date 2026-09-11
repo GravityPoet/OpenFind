@@ -6,6 +6,8 @@ struct ShortcutRecorder: NSViewRepresentable {
     let shortcut: GlobalShortcut
     let prompt: String
     let accessibilityLabel: String
+    var displayOverride: String? = nil
+    var onDoubleControl: (() -> Void)? = nil
     let onChange: (GlobalShortcut) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -32,10 +34,12 @@ struct ShortcutRecorder: NSViewRepresentable {
     private func update(_ button: RecorderButton, coordinator: Coordinator) {
         button.shortcut = shortcut
         button.prompt = prompt
+        button.displayOverride = displayOverride
+        button.onDoubleControl = onDoubleControl
         button.setAccessibilityLabel(accessibilityLabel)
-        button.setAccessibilityValue(shortcut.displayText)
+        button.setAccessibilityValue(displayOverride ?? shortcut.displayText)
         if !button.isRecording {
-            button.title = shortcut.displayText
+            button.title = displayOverride ?? shortcut.displayText
         }
     }
 
@@ -60,12 +64,16 @@ struct ShortcutRecorder: NSViewRepresentable {
 final class RecorderButton: NSButton {
     var shortcut = GlobalShortcut.defaultValue
     var prompt = ""
+    var displayOverride: String?
+    var onDoubleControl: (() -> Void)?
+    private var doubleTap = ControlDoubleTap()
     private var capture: ((GlobalShortcut) -> Void)?
     private(set) var isRecording = false
 
     override var acceptsFirstResponder: Bool { true }
 
     func beginRecording(capture: @escaping (GlobalShortcut) -> Void) {
+        doubleTap.reset()
         self.capture = capture
         isRecording = true
         title = prompt
@@ -74,8 +82,9 @@ final class RecorderButton: NSButton {
     }
 
     override func keyDown(with event: NSEvent) {
+        doubleTap.reset()
         if Int(event.keyCode) == kVK_Escape {
-            finishRecording(display: shortcut.displayText)
+            finishRecording(display: displayOverride ?? shortcut.displayText)
             return
         }
         guard let shortcut = GlobalShortcut(event: event) else {
@@ -90,9 +99,17 @@ final class RecorderButton: NSButton {
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
         if resigned, isRecording {
-            finishRecording(display: shortcut.displayText, resign: false)
+            finishRecording(display: displayOverride ?? shortcut.displayText, resign: false)
         }
         return resigned
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        guard isRecording, onDoubleControl != nil else { super.flagsChanged(with: event); return }
+        if doubleTap.handle(event) {
+            onDoubleControl?()
+            finishRecording(display: "⌃ ⌃")
+        }
     }
 
     private func finishRecording(display: String, resign: Bool = true) {

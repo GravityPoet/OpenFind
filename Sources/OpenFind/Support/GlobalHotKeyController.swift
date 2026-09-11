@@ -10,8 +10,14 @@ final class GlobalHotKeyController {
         case registered
         case conflict
         case failed(OSStatus)
+        case permissionRequired
     }
 
+    enum Trigger: String, CaseIterable {
+        case shortcut
+        case doubleControl
+    }
+    private static let triggerKey = "OpenFind.quickSearchTriggerV1"
     private static let enabledKey = "OpenFind.globalHotKeyEnabled"
     private static let keyCodeKey = "OpenFind.globalHotKeyKeyCode"
     private static let modifiersKey = "OpenFind.globalHotKeyModifiers"
@@ -19,20 +25,27 @@ final class GlobalHotKeyController {
     private static let defaultMigrationKey = "OpenFind.globalHotKeyDefaultV2"
     private static let actionID = "toggleOpenFind"
     private let registry: GlobalHotKeyRegistry
+    @ObservationIgnored private let doubleTap = ControlDoubleTapMonitor()
+    @ObservationIgnored private let accessibilityChecker: () -> Bool
     @ObservationIgnored private let defaults: UserDefaults
     private var hasStarted = false
     private var action: (@MainActor () -> Void)?
 
     private(set) var isEnabled: Bool
     private(set) var shortcut: GlobalShortcut
+    private(set) var trigger: Trigger
+    var displayText: String { trigger == .doubleControl ? "⌃ ⌃" : shortcut.displayText }
     private(set) var registrationState: RegistrationState = .disabled
 
     init(
         defaults: UserDefaults = .standard,
-        registry: GlobalHotKeyRegistry = GlobalHotKeyRegistry()
+        registry: GlobalHotKeyRegistry = GlobalHotKeyRegistry(),
+        accessibilityChecker: @escaping () -> Bool = { AccessibilityPermission.isTrusted }
     ) {
         self.defaults = defaults
         self.registry = registry
+        self.accessibilityChecker = accessibilityChecker
+        trigger = Trigger(rawValue: defaults.string(forKey: Self.triggerKey) ?? "") ?? .shortcut
         shortcut = Self.loadShortcut(from: defaults)
         if defaults.object(forKey: Self.enabledKey) == nil {
             isEnabled = true
@@ -58,7 +71,6 @@ final class GlobalHotKeyController {
     @discardableResult
     func setShortcut(_ shortcut: GlobalShortcut) -> Bool {
         guard shortcut.isValid else { return false }
-        let previous = self.shortcut
         let state = registry.bind(
             id: Self.actionID,
             shortcut: shortcut,
@@ -68,10 +80,23 @@ final class GlobalHotKeyController {
         guard state != .conflict, !isFailure(state) else { return false }
         self.shortcut = shortcut
         Self.saveShortcut(shortcut, to: defaults)
+        trigger = .shortcut
+        defaults.set(trigger.rawValue, forKey: Self.triggerKey)
+        doubleTap.stop()
         registrationState = map(state)
         if !hasStarted { registrationState = .disabled }
-        _ = previous
         return true
+    }
+
+    func setTrigger(_ trigger: Trigger) {
+        guard trigger != self.trigger else { return }
+        self.trigger = trigger
+        defaults.set(trigger.rawValue, forKey: Self.triggerKey)
+        refreshRegistration()
+    }
+
+    func retryIfNeeded() {
+        if trigger == .doubleControl { refreshRegistration() }
     }
 
     func resetShortcut() {
@@ -79,6 +104,7 @@ final class GlobalHotKeyController {
     }
 
     func stop() {
+        doubleTap.stop()
         registry.unbind(id: Self.actionID)
         hasStarted = false
         action = nil
@@ -86,8 +112,17 @@ final class GlobalHotKeyController {
     }
 
     private func refreshRegistration() {
+        doubleTap.stop()
         guard hasStarted else {
             registrationState = .disabled
+            return
+        }
+        if trigger == .doubleControl {
+            registry.unbind(id: Self.actionID)
+            guard isEnabled else { registrationState = .disabled; return }
+            guard accessibilityChecker() else { registrationState = .permissionRequired; return }
+            registrationState = doubleTap.start(action: { [weak self] in self?.action?() })
+                ? .registered : .failed(OSStatus(eventInternalErr))
             return
         }
         let state = registry.bind(
