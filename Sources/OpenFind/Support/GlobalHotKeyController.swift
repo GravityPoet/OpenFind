@@ -111,6 +111,16 @@ final class GlobalHotKeyController {
         registrationState = .disabled
     }
 
+    func reloadPreferences() {
+        let running = hasStarted
+        let savedAction = action
+        if running { stop() }
+        shortcut = Self.loadShortcut(from: defaults)
+        trigger = Trigger(rawValue: defaults.string(forKey: Self.triggerKey) ?? "") ?? .shortcut
+        isEnabled = defaults.object(forKey: Self.enabledKey) as? Bool ?? true
+        if running { start(action: savedAction ?? {}) }
+    }
+
     private func refreshRegistration() {
         doubleTap.stop()
         guard hasStarted else {

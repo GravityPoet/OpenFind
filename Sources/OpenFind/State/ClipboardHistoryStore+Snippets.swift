@@ -141,7 +141,7 @@ extension ClipboardHistoryStore {
         guard archive.snippets.count <= Self.maximumSnippetCount else {
             throw ClipboardSnippetError.tooManySnippets
         }
-        let records = try archive.snippets.map(validatedSnippetRecord)
+        let records = try archive.snippets.map { try validatedSnippetRecord($0) }
         guard Set(records.map(\.id)).count == records.count else {
             throw ClipboardSnippetError.duplicateIdentifiers
         }
@@ -202,7 +202,7 @@ extension ClipboardHistoryStore {
         return records.count
     }
 
-    private func snippetEntry(
+    func snippetEntry(
         from record: ClipboardSnippetRecord,
         existingEntries: [ClipboardEntry]
     ) -> ClipboardEntry {
@@ -223,8 +223,9 @@ extension ClipboardHistoryStore {
         )
     }
 
-    private func validatedSnippetRecord(
-        _ record: ClipboardSnippetRecord
+    func validatedSnippetRecord(
+        _ record: ClipboardSnippetRecord,
+        maximumBytes: Int? = nil
     ) throws -> ClipboardSnippetRecord {
         guard let name = normalizedMetadata(
             record.name,
@@ -233,7 +234,7 @@ extension ClipboardHistoryStore {
             throw ClipboardSnippetError.invalidName
         }
         guard record.content.count <= Self.maximumSnippetCharacters,
-              Data(record.content.utf8).count <= itemLimitBytes else {
+              Data(record.content.utf8).count <= (maximumBytes ?? itemLimitBytes) else {
             throw ClipboardSnippetError.invalidContent
         }
         let keyword = try normalizedSnippetKeyword(record.keyword)

@@ -60,19 +60,28 @@ struct QuickSearchView: View {
     private var resultsList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0) {
                     ForEach(Array(viewModel.results.enumerated()), id: \.element.id) { index, result in
                         QuickSearchRow(
                             item: result, index: index, isSelected: index == viewModel.selectedIndex,
                             scale: scale, onOpen: { onOpen(result) }
                         )
-                        .id(index)
+                        .id(result.id)
+                        .disabled(!viewModel.resultsAreCurrent)
+                    }
+                    if viewModel.hasMoreFiles {
+                        Button(L("Load More Results")) { viewModel.loadMoreFiles() }
+                            .disabled(viewModel.isLoadingMore)
+                            .padding(12 * scale)
+                            .accessibilityIdentifier("OpenFind.quickSearch.loadMore")
                     }
                 }
                 .padding(.horizontal, 4 * scale)
                 .padding(.vertical, 8 * scale)
             }
-            .onChange(of: viewModel.selectedIndex) { _, index in proxy.scrollTo(index) }
+            .onChange(of: viewModel.selectedResult?.id) { _, id in
+                if let id { proxy.scrollTo(id) }
+            }
         }
     }
 

@@ -8,15 +8,33 @@ actor ApplicationSearchIndex {
 
     private var cachedResults: [ApplicationSearchResult] = []
     private var lastRefresh: Date?
-    private var refreshTask: Task<[ApplicationSearchResult], Never>?
-    private let refreshInterval: TimeInterval = 15
+    private var refreshTask: Task<Void, Never>?
+    private let refreshInterval: TimeInterval
+    private let discover: @Sendable () async -> [ApplicationSearchResult]
+    private let now: @Sendable () -> Date
+
+    init(
+        refreshInterval: TimeInterval = 15,
+        now: @escaping @Sendable () -> Date = Date.init,
+        discover: @escaping @Sendable () async -> [ApplicationSearchResult] = {
+            await Task.detached(priority: .utility) { discoverApplications() }.value
+        }
+    ) {
+        self.refreshInterval = refreshInterval
+        self.now = now
+        self.discover = discover
+    }
 
     func prewarm() async {
-        _ = await results(for: "")
+        startRefreshIfNeeded()
+        await refreshTask?.value
     }
 
     func results(for query: String) async -> [ApplicationSearchResult] {
-        await refreshIfNeeded()
+        startRefreshIfNeeded()
+        // Only the first discovery blocks. An expired (even empty) cache is
+        // usable while the single refresh task prepares its replacement.
+        if lastRefresh == nil { await refreshTask?.value }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         return ApplicationSearchMatcher.rank(
@@ -35,25 +53,14 @@ actor ApplicationSearchIndex {
         ApplicationSearchMatcher.rank(query, in: candidates)
     }
 
-    private func refreshIfNeeded() async {
-        if let lastRefresh,
-           !cachedResults.isEmpty,
-           Date().timeIntervalSince(lastRefresh) < refreshInterval {
-            return
+    private func startRefreshIfNeeded() {
+        guard refreshTask == nil else { return }
+        if let lastRefresh, now().timeIntervalSince(lastRefresh) < refreshInterval { return }
+        refreshTask = Task {
+            cachedResults = await discover()
+            lastRefresh = now()
+            refreshTask = nil
         }
-        if let refreshTask {
-            cachedResults = await refreshTask.value
-            self.refreshTask = nil
-            lastRefresh = Date()
-            return
-        }
-        let task = Task.detached(priority: .utility) {
-            Self.discoverApplications()
-        }
-        refreshTask = task
-        cachedResults = await task.value
-        refreshTask = nil
-        lastRefresh = Date()
     }
 
     nonisolated static var applicationRoots: [URL] {

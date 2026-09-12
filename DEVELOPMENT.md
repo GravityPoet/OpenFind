@@ -46,6 +46,10 @@ Test note: run the main test suite with `bash Scripts/test.sh`. The wrapper
 serializes the suite and isolates `HOME`, `CFFIXED_USER_HOME`, and `TMPDIR` so
 tests cannot read or write the installed app's preferences, indexes, or
 clipboard history. Pass normal `swift test` filters after the script name.
+Running the bare parallel `swift test` command is not the product gate: AppKit
+and main-actor integration suites share process state and can delay timed tests.
+Use the isolated wrapper for reproducible results rather than extending timeouts
+or modifying production timers to compensate for cross-suite contention.
 
 ---
 

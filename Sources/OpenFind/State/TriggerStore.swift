@@ -21,6 +21,13 @@ final class TriggerStore {
         loadErrorMessage = loaded.errorMessage
     }
 
+    func reloadPreferences() {
+        isEnabled = defaults.object(forKey: Self.enabledKey) as? Bool ?? true
+        let loaded = Self.loadTriggers(from: defaults)
+        triggers = loaded.triggers
+        loadErrorMessage = loaded.errorMessage
+    }
+
     func setEnabled(_ enabled: Bool) {
         isEnabled = enabled
         defaults.set(enabled, forKey: Self.enabledKey)

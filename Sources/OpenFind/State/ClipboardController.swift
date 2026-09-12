@@ -77,6 +77,17 @@ final class ClipboardController {
         registrationState = .disabled
     }
 
+    func reloadPreferences() {
+        let running = hasStarted
+        if running { stop() }
+        store.preferences = ClipboardPreferencesPersistence.load(from: defaults)
+        shortcut = Self.loadShortcut(from: defaults)
+        isShortcutEnabled = defaults.object(forKey: Self.shortcutEnabledKey) as? Bool ?? true
+        if store.preferences.imageTextRecognitionEnabled { store.enqueueMissingImageTextRecognition() }
+        else { store.setImageTextRecognitionEnabled(false) }
+        if running { start() }
+    }
+
     @discardableResult
     func setShortcut(_ shortcut: GlobalShortcut) -> Bool {
         guard shortcut.isValid else { return false }

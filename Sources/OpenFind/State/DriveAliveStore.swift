@@ -37,6 +37,14 @@ final class DriveAliveStore {
         loadErrorMessage = loaded.errorMessage
     }
 
+    func reloadPreferences() {
+        let replacement = DriveAliveStore(defaults: defaults, resolver: resolver)
+        isEnabled = replacement.isEnabled
+        interval = replacement.interval
+        targets = replacement.targets
+        loadErrorMessage = replacement.loadErrorMessage
+    }
+
     func setEnabled(_ enabled: Bool) {
         isEnabled = enabled
         defaults.set(enabled, forKey: Self.enabledKey)

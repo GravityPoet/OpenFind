@@ -331,14 +331,23 @@ final class SearchViewModel {
         refreshIndex()
     }
 
+    func reloadPortableConfiguration() {
+        let query = options.query
+        let deepIndex = options.deepIndex
+        options = Preferences.loadOptions()
+        options.query = query
+        if isIndexLifecycleStarted, options.deepIndex != deepIndex { refreshIndex() }
+        if isIndexLifecycleStarted, canSearch { scheduleSearch(delay: .zero) }
+    }
+
     /// Quick search shares this scope and index without changing the main
     /// window's query, filters, results, or durable preferences.
-    func quickFileSearch(_ query: String) async -> QuickSearchFileResponse {
+    func quickFileSearch(_ query: String, limit: Int = 50) async -> QuickSearchFileResponse {
         guard let quickOptions = QuickFileSearch.options(for: query, using: options) else {
             return QuickSearchFileResponse(needsFullSearch: true)
         }
         resumeFromBackground()
-        return await QuickFileSearch.search(scopes: scopes, options: quickOptions, store: indexStore)
+        return await QuickFileSearch.search(scopes: scopes, options: quickOptions, store: indexStore, limit: limit)
     }
 
     private func cancel(preservingResultPageExpansion: Bool) {
