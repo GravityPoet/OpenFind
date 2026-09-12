@@ -131,7 +131,15 @@ struct QuickSearchTests {
     }
 
     @Test func showFocusesTheInputOnFirstAndRepeatedPresentation() async throws {
-        let model = QuickSearchViewModel(searchApplications: { _ in [] })
+        let model = QuickSearchViewModel(
+            searchApplications: { _ in [
+                ApplicationSearchResult(
+                    url: URL(fileURLWithPath: "/Applications/fixture.app"),
+                    name: "fixture", bundleIdentifier: "test.fixture"
+                )
+            ] },
+            searchSettings: { _ in [] }
+        )
         var transferred: String?
         let controller = QuickSearchWindowController(viewModel: model, onShowFullSearch: { transferred = $0 })
         defer { controller.close() }
@@ -142,15 +150,44 @@ struct QuickSearchTests {
         #expect(editor.isFieldEditor)
         #expect(panel.frame.height <= 160)
         model.query = "fixture"
+        try await waitUntil { !model.isSearching }
+        #expect(model.selectedResult?.name == "fixture")
         controller.close()
+        #expect(model.results.isEmpty)
+        #expect(!model.resultsAreCurrent)
+        #expect(model.selectedResult == nil)
         controller.show()
         try await Task.sleep(for: .milliseconds(50))
         #expect(model.query.isEmpty)
+        #expect(controller.panel === panel)
         #expect(panel.firstResponder is NSTextView)
         model.query = "fixture"
         panel.onFullSearch?()
         #expect(transferred == "fixture")
         #expect(!controller.isVisible)
+    }
+
+    @Test func releasingRowsRejectsPendingFileResults() async throws {
+        let pending = DeferredQuickSearchFiles()
+        let fixture = application("fixture")
+        let model = QuickSearchViewModel(
+            searchApplications: { _ in [fixture] },
+            searchSettings: { _ in [] },
+            searchFiles: { _ in await pending.response() }
+        )
+        model.query = "fixture"
+        try await waitUntil { !model.results.isEmpty }
+        for _ in 0..<100 {
+            if await pending.hasStarted { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await pending.hasStarted)
+        model.releaseTransientResults()
+        await pending.finish(with: fileResult("late.txt"))
+        for _ in 0..<10 { await Task.yield() }
+        #expect(model.results.isEmpty)
+        #expect(!model.resultsAreCurrent)
+        #expect(!model.isSearching)
     }
 
     private func key(_ code: Int, flags: NSEvent.ModifierFlags = [], text: String = "\r") -> NSEvent {
@@ -175,5 +212,19 @@ struct QuickSearchTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(condition())
+    }
+}
+
+private actor DeferredQuickSearchFiles {
+    private var continuation: CheckedContinuation<QuickSearchFileResponse, Never>?
+    var hasStarted: Bool { continuation != nil }
+
+    func response() async -> QuickSearchFileResponse {
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func finish(with result: SearchResult) {
+        continuation?.resume(returning: .init(results: [result]))
+        continuation = nil
     }
 }

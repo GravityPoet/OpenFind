@@ -92,6 +92,7 @@ struct AppLaunchContextTests {
             $0.identifier?.rawValue == "OpenFind.settings" && $0.isVisible
         })
         #expect(!delegate.windowShouldClose(settings))
+        #expect(settings.contentViewController == nil)
 
         delegate.showOpenFindWindow(nil)
         #expect(delegate.viewModel.isIndexLifecycleStarted)
@@ -115,6 +116,71 @@ struct AppLaunchContextTests {
             kind: .text
         ))
         #expect(delegate.clipboardStore.entries.first?.hasResidentPayload == true)
+    }
+
+    @Test func closingSettingsReleasesItsViewTreeAndReopeningRestoresGeometry() async throws {
+        let application = NSApplication.shared
+        let existing = Set(application.windows.map(ObjectIdentifier.init))
+        let context = makeContext(shouldPresentFirstRunGuide: false)
+        defer { closeTestWindows(application, excluding: existing) }
+        context.delegate.showSettingsWindow(nil)
+        let first = try #require(application.windows.first {
+            !existing.contains(ObjectIdentifier($0)) && $0.identifier?.rawValue == "OpenFind.settings"
+        })
+        weak let releasedController = first.contentViewController
+        #expect(releasedController != nil)
+        let frame = first.frame
+        #expect(!context.delegate.windowShouldClose(first))
+        for _ in 0..<100 where releasedController != nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(releasedController == nil)
+        context.delegate.showSettingsWindow(nil)
+        let reopened = try #require(application.windows.first {
+            $0.identifier?.rawValue == "OpenFind.settings" && $0.isVisible
+        })
+        #expect(reopened !== first)
+        #expect(reopened.contentViewController != nil)
+        #expect(reopened.frame == frame)
+        #expect(!context.delegate.viewModel.isIndexLifecycleStarted)
+    }
+
+    @Test func hidingSettingsWithAnAttachedEditorKeepsItsDraftViewAlive() throws {
+        let application = NSApplication.shared
+        let existing = Set(application.windows.map(ObjectIdentifier.init))
+        let context = makeContext(shouldPresentFirstRunGuide: false)
+        defer { closeTestWindows(application, excluding: existing) }
+        context.delegate.showSettingsWindow(nil)
+        let settings = try #require(application.windows.first {
+            !existing.contains(ObjectIdentifier($0)) && $0.identifier?.rawValue == "OpenFind.settings"
+        })
+        let originalController = try #require(settings.contentViewController)
+        let sheet = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
+        sheet.isReleasedWhenClosed = false
+        settings.beginSheet(sheet)
+        defer { settings.endSheet(sheet); sheet.close() }
+        #expect(!context.delegate.windowShouldClose(settings))
+        #expect(settings.contentViewController === originalController)
+        context.delegate.showSettingsWindow(nil)
+        #expect(settings.isVisible)
+        #expect(settings.attachedSheet === sheet)
+    }
+
+    @Test func hidingSettingsKeepsAnEditorThatCannotFinishEditing() throws {
+        let application = NSApplication.shared
+        let existing = Set(application.windows.map(ObjectIdentifier.init))
+        let context = makeContext(shouldPresentFirstRunGuide: false)
+        defer { closeTestWindows(application, excluding: existing) }
+        context.delegate.showSettingsWindow(nil)
+        let settings = try #require(application.windows.first {
+            !existing.contains(ObjectIdentifier($0)) && $0.identifier?.rawValue == "OpenFind.settings"
+        })
+        let originalController = try #require(settings.contentViewController)
+        let editor = UnfinishedSettingsEditor()
+        settings.contentView?.addSubview(editor)
+        #expect(settings.makeFirstResponder(editor))
+        #expect(!context.delegate.windowShouldClose(settings))
+        #expect(settings.contentViewController === originalController)
     }
 
     private func closeTestWindows(
@@ -206,6 +272,11 @@ struct AppLaunchContextTests {
             temporaryDirectory: temporaryDirectory
         )
     }
+}
+
+private final class UnfinishedSettingsEditor: NSView {
+    override var acceptsFirstResponder: Bool { true }
+    override func resignFirstResponder() -> Bool { false }
 }
 
 private final class AppLaunchMemoryPersistence: ClipboardHistoryPersisting {
