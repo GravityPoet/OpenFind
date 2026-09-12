@@ -61,6 +61,7 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 ## ✨ One App, 5 Creative Tools
 
 ### 1. ⚡ Hyper-Fast Local Engine (File & Content Search)
+* **Quick Search**: Find apps, files, folders, and System Settings in one panel. Chinese names, English names, and pinyin are searchable. `⌘1–9` opens the first nine results; scroll or load more for further matches.
 * **Instant `mmap` Indexing**: Loads millions of file paths in microseconds without heap memory overhead.
 * **Real-time FSEvents Sync**: Instantly indexes terminal changes (`git pull`, `touch`) as they happen.
 * **Deep Space Extraction**: Search inside PDFs, Word/Excel, Apple iWork, and stream inside `.zip` / `.tar.gz` compressed archives without disk extraction.
@@ -72,6 +73,7 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 * **Sequential Paste Stack**: Copy 10 items in order, then paste them sequentially with a single shortcut.
 * **Snippet Expansion & Auto-Privacy**: Pin frequent snippets and automatically ignore 1Password, Keychain, and sensitive app data.
 * **Immediate Two-Column Preview**: Clipboard history opens with the list and selected-item preview side by side; your resized window frame is remembered.
+* **Configuration Transfer & Sync**: Settings → Search → Configuration and Sync exports/imports portable preferences and saved text snippets, or syncs through a folder you choose. Clipboard history, keys, permissions, login items, and machine-specific folder/drive targets remain local. Conflicts preserve both copies; import has a recovery action. The JSON contains readable snippets, so choose a private folder.
 
 ### 3. ☕ Smart Keep-Awake & Clamshell (Lid-Closed) Mode
 * **Sleep Prevention**: Keep your Mac display or system awake for custom durations or indefinitely.

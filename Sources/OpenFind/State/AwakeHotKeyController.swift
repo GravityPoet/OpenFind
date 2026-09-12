@@ -99,6 +99,13 @@ final class AwakeHotKeyController {
         hasStarted = false
     }
 
+    func reloadPreferences() {
+        let running = hasStarted
+        if running { stop() }
+        bindings = AwakeHotKeyAction.allCases.map { Self.loadBinding(action: $0, defaults: defaults) }
+        if running { start() }
+    }
+
     @discardableResult
     func setEnabled(_ enabled: Bool, for action: AwakeHotKeyAction) -> Bool {
         guard let binding = binding(for: action) else { return false }

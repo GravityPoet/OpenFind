@@ -41,6 +41,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         // MenuBarExtra finishes dismissing after its action returns.
         DispatchQueue.main.async { [weak self] in self?.focusSearch() }
         Task { await ApplicationSearchIndex.shared.prewarm() }
+        Task { _ = await SystemSettingsSearchIndex.shared.results(for: "") }
     }
 
     func close() {
@@ -91,13 +92,14 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         }
         panel.onReveal = { [weak self] in
             guard let self, let result = viewModel.selectedResult else { return }
+            guard result.url.isFileURL else { open(result); return }
             close()
             FileActions.revealInFinder([result.url])
         }
         panel.onFullSearch = { [weak self] in self?.showFullSearch() }
         panel.onMoveSelection = { [weak self] in self?.viewModel.moveSelection(by: $0) }
         panel.onOpenNumber = { [weak self] index in
-            guard let self, viewModel.results.indices.contains(index) else { return }
+            guard let self, viewModel.resultsAreCurrent, viewModel.results.indices.contains(index) else { return }
             open(viewModel.results[index])
         }
         self.panel = panel
@@ -109,7 +111,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     }
 
     private func open(_ result: QuickSearchItem) {
-        guard launchTask == nil else { return }
+        guard launchTask == nil, viewModel.resultsAreCurrent else { return }
         viewModel.errorMessage = nil
         launchTask = Task { [weak self] in
             guard let self else { return }
@@ -123,7 +125,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
                 } else if !NSWorkspace.shared.open(result.url) {
                     throw CocoaError(.fileReadUnknown)
                 }
-                SearchUsageStore.shared.recordSuccessfulOpen(result.url)
+                if result.url.isFileURL { SearchUsageStore.shared.recordSuccessfulOpen(result.url) }
                 close()
             } catch {
                 viewModel.errorMessage = L("Quick Search Open Failed")

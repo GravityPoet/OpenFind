@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let driveAlive: DriveAliveController
     let triggerCoordinator: TriggerCoordinator
     let triggerScheduler: TriggerMonitorScheduler
+    let configurationSync: ConfigurationSyncController
     private var quickSearchWindow: QuickSearchWindowController?
     private let shouldPresentFirstRunGuide: Bool
     let quickLook = QuickLookController()
@@ -74,6 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.hotKeyRegistry = hotKeyRegistry
         self.globalHotKey = GlobalHotKeyController(defaults: defaults, registry: hotKeyRegistry)
         self.clipboardStore = clipboardStore
+        configurationSync = ConfigurationSyncController(
+            transfer: ConfigurationTransferStore(defaults: defaults, clipboard: clipboardStore,
+                recoveryURL: FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent("Library/Application Support/OpenFind/Configuration/recovery.json")),
+            defaults: defaults
+        )
         self.clipboard = ClipboardController(
             registry: hotKeyRegistry,
             store: clipboardStore,
@@ -129,8 +136,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         triggerScheduler = TriggerMonitorScheduler(coordinator: triggerCoordinator)
         super.init()
         quickSearchWindow = QuickSearchWindowController(
-            viewModel: QuickSearchViewModel(searchFiles: { [weak viewModel] query in
-                await viewModel?.quickFileSearch(query) ?? QuickSearchFileResponse()
+            viewModel: QuickSearchViewModel(searchFilesWithLimit: { [weak viewModel] query, limit in
+                await viewModel?.quickFileSearch(query, limit: limit) ?? QuickSearchFileResponse()
             }),
             onShowFullSearch: { [weak self] query in
                 self?.showFullSearch(query: query)
@@ -138,6 +145,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             onDismiss: { [weak self] in self?.enterBackgroundMode() }
         )
         Self.shared = self
+        configurationSync.transfer.reload = { [weak self] in self?.reloadPortableConfiguration() }
+        configurationSync.transfer.canApply = { [weak self] in
+            guard let self else { return false }
+            return !awakeSession.isPowerTransitionInProgress && !keyboardLock.isEngaged
+                && !clipboardStore.isPanelPresented && !terminationReplyPending
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -152,6 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         presentInitialInterface()
         startRuntimeServices(includeTriggerScheduler: false)
         Task { await ApplicationSearchIndex.shared.prewarm() }
+        Task { _ = await SystemSettingsSearchIndex.shared.results(for: "") }
         closedDisplayRecoveryTask = Task { [weak self] in
             guard let self else { return }
             let recovered = await self.awakeSession.recoverClosedDisplayState()
@@ -224,6 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func startRuntimeServices(includeTriggerScheduler: Bool) {
+        configurationSync.start()
         driveAlive.start()
         clipboard.start()
         keyboardLock.start()
@@ -240,6 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func stopRuntimeServices() {
+        configurationSync.stop()
         quickSearchWindow?.close()
         closedDisplayRecoveryTask?.cancel()
         closedDisplayRecoveryTask = nil
@@ -552,7 +568,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 awakeStatistics: awakeStatistics,
                 sessionActivity: sessionActivity,
                 powerProtect: powerProtect,
-                awakeSession: awakeSession
+                awakeSession: awakeSession,
+                configurationSync: configurationSync
             )
         )
         let window = NSWindow(

@@ -20,21 +20,23 @@ enum QuickFileSearch {
     }
 
     static func search(
-        scopes: [URL], options: SearchOptions, store: SearchIndexStore
+        scopes: [URL], options: SearchOptions, store: SearchIndexStore, limit: Int = 50
     ) async -> QuickSearchFileResponse {
         guard let snapshot = await SearchEngine.nameResultSnapshot(scopes: scopes, options: options, store: store),
               !Task.isCancelled else { return QuickSearchFileResponse() }
         var results: [SearchResult] = []
         var offset = 0
-        // Only materialize the short visible list. Package helpers stay out of
-        // the launcher; the main search continues to expose the complete set.
-        while results.count < 9, offset < snapshot.count, offset < 128, !Task.isCancelled {
-            let page = await SearchEngine.materializeNamePage(from: snapshot, startingAt: offset, count: 24)
+        let limit = max(1, limit)
+        // Materialize bounded pages; further matches remain reachable through
+        // Load More instead of being confused with the nine number shortcuts.
+        while results.count <= limit, offset < snapshot.count, !Task.isCancelled {
+            let page = await SearchEngine.materializeNamePage(from: snapshot, startingAt: offset, count: 64)
             guard page.nextOffset > offset else { break }
             offset = page.nextOffset
             results.append(contentsOf: page.results.filter { $0.url.pathExtension.lowercased() != "app" })
         }
         let stats = await store.stats()
-        return QuickSearchFileResponse(results: Array(results.prefix(9)), isIndexing: stats.isIndexing)
+        return QuickSearchFileResponse(results: Array(results.prefix(limit)), isIndexing: stats.isIndexing,
+                                       hasMore: results.count > limit || offset < snapshot.count)
     }
 }

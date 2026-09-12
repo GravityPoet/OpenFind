@@ -90,6 +90,15 @@ final class KeyboardLockController {
         registrationState = .disabled
     }
 
+    func reloadPreferences() {
+        let running = hasStarted
+        if running { stop() }
+        let stored = defaults.object(forKey: Self.autoUnlockKey) as? Int ?? 5
+        autoUnlockMinutes = [0, 5, 15, 30, 60].contains(stored) ? stored : 5
+        shortcut = Self.loadShortcut(from: defaults)
+        if running { start() }
+    }
+
     func toggle() {
         if isEngaged { disable() } else { enable() }
     }

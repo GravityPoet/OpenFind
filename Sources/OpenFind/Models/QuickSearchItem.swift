@@ -9,6 +9,14 @@ struct QuickSearchItem: Identifiable, Hashable, Sendable {
     let isApplication: Bool
 
     var id: URL { url }
+    var isSystemSetting: Bool { url.scheme == "x-apple.systempreferences" }
+
+    init(systemSetting: ApplicationSearchResult) {
+        url = systemSetting.url
+        name = systemSetting.name
+        location = L("System Settings")
+        isApplication = false
+    }
 
     init(application: ApplicationSearchResult) {
         url = application.url

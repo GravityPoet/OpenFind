@@ -12,9 +12,15 @@ final class QuickSearchViewModel {
     private(set) var isSearching = false
     var errorMessage: String?
     private(set) var needsFullSearch = false
+    private(set) var resultsAreCurrent = false
+    private(set) var hasMoreFiles = false
+    private(set) var isLoadingMore = false
+    private var retainedRowCount = 0
 
     private let searchApplications: @Sendable (String) async -> [ApplicationSearchResult]
-    private let searchFiles: @Sendable (String) async -> QuickSearchFileResponse
+    private let searchSettings: @Sendable (String) async -> [ApplicationSearchResult]
+    private let searchFiles: @Sendable (String, Int) async -> QuickSearchFileResponse
+    private var fileLimit = 50
     private var searchTask: Task<Void, Never>?
     private var searchGeneration = 0
 
@@ -22,10 +28,15 @@ final class QuickSearchViewModel {
         searchApplications: @escaping @Sendable (String) async -> [ApplicationSearchResult] = { query in
             await ApplicationSearchIndex.shared.results(for: query)
         },
-        searchFiles: @escaping @Sendable (String) async -> QuickSearchFileResponse = { _ in .init() }
+        searchSettings: @escaping @Sendable (String) async -> [ApplicationSearchResult] = { query in
+            await SystemSettingsSearchIndex.shared.results(for: query)
+        },
+        searchFiles: @escaping @Sendable (String) async -> QuickSearchFileResponse = { _ in .init() },
+        searchFilesWithLimit: (@Sendable (String, Int) async -> QuickSearchFileResponse)? = nil
     ) {
         self.searchApplications = searchApplications
-        self.searchFiles = searchFiles
+        self.searchSettings = searchSettings
+        self.searchFiles = searchFilesWithLimit ?? { query, _ in await searchFiles(query) }
     }
 
     func prepareForPresentation() {
@@ -37,15 +48,32 @@ final class QuickSearchViewModel {
     }
 
     func scheduleSearch() {
+        fileLimit = 50
+        isLoadingMore = false
+        startSearch()
+    }
+
+    func loadMoreFiles() {
+        guard hasMoreFiles, !isLoadingMore, resultsAreCurrent else { return }
+        isLoadingMore = true
+        fileLimit += 50
+        startSearch()
+    }
+
+    private func startSearch() {
         searchTask?.cancel()
         searchGeneration &+= 1
         let generation = searchGeneration
         let query = query
-        results = []
-        selectedIndex = 0
+        retainedRowCount = min(results.count, 6)
+        resultsAreCurrent = false
+        hasMoreFiles = false
         errorMessage = nil
         needsFullSearch = false
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            results = []
+            retainedRowCount = 0
+            selectedIndex = 0
             isSearching = false
             return
         }
@@ -53,21 +81,25 @@ final class QuickSearchViewModel {
         searchTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(35))
             guard !Task.isCancelled, let self else { return }
-            let applications = await self.searchApplications(query)
+            async let applicationMatches = self.searchApplications(query)
+            async let settingsMatches = self.searchSettings(query)
+            let (applications, settings) = await (applicationMatches, settingsMatches)
             guard !Task.isCancelled, generation == self.searchGeneration else { return }
-            let appItems = applications.prefix(6).map { QuickSearchItem(application: $0) }
-            self.results = appItems
-            self.selectedIndex = 0
+            let immediateItems = applications.map { QuickSearchItem(application: $0) }
+                + settings.map { QuickSearchItem(systemSetting: $0) }
+            // Keep the previous frame until there is a usable replacement.
+            // Old rows cannot be opened for a new query while it is pending.
+            if !self.isLoadingMore, !immediateItems.isEmpty { self.publish(immediateItems) }
             repeat {
-                let files = await self.searchFiles(query)
+                let files = await self.searchFiles(query, self.fileLimit)
                 guard !Task.isCancelled, generation == self.searchGeneration else { return }
-                let applicationURLs = Set(appItems.map(\.url))
+                let applicationURLs = Set(immediateItems.map(\.url))
                 let fileItems = files.results.map { QuickSearchItem(file: $0) }
                     .filter { !applicationURLs.contains($0.url) }
-                let selected = self.selectedResult?.id
-                self.results = Array((appItems + fileItems).prefix(9))
-                self.selectedIndex = self.results.firstIndex(where: { $0.id == selected }) ?? 0
+                self.publish(immediateItems + fileItems)
                 self.needsFullSearch = files.needsFullSearch
+                self.hasMoreFiles = files.hasMore
+                self.isLoadingMore = false
                 self.isSearching = files.isIndexing
                 guard files.isIndexing else { return }
                 try? await Task.sleep(for: .seconds(1))
@@ -75,18 +107,29 @@ final class QuickSearchViewModel {
         }
     }
 
+    private func publish(_ items: [QuickSearchItem]) {
+        let selectedID = results.indices.contains(selectedIndex) ? results[selectedIndex].id : nil
+        results = items
+        selectedIndex = items.firstIndex { $0.id == selectedID } ?? 0
+        resultsAreCurrent = true
+    }
+
     func moveSelection(by offset: Int) {
-        guard !results.isEmpty else { return }
+        guard resultsAreCurrent, !results.isEmpty else { return }
+        if offset > 0, selectedIndex == results.count - 1, hasMoreFiles {
+            loadMoreFiles()
+            return
+        }
         selectedIndex = (selectedIndex + offset + results.count) % results.count
     }
 
     func selectResult(at index: Int) {
-        guard results.indices.contains(index) else { return }
+        guard resultsAreCurrent, results.indices.contains(index) else { return }
         selectedIndex = index
     }
 
     var selectedResult: QuickSearchItem? {
-        guard results.indices.contains(selectedIndex) else { return nil }
+        guard resultsAreCurrent, results.indices.contains(selectedIndex) else { return nil }
         return results[selectedIndex]
     }
 
@@ -98,7 +141,8 @@ final class QuickSearchViewModel {
     }
 
     var presentationHeight: CGFloat {
-        let rows = results.isEmpty ? 0 : 16 + CGFloat(min(results.count, 6)) * 56
+        let count = isSearching ? max(retainedRowCount, min(results.count, 6)) : min(results.count, 6)
+        let rows = count == 0 ? 0 : 16 + CGFloat(count) * 56
         return 118 + rows + (statusMessage == nil ? 0 : 40)
     }
 
@@ -107,5 +151,6 @@ final class QuickSearchViewModel {
         searchTask?.cancel()
         searchTask = nil
         isSearching = false
+        isLoadingMore = false
     }
 }

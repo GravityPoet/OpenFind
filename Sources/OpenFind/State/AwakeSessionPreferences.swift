@@ -125,6 +125,40 @@ final class AwakeSessionPreferences {
         )
     }
 
+    func reloadPreferences() {
+        let loaded = AwakeSessionPreferences(defaults: defaults)
+        allowsDisplaySleep = loaded.allowsDisplaySleep
+        allowsScreenSaver = loaded.allowsScreenSaver
+        screenSaverDelayMinutes = loaded.screenSaverDelayMinutes
+        screenSaverExceptionIdentifiers = loaded.screenSaverExceptionIdentifiers
+        allowsClosedDisplaySleep = loaded.allowsClosedDisplaySleep
+        defaultDurationMinutes = loaded.defaultDurationMinutes
+        endTimeCalculation = loaded.endTimeCalculation
+        showsSessionTimeInMenuBar = loaded.showsSessionTimeInMenuBar
+        menuBarTimeStyle = loaded.menuBarTimeStyle
+        uses24HourClock = loaded.uses24HourClock
+        includesSecondsInMenuBar = loaded.includesSecondsInMenuBar
+        startsSessionAtLaunch = loaded.startsSessionAtLaunch
+        startsSessionAfterWake = loaded.startsSessionAfterWake
+        endsSessionOnForcedSleep = loaded.endsSessionOnForcedSleep
+        endsSessionOnSessionResign = loaded.endsSessionOnSessionResign
+        lowBatteryEndEnabled = loaded.lowBatteryEndEnabled
+        lowBatteryThreshold = loaded.lowBatteryThreshold
+        promptsBeforeLowBatteryEnd = loaded.promptsBeforeLowBatteryEnd
+        ignoresLowBatteryWhileOnAC = loaded.ignoresLowBatteryWhileOnAC
+        restartsSessionAfterACReconnect = loaded.restartsSessionAfterACReconnect
+        cursorMovementEnabled = loaded.cursorMovementEnabled
+        cursorMovementIntervalSeconds = loaded.cursorMovementIntervalSeconds
+        cursorInactivityThresholdSeconds = loaded.cursorInactivityThresholdSeconds
+        cursorStopAfterSeconds = loaded.cursorStopAfterSeconds
+        cursorMovementSpeed = loaded.cursorMovementSpeed
+        screenLockEnabled = loaded.screenLockEnabled
+        screenLockInactivityThresholdSeconds = loaded.screenLockInactivityThresholdSeconds
+        lockUsesCursorMovement = loaded.lockUsesCursorMovement
+        lockOnClosedDisplay = loaded.lockOnClosedDisplay
+        allowsDisplaySleepWhenLocked = loaded.allowsDisplaySleepWhenLocked
+    }
+
     var sessionOptions: AwakeSessionOptions {
         AwakeSessionOptions(
             allowsDisplaySleep: allowsDisplaySleep,

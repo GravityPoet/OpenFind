@@ -18,6 +18,7 @@ struct SettingsView: View {
     @Bindable var sessionActivity: SessionActivityController
     @Bindable var powerProtect: PowerProtectController
     @Bindable var awakeSession: AwakeSessionController
+    @Bindable var configurationSync: ConfigurationSyncController
     @State private var localUsageRecordCount = 0
     @AppStorage(SettingsPane.persistenceKey)
     private var selectedPaneValue = SettingsPane.search.rawValue
@@ -57,6 +58,7 @@ struct SettingsView: View {
 
     private var searchSettings: some View {
         Form {
+            ConfigurationSettingsSection(controller: configurationSync)
             Section {
                 Picker(L("Interface Size"), selection: interfaceSize) {
                     ForEach(OpenFindInterfaceSize.allCases) { size in

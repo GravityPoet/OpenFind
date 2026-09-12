@@ -356,6 +356,30 @@ final class AwakeNotificationController {
         closedDisplayWarningVolumePercentage = min(100, max(0, storedWarningVolume))
     }
 
+    func reloadPreferences() {
+        let running = subscription != nil
+        if running { stop() }
+        let loaded = AwakeNotificationController(
+            sessions: sessions, defaults: defaults, delivery: delivery, soundPlayer: soundPlayer,
+            closedDisplayWarningSound: closedDisplayWarningSound, closedDisplayState: closedDisplayState,
+            closedDisplayWarningEnvironment: closedDisplayWarningEnvironment
+        )
+        notifiesAutomaticStarts = loaded.notifiesAutomaticStarts
+        notifiesAutomaticEnds = loaded.notifiesAutomaticEnds
+        remindersEnabled = loaded.remindersEnabled
+        reminderIntervalMinutes = loaded.reminderIntervalMinutes
+        playsNotificationSounds = loaded.playsNotificationSounds
+        playsStartEndSounds = loaded.playsStartEndSounds
+        playsReplacementSounds = loaded.playsReplacementSounds
+        removesDeliveredNotifications = loaded.removesDeliveredNotifications
+        warnsClosedDisplay = loaded.warnsClosedDisplay
+        repeatsClosedDisplayWarning = loaded.repeatsClosedDisplayWarning
+        closedDisplayWarningIntervalMinutes = loaded.closedDisplayWarningIntervalMinutes
+        adjustsClosedDisplayWarningVolume = loaded.adjustsClosedDisplayWarningVolume
+        closedDisplayWarningVolumePercentage = loaded.closedDisplayWarningVolumePercentage
+        if running { start() }
+    }
+
     func start() {
         guard subscription == nil else { return }
         subscription = sessions.observeEvents { [weak self] event in

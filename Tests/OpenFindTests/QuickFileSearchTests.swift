@@ -4,6 +4,21 @@ import Testing
 
 @Suite("Quick File Search")
 struct QuickFileSearchTests {
+    @Test func moreThanNineFilesRemainReachableAcrossPageBoundaries() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for i in 0..<65 { try Data().write(to: root.appendingPathComponent("Sample-\(i).txt")) }
+        let store = SearchIndexStore(persistenceURL: root.appendingPathComponent("index.bin"))
+        let options = try #require(QuickFileSearch.options(for: "Sample-", using: SearchOptions()))
+        let first = await QuickFileSearch.search(scopes: [root], options: options, store: store, limit: 50)
+        #expect(first.results.count == 50 && first.hasMore)
+        let all = await QuickFileSearch.search(scopes: [root], options: options, store: store, limit: 100)
+        #expect(all.results.count == 65 && !all.hasMore)
+        #expect(Set(all.results.map(\.id)).count == 65)
+        await store.cancelActiveWorkForTermination()
+    }
+
     @Test func searchesFileAndFolderNamesWithoutExtractingContent() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

@@ -16,7 +16,7 @@ struct QuickSearchRow: View {
                 Group {
                     if let icon { Image(nsImage: icon).resizable() }
                     else {
-                        Image(systemName: item.isApplication ? "app" : "doc")
+                        Image(systemName: item.isSystemSetting ? "gearshape" : item.isApplication ? "app" : "doc")
                             .resizable().foregroundStyle(.secondary)
                     }
                 }
@@ -32,12 +32,14 @@ struct QuickSearchRow: View {
                         .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
                 Spacer(minLength: 6)
-                if item.isApplication {
-                    Text(L("Quick Search App"))
+                if item.isApplication || item.isSystemSetting {
+                    Text(item.isSystemSetting ? L("System Settings") : L("Quick Search App"))
                         .font(.system(size: 10 * scale)).foregroundStyle(.secondary)
                 }
-                Text("⌘\(index + 1)")
-                    .font(.system(size: 11 * scale, design: .monospaced)).foregroundStyle(.secondary)
+                if index < 9 {
+                    Text("⌘\(index + 1)")
+                        .font(.system(size: 11 * scale, design: .monospaced)).foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 14 * scale)
             .frame(height: 56 * scale)
@@ -60,6 +62,9 @@ struct QuickSearchRow: View {
         .accessibilityLabel(item.name)
         .accessibilityHint(item.location)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .task(id: item.url) { icon = FileIcon.icon(for: item.url, size: 32) }
+        .task(id: item.url) {
+            icon = item.isSystemSetting ? NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+                : FileIcon.icon(for: item.url, size: 32)
+        }
     }
 }
