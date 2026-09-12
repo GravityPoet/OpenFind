@@ -25,42 +25,14 @@ struct SettingsView: View {
     private var interfaceSizeValue = OpenFindInterfaceSize.standard.rawValue
 
     var body: some View {
-        TabView(selection: selectedPane) {
-            searchSettings
-                .tabItem {
-                    Label(L("Search"), systemImage: "magnifyingglass")
-                }
-                .tag(SettingsPane.search)
-
-            clipboardSettings
-                .tabItem {
-                    Label(L("Clipboard History"), systemImage: "doc.on.clipboard")
-                }
-                .tag(SettingsPane.clipboard)
-
-            awakeSettings
-                .tabItem {
-                    Label(L("Keep Awake"), systemImage: "moon.zzz")
-                }
-                .tag(SettingsPane.keepAwake)
-
-            triggerSettings
-                .tabItem {
-                    Label(L("Triggers"), systemImage: "bolt")
-                }
-                .tag(SettingsPane.triggers)
-
-            driveAliveSettings
-                .tabItem {
-                    Label(L("Drive Alive"), systemImage: "externaldrive")
-                }
-                .tag(SettingsPane.driveAlive)
-
-            keyboardCleaningSettings
-                .tabItem {
-                    Label(L("Keyboard Cleaning"), systemImage: "keyboard")
-                }
-                .tag(SettingsPane.keyboardCleaning)
+        VStack(spacing: 0) {
+            SettingsNavigationBar(selection: selectedPane)
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
+            SettingsPageContainer(selection: selectedPane.wrappedValue) { pane in
+                AnyView(settingsPage(pane).openFindInterfaceSizing(interfaceSize.wrappedValue))
+            }
         }
         .frame(minWidth: 900, minHeight: 620)
         .openFindInterfaceSizing()
@@ -69,6 +41,17 @@ struct SettingsView: View {
         }
         .onChange(of: viewModel.options) {
             Preferences.saveOptions(viewModel.options)
+        }
+    }
+
+    @ViewBuilder private func settingsPage(_ pane: SettingsPane) -> some View {
+        switch pane {
+        case .search: searchSettings
+        case .clipboard: clipboardSettings
+        case .keepAwake: awakeSettings
+        case .triggers: triggerSettings
+        case .driveAlive: driveAliveSettings
+        case .keyboardCleaning: keyboardCleaningSettings
         }
     }
 
