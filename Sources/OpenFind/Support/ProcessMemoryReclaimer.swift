@@ -3,7 +3,10 @@ import Foundation
 
 enum ProcessMemoryReclaimer {
     static func releaseUnusedPages() {
-        _ = malloc_zone_pressure_relief(malloc_default_zone(), 0)
+        // Passing nil asks libmalloc to inspect every zone. This matters for
+        // framework and Swift allocations that are not owned by the default
+        // zone, while retaining the same best-effort semantics.
+        _ = malloc_zone_pressure_relief(nil, 0)
     }
 
     static func schedule(after delay: Duration = .milliseconds(250)) {

@@ -64,7 +64,7 @@ struct QuickSearchRow: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .task(id: item.url) {
             icon = item.isSystemSetting ? NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
-                : FileIcon.icon(for: item.url, size: 32)
+                : FileIcon.icon(for: item.url, size: 32 * scale)
         }
     }
 }

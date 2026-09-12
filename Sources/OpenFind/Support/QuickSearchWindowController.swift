@@ -46,8 +46,8 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
 
     func close() {
         guard isVisible else { return }
-        viewModel.cancel()
         panel?.orderOut(nil)
+        viewModel.releaseTransientResults()
         onDismiss()
     }
 

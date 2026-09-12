@@ -372,7 +372,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender === mainWindow || sender === settingsWindow else { return true }
         if sender === mainWindow { quickLook.close() }
+        let canReleaseSettings = sender === settingsWindow
+            && sender.attachedSheet == nil && sender.makeFirstResponder(nil)
         sender.orderOut(nil)
+        if canReleaseSettings {
+            // Keep any open editor's draft alive. Ordinary settings write
+            // through to their stores; finish field editing before releasing
+            // the hidden page tree and rebuild it on the next opening.
+            saveFrameIfNeeded(sender)
+            sender.contentViewController = nil
+            sender.delegate = nil
+            sender.close()
+            settingsWindow = nil
+            ProcessMemoryReclaimer.schedule()
+        }
         if !hasVisiblePrimaryWindow {
             enterBackgroundMode()
         }

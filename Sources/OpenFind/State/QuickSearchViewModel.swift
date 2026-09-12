@@ -153,4 +153,18 @@ final class QuickSearchViewModel {
         isSearching = false
         isLoadingMore = false
     }
+
+    /// Releases the result rows once the palette is no longer visible. The
+    /// application and settings indexes remain shared and warm, so the next
+    /// presentation stays fast without retaining a stale file-result buffer.
+    func releaseTransientResults() {
+        cancel()
+        results.removeAll(keepingCapacity: false)
+        selectedIndex = 0
+        retainedRowCount = 0
+        hasMoreFiles = false
+        needsFullSearch = false
+        resultsAreCurrent = false
+        errorMessage = nil
+    }
 }
