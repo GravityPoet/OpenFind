@@ -32,6 +32,9 @@ struct QuickSearchInput: NSViewRepresentable {
         field.font = .systemFont(ofSize: 24 * scale, weight: .regular)
         if field.stringValue != text, !((field.currentEditor() as? NSTextView)?.hasMarkedText() ?? false) {
             field.stringValue = text
+            if let editor = field.currentEditor() as? NSTextView {
+                editor.setSelectedRange(NSRange(location: text.utf16.count, length: 0))
+            }
         }
     }
 

@@ -55,5 +55,7 @@
 	<string>OpenFind requires access to removable volumes to search for files on them.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
 	<string>OpenFind requires access to network volumes to search for files on them.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>OpenFind searches contact names, email addresses, and phone numbers locally. Contacts are never uploaded or synced by OpenFind.</string>
 </dict>
 </plist>

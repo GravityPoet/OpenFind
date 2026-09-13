@@ -6,6 +6,7 @@ struct QuickSearchRow: View {
     let isSelected: Bool
     let scale: CGFloat
     let onOpen: () -> Void
+    var onRecentDocuments: () -> Void = {}
     @State private var isHovered = false
     @State private var icon: NSImage?
     @Environment(\.colorSchemeContrast) private var contrast
@@ -16,7 +17,7 @@ struct QuickSearchRow: View {
                 Group {
                     if let icon { Image(nsImage: icon).resizable() }
                     else {
-                        Image(systemName: item.isSystemSetting ? "gearshape" : item.isApplication ? "app" : "doc")
+                        Image(systemName: item.symbolName)
                             .resizable().foregroundStyle(.secondary)
                     }
                 }
@@ -62,9 +63,24 @@ struct QuickSearchRow: View {
         .accessibilityLabel(item.name)
         .accessibilityHint(item.location)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .contextMenu {
+            Button(L("Open"), action: onOpen)
+            if item.url.isFileURL {
+                Button(L("Reveal in Finder")) { FileActions.revealInFinder([item.url]) }
+                Button(L("Copy Path")) { FileActions.copyPaths([item.url]) }
+                Button(L("Copy File Name")) { FileActions.copyFileNames([item.url]) }
+                Button(L("Copy File")) { FileActions.copyFiles([item.url]) }
+            } else if item.kind == .bookmark || item.kind == .web {
+                Button(L("Copy Link")) { FileActions.copyPathStrings([item.url.absoluteString]) }
+            }
+            if item.isApplication {
+                Divider()
+                Button(L("Recent Documents"), action: onRecentDocuments)
+            }
+        }
         .task(id: item.url) {
-            icon = item.isSystemSetting ? NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
-                : FileIcon.icon(for: item.url, size: 32 * scale)
+            icon = item.url.isFileURL ? FileIcon.icon(for: item.url, size: 32 * scale)
+                : NSImage(systemSymbolName: item.symbolName, accessibilityDescription: nil)
         }
     }
 }

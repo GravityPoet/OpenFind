@@ -27,7 +27,7 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(replacing: .newItem) {
-            Button(L("Show OpenFind")) {
+            Button(L("Full Search")) {
                 (NSApp.delegate as? AppDelegate)?.showOpenFindWindow(nil)
             }
             .keyboardShortcut("n", modifiers: .command)
@@ -38,6 +38,10 @@ struct AppCommands: Commands {
                 AppDelegate.shared?.showQuickSearch(nil)
             }
             Divider()
+
+            Button(L("Full Search")) {
+                AppDelegate.shared?.showOpenFindWindow(nil)
+            }
 
             Button(viewModel.isSearching ? L("Cancel Search") : L("Start Search")) {
                 if viewModel.isSearching {

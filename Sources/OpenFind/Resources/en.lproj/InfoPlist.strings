@@ -7,3 +7,4 @@
 "NSBluetoothAlwaysUsageDescription" = "OpenFind accesses paired Bluetooth devices only when you enable a Bluetooth trigger, to detect whether the selected device is connected.";
 "NSRemovableVolumesUsageDescription" = "OpenFind needs access to removable volumes when you include them in your search scope.";
 "NSNetworkVolumesUsageDescription" = "OpenFind needs access to network volumes when you include them in your search scope.";
+"NSContactsUsageDescription" = "OpenFind searches contact names, email addresses, and phone numbers locally. Contacts are never uploaded or synced by OpenFind.";

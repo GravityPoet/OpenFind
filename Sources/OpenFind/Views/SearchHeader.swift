@@ -17,6 +17,11 @@ struct SearchHeader: View {
                 Spacer()
                     .frame(width: 80 * interfaceSize.scale)
 
+                Text(L("Full Search"))
+                    .font(.system(size: 12 * interfaceSize.scale, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+
                 HStack(spacing: 8 * interfaceSize.scale) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
