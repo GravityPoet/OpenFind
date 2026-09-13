@@ -3,10 +3,10 @@ import Foundation
 enum QuickFileSearch {
     static func options(for query: String, using preferences: SearchOptions) -> SearchOptions? {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Keep the launcher predictable and cheap. Prefixes, wildcards,
+        // Keep the launcher predictable and cheap. Content prefixes,
         // boolean expressions, and metadata filters belong to Full Search.
         guard !trimmed.isEmpty, !trimmed.contains(":"), !trimmed.contains("/"),
-              !trimmed.contains("*"), !trimmed.contains("?") else { return nil }
+              !trimmed.contains("\n") else { return nil }
         var options = preferences
         options.query = trimmed
         options.target = .name

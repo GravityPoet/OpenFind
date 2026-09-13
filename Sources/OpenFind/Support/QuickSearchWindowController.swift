@@ -11,6 +11,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     private var hostingView: NSHostingView<QuickSearchView>?
     private var scale: CGFloat = 1
     private var launchTask: Task<Void, Never>?
+    private var requestingContactsAccess = false
 
     init(
         viewModel: QuickSearchViewModel = QuickSearchViewModel(),
@@ -61,6 +62,10 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         QuickSearchView(
             viewModel: viewModel, scale: scale,
             onOpen: { [weak self] in self?.open($0) },
+            onRecentDocuments: { [weak self] item in
+                guard let application = item.application else { return }
+                self?.viewModel.showRecentDocuments(for: application)
+            },
             onFullSearch: { [weak self] in self?.showFullSearch() },
             onResize: { [weak self] in self?.resize(to: $0) },
             onInputReady: { [weak self] in self?.searchField = $0 }
@@ -85,7 +90,11 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         panel.animationBehavior = .none
         panel.collectionBehavior = [.transient, .moveToActiveSpace, .fullScreenAuxiliary]
         panel.delegate = self
-        panel.onClose = { [weak self] in self?.close() }
+        panel.onClose = { [weak self] in
+            guard let self else { return }
+            if viewModel.contactDetail != nil { _ = viewModel.navigateBack() }
+            else { close() }
+        }
         panel.onOpen = { [weak self] in
             guard let self, let result = viewModel.selectedResult else { return }
             open(result)
@@ -97,9 +106,18 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
             FileActions.revealInFinder([result.url])
         }
         panel.onFullSearch = { [weak self] in self?.showFullSearch() }
+        panel.onNavigateForward = { [weak self] in
+            guard let self else { return false }
+            if viewModel.navigateIntoSelection() { return true }
+            guard let application = viewModel.selectedResult?.application else { return false }
+            viewModel.showRecentDocuments(for: application)
+            return true
+        }
+        panel.onNavigateBack = { [weak self] in self?.viewModel.navigateBack() == true }
         panel.onMoveSelection = { [weak self] in self?.viewModel.moveSelection(by: $0) }
         panel.onOpenNumber = { [weak self] index in
-            guard let self, viewModel.resultsAreCurrent, viewModel.results.indices.contains(index) else { return }
+            guard let self, viewModel.contactDetail == nil, viewModel.resultsAreCurrent,
+                  viewModel.results.indices.contains(index) else { return }
             open(viewModel.results[index])
         }
         self.panel = panel
@@ -110,13 +128,63 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         return panel
     }
 
-    private func open(_ result: QuickSearchItem) {
-        guard launchTask == nil, viewModel.resultsAreCurrent else { return }
+    func open(_ result: QuickSearchItem) {
+        guard launchTask == nil, viewModel.contactDetail == nil, viewModel.resultsAreCurrent,
+              viewModel.results.contains(result) else { return }
         viewModel.errorMessage = nil
         launchTask = Task { [weak self] in
             guard let self else { return }
             defer { launchTask = nil }
             do {
+                switch result.action {
+                case .fullSearch(let query):
+                    close()
+                    onShowFullSearch(query)
+                    return
+                case .requestContactsAccess:
+                    requestingContactsAccess = true
+                    _ = await ContactSearchIndex.requestAccess()
+                    requestingContactsAccess = false
+                    panel?.makeKeyAndOrderFront(nil)
+                    focusSearch()
+                    viewModel.scheduleSearch()
+                    return
+                case .showContact(let contact):
+                    viewModel.showContact(contact)
+                    return
+                case .recentDocuments(let application):
+                    viewModel.showRecentDocuments(for: application)
+                    return
+                case .openWithApplication(let applicationURL):
+                    guard result.url.isFileURL else { throw CocoaError(.fileReadUnknown) }
+                    let config = NSWorkspace.OpenConfiguration()
+                    config.activates = true
+                    config.createsNewApplicationInstance = false
+                    _ = try await NSWorkspace.shared.open([result.url], withApplicationAt: applicationURL, configuration: config)
+                    SearchUsageStore.shared.recordSuccessfulOpen(result.url)
+                    close()
+                    return
+                case .copyText(let text):
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                    close()
+                    return
+                case .system(let action):
+                    try QuickSystemCommands.run(action)
+                    close()
+                    return
+                case .reveal:
+                    guard result.url.isFileURL else { throw CocoaError(.fileReadUnknown) }
+                    close()
+                    FileActions.revealInFinder([result.url])
+                    return
+                case .open:
+                    break
+                }
+                if result.isDirectory, viewModel.commandMode == .path {
+                    viewModel.query = result.url.path + "/"
+                    return
+                }
                 if result.isApplication {
                     let config = NSWorkspace.OpenConfiguration()
                     config.activates = true
@@ -128,7 +196,8 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
                 if result.url.isFileURL { SearchUsageStore.shared.recordSuccessfulOpen(result.url) }
                 close()
             } catch {
-                viewModel.errorMessage = L("Quick Search Open Failed")
+                viewModel.errorMessage = error as? QuickSystemCommandError == .accessibilityRequired
+                    ? L("System Command Permission Help") : L("Quick Search Open Failed")
                 if !isVisible {
                     panel?.makeKeyAndOrderFront(nil)
                     focusSearch()
@@ -164,6 +233,8 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         ))
     }
 
-    func windowDidResignKey(_ notification: Notification) { close() }
+    func windowDidResignKey(_ notification: Notification) {
+        if !requestingContactsAccess { close() }
+    }
     func windowShouldClose(_ sender: NSWindow) -> Bool { close(); return false }
 }

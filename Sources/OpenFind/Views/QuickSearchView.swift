@@ -4,6 +4,7 @@ struct QuickSearchView: View {
     @Bindable var viewModel: QuickSearchViewModel
     let scale: CGFloat
     let onOpen: (QuickSearchItem) -> Void
+    let onRecentDocuments: (QuickSearchItem) -> Void
     let onFullSearch: () -> Void
     let onResize: (CGFloat) -> Void
     let onInputReady: (NSTextField) -> Void
@@ -14,10 +15,13 @@ struct QuickSearchView: View {
     var body: some View {
         VStack(spacing: 0) {
             searchField
-            if !viewModel.results.isEmpty { resultsList }
+            if let contact = viewModel.contactDetail {
+                QuickContactDetailView(contact: contact, scale: scale, onBack: { _ = viewModel.navigateBack() })
+            } else if !viewModel.results.isEmpty { resultsList }
             if let status = viewModel.statusMessage {
                 Text(status)
                     .font(.system(size: 12 * scale))
+                    .lineLimit(2)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20 * scale)
@@ -39,6 +43,11 @@ struct QuickSearchView: View {
                 .font(.system(size: 23 * scale, weight: .medium))
                 .foregroundStyle(Color.accentColor)
                 .accessibilityHidden(true)
+            if viewModel.recentApplication != nil || viewModel.commandMode == .path {
+                Button { _ = viewModel.navigateBack() } label: { Image(systemName: "chevron.left") }
+                    .buttonStyle(.plain).help(L("Go Back"))
+                    .accessibilityIdentifier("OpenFind.quickSearch.back")
+            }
             QuickSearchInput(text: $viewModel.query, scale: scale, onReady: onInputReady)
                 .frame(height: 34 * scale)
             if viewModel.isSearching {
@@ -64,7 +73,8 @@ struct QuickSearchView: View {
                     ForEach(Array(viewModel.results.enumerated()), id: \.element.id) { index, result in
                         QuickSearchRow(
                             item: result, index: index, isSelected: index == viewModel.selectedIndex,
-                            scale: scale, onOpen: { onOpen(result) }
+                            scale: scale, onOpen: { onOpen(result) },
+                            onRecentDocuments: { onRecentDocuments(result) }
                         )
                         .id(result.id)
                         .disabled(!viewModel.resultsAreCurrent)
@@ -87,9 +97,29 @@ struct QuickSearchView: View {
 
     private var footer: some View {
         HStack(spacing: 8 * scale) {
-            Text(viewModel.query.isEmpty ? L("Quick Search Scope") : L("Quick Search Help"))
+            Menu {
+                ForEach(QuickSearchMode.allCases, id: \.self) { mode in
+                    Button {
+                        viewModel.selectMode(mode)
+                    } label: {
+                        Text(LD(mode.titleKey) + (mode.prefix.isEmpty ? "" : "   " + mode.prefix))
+                    }
+                }
+            } label: {
+                Image(systemName: "line.3.horizontal.decrease")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(L("Search Modes"))
+            .accessibilityLabel(L("Search Modes"))
+            .accessibilityIdentifier("OpenFind.quickSearch.modes")
+            Text(viewModel.recentApplication.map { L("Recent Documents") + " · " + $0.name }
+                 ?? (viewModel.query.isEmpty ? L("Quick Search Scope")
+                     : LD(QuickSearchCommand.parse(viewModel.query).hintKey)))
                 .lineLimit(1)
                 .foregroundStyle(.secondary)
+                .help(viewModel.recentApplication.map { L("Recent Documents") + " · " + $0.name }
+                      ?? LD(QuickSearchCommand.parse(viewModel.query).hintKey))
             Spacer(minLength: 4)
             Button(action: onFullSearch) {
                 HStack(spacing: 6 * scale) {

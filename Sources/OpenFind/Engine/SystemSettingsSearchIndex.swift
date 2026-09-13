@@ -17,6 +17,7 @@ actor SystemSettingsSearchIndex {
             cached = await refreshTask?.value ?? []
             refreshTask = nil
         }
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return cached ?? [] }
         return ApplicationSearchMatcher.rank(query, in: cached ?? [])
     }
 

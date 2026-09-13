@@ -36,7 +36,7 @@ actor ApplicationSearchIndex {
         // usable while the single refresh task prepares its replacement.
         if lastRefresh == nil { await refreshTask?.value }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [] }
+        guard !trimmed.isEmpty else { return cachedResults }
         return ApplicationSearchMatcher.rank(
             trimmed,
             in: cachedResults,

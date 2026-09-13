@@ -320,9 +320,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func showFullSearch(query: String) {
+        let command = QuickSearchCommand.parse(query)
         viewModel.displayMode = .files
-        viewModel.options.query = query
-        viewModel.options.target = .name
+        viewModel.options.query = command.fullSearchQuery
+        let isContentQuery = command.mode == .content
+            || query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("content:")
+        viewModel.options.target = isContentQuery ? .content : .name
         viewModel.options.matchMode = .substring
         showMainWindow()
         viewModel.scheduleSearch(delay: .zero)
@@ -453,6 +456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             guard let self, self.isBackgroundResident, !Task.isCancelled else { return }
             await self.viewModel.hibernateForBackground()
+            await QuickSearchSources.shared.releaseSnapshots()
             guard !Task.isCancelled else { return }
             self.backgroundHibernateTask = nil
             ProcessMemoryReclaimer.schedule()
@@ -505,7 +509,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             defer: false
         )
         window.identifier = NSUserInterfaceItemIdentifier("OpenFind.main")
-        window.title = "OpenFind"
+        window.title = "OpenFind · " + L("Full Search")
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.minSize = NSSize(width: 800, height: 500)

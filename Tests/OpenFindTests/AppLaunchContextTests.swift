@@ -224,6 +224,10 @@ struct AppLaunchContextTests {
         context.delegate.showFullSearch(query: "Sample")
         #expect(main.isVisible)
         #expect(context.delegate.viewModel.options.query == "Sample")
+        context.delegate.showFullSearch(query: "in annual budget")
+        #expect(context.delegate.viewModel.options.target == .content)
+        #expect(context.delegate.viewModel.options.query == "content:\"annual budget\"")
+        #expect(main.title.contains(L("Full Search")))
         #expect(!application.windows.contains {
             !existing.contains(ObjectIdentifier($0))
                 && $0.identifier?.rawValue == "OpenFind.quickSearch" && $0.isVisible

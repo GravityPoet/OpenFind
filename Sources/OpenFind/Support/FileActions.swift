@@ -103,6 +103,12 @@ enum FileActions {
         }
     }
 
+    static func openContactsPrivacySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Contacts") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @MainActor
     static func openSettings(showSettings: () -> Void = {
         if let delegate = AppDelegate.shared {

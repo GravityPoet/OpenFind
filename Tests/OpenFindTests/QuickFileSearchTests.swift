@@ -48,4 +48,18 @@ struct QuickFileSearchTests {
         #expect(QuickFileSearch.options(for: "path:/Documents/Sample", using: preferences) == nil)
         #expect(preferences.target == .content && preferences.includePackages)
     }
+    @Test func wildcardQuickSearchUsesTheExistingNameIndex() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for name in ["Report-1.txt", "Report-2.txt", "Report-3.md"] {
+            try Data().write(to: root.appendingPathComponent(name))
+        }
+        let store = SearchIndexStore(persistenceURL: root.appendingPathComponent("index.bin"))
+        let options = try #require(QuickFileSearch.options(for: "Report-?.txt", using: SearchOptions()))
+        let response = await QuickFileSearch.search(scopes: [root], options: options, store: store)
+        #expect(Set(response.results.map(\.name)) == Set(["Report-1.txt", "Report-2.txt"]))
+        await store.cancelActiveWorkForTermination()
+    }
+
 }

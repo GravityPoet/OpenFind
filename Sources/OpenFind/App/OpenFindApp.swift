@@ -14,7 +14,7 @@ struct OpenFindApp: App {
 
             Divider()
 
-            Button(L("File Search")) {
+            Button(L("Full Search")) {
                 appDelegate.showOpenFindWindow(nil)
             }
 

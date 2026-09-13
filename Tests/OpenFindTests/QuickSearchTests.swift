@@ -190,6 +190,115 @@ struct QuickSearchTests {
         #expect(!model.isSearching)
     }
 
+    @Test func newSourcesPublishIndependentlyAndModeChangesRejectTheirOldResults() async throws {
+        let slow = DeferredQuickSearchFiles()
+        let bookmark = QuickSearchItem(url: URL(string: "https://example.com/docs")!, name: "Docs", location: "Safari", kind: .bookmark)
+        let model = QuickSearchViewModel(searchApplications: { _ in [] }, searchSettings: { _ in [] },
+            searchFiles: { _ in await slow.response() }, searchSource: { command, _, _ in
+                command.mode == .combined ? .init(items: [bookmark]) : .init()
+            })
+        defer { model.cancel() }
+        model.query = "docs"
+        try await waitUntil { model.selectedResult == bookmark }
+        #expect(model.isSearching)
+        model.query = "calc 2+3"
+        #expect(model.selectedResult == nil)
+        try await waitUntil { !model.isSearching }
+        #expect(model.selectedResult?.action == .copyText("5"))
+        await slow.finish(with: fileResult("old.txt"))
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(model.selectedResult?.action == .copyText("5"))
+    }
+
+    @Test func explicitFindIsFileOnlyAndPreservesRevealAction() async throws {
+        let app = application("Fixture")
+        let model = QuickSearchViewModel(searchApplications: { _ in [app] },
+            searchSettings: { _ in Issue.record("find must not search settings"); return [] },
+            searchFiles: { query in
+                #expect(query == "report")
+                return .init(results: [fileResult("report.txt")])
+            }, searchSource: { _, _, _ in Issue.record("find must not search personal sources"); return .init() })
+        defer { model.cancel() }
+        model.query = "find report"
+        try await waitUntil { !model.isSearching }
+        #expect(model.results.count == 2)
+        #expect(model.results.allSatisfy { $0.action == .reveal })
+    }
+
+    @Test func directoryPaginationAndKeyboardNavigationReachEveryPage() async throws {
+        let model = QuickSearchViewModel(searchApplications: { _ in [] }, searchSettings: { _ in [] },
+            searchSource: { command, limit, _ in
+                #expect(command.mode == .path)
+                return .page((0..<65).map { .init(url: URL(fileURLWithPath: "/fixtures/Folder-\($0)"),
+                    name: "Folder-\($0)", location: "/fixtures", kind: .folder) }, limit: limit)
+            })
+        defer { model.cancel() }
+        let controller = QuickSearchWindowController(viewModel: model, onShowFullSearch: { _ in })
+        controller.show()
+        defer { controller.close() }
+        model.query = "/fixtures/"
+        try await waitUntil { !model.isSearching }
+        #expect(model.results.count == 50 && model.hasMoreFiles)
+        model.selectResult(at: 49)
+        model.moveSelection(by: 1)
+        try await waitUntil { !model.isSearching }
+        #expect(model.results.count == 65 && model.selectedIndex == 49)
+        let panel = try #require(controller.panel)
+        #expect(panel.handleCommand(key(kVK_Tab)))
+        #expect(model.query == "/fixtures/Folder-49/")
+        #expect(panel.handleCommand(key(kVK_Tab, flags: .shift)))
+        #expect(model.query == "/fixtures/")
+    }
+
+    @Test func contactCardAndPerAppRecentsAreReachableWithoutOpeningExternalApps() async throws {
+        let contact = QuickContact(identifier: "fixture:ABPerson", name: "Test Contact", emails: ["test@example.com"], phones: [], aliases: [])
+        let app = application("Fixture")
+        let model = QuickSearchViewModel(searchApplications: { _ in [app] }, searchSettings: { _ in [] },
+            searchSource: { command, _, selectedApp in
+                if command.mode == .contacts { return ContactSearchIndex.search("", contacts: [contact], limit: 50) }
+                if command.mode == .recent, let selectedApp {
+                    return .init(items: [.init(url: URL(fileURLWithPath: "/fixtures/Recent.txt"), name: "Recent.txt",
+                                             location: "Fixture", action: .openWithApplication(selectedApp.url))])
+                }
+                return .init()
+            })
+        let controller = QuickSearchWindowController(viewModel: model, onShowFullSearch: { _ in })
+        controller.show()
+        defer { controller.close() }
+        model.query = "contacts "
+        try await waitUntil { !model.isSearching }
+        controller.open(try #require(model.selectedResult))
+        try await waitUntil { model.contactDetail != nil }
+        #expect(model.selectedResult == nil)
+        #expect(model.navigateBack())
+        #expect(model.contactDetail == nil && model.selectedResult != nil)
+        model.showRecentDocuments(for: app)
+        try await waitUntil { !model.isSearching }
+        #expect(model.recentApplication == app)
+        #expect(model.selectedResult?.action == .openWithApplication(app.url))
+        #expect(model.navigateBack())
+        #expect(model.recentApplication == nil)
+    }
+
+    @Test func fullSearchActionTransfersContentAndNoMatchFallbackRequiresActivation() async throws {
+        let model = QuickSearchViewModel(searchApplications: { _ in [] }, searchSettings: { _ in [] },
+            searchSource: { _, _, _ in .init() })
+        var transferred: String?
+        let controller = QuickSearchWindowController(viewModel: model, onShowFullSearch: { transferred = $0 })
+        controller.show()
+        defer { controller.close() }
+        model.query = "in annual budget"
+        try await waitUntil { !model.isSearching }
+        #expect(transferred == nil)
+        controller.open(try #require(model.selectedResult))
+        try await waitUntil { transferred != nil }
+        #expect(transferred == "content:\"annual budget\"")
+        controller.show()
+        model.query = "nothing-matches"
+        try await waitUntil { !model.isSearching }
+        #expect(model.results.count == 4 && model.results.allSatisfy { $0.kind == .web })
+    }
+
     private func key(_ code: Int, flags: NSEvent.ModifierFlags = [], text: String = "\r") -> NSEvent {
         NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
                         windowNumber: 0, context: nil, characters: text,

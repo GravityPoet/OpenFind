@@ -61,7 +61,8 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 ## ✨ One App, 5 Creative Tools
 
 ### 1. ⚡ Hyper-Fast Local Engine (File & Content Search)
-* **Quick Search**: Find apps, files, folders, and System Settings in one panel. Chinese names, English names, and pinyin are searchable. `⌘1–9` opens the first nine results; scroll or load more for further matches.
+* **Quick Search**: Find apps, files, System Settings, Safari/Chrome bookmarks (including Safari Reading List), and authorized contacts in one panel. Chinese, English, and pinyin matching are supported. `⌘1–9` opens the first nine results; load more for the rest. The Search Modes menu exposes each source.
+* **Full Search**: File contents, regex, tags, size/date filters, scope selection, previews, and all results. Transfer from Quick Search with `in query`, `tags label`, or `⌥↩`.
 * **Instant `mmap` Indexing**: Loads millions of file paths in microseconds without heap memory overhead.
 * **Real-time FSEvents Sync**: Instantly indexes terminal changes (`git pull`, `touch`) as they happen.
 * **Deep Space Extraction**: Search inside PDFs, Word/Excel, Apple iWork, and stream inside `.zip` / `.tar.gz` compressed archives without disk extraction.
@@ -143,6 +144,19 @@ To build from source instead, clone the repository and run
 ## ⚙️ Power Commands & Syntax Examples
 
 ```text
+# --- QUICK SEARCH (add a space after each command) ---
+app Safari             # Apps only; settings Bluetooth searches settings
+open Report-*.pdf      # Open files; a leading space also selects files
+find Report            # Reveal in Finder
+in quarterly budget    # Transfer to Full Search contents
+bm Swift               # Bookmarks; contacts Alex searches contacts
+recent TextEdit        # Choose an app to view its recent documents
+~/Documents/*.pdf      # Directory navigation and wildcards
+calc (2+3)*4           # Return copies the result; direct arithmetic also works
+define launch          # Local dictionary; Return opens Dictionary
+web OpenFind           # Choose a search engine, then Return opens the browser
+system lock            # Lock Screen; system screensaver / sleep
+
 # --- SEARCH SYNTAX ---
 *.pdf briefing          # PDF files containing briefing in name
 type:code openfind      # Source code files containing openfind
@@ -158,16 +172,20 @@ report AND NOT draft    # Boolean operators: AND / OR / NOT
 ⌃ ⌃                    # Optional: double-tap Control (Settings → Search → Trigger)
 ⌘1…9                   # Open a quick result directly
 ⌘↩                     # Reveal the selected result in Finder
-⌥↩                     # From quick search, open full file search
-Space (on result)       # Native Quick Look preview
+⌥↩                     # From Quick Search, open Full Search
+Tab / →                # Enter a folder or show an app’s recent documents
+⇧Tab / ⌘←              # Go back
+Space (Full Search)    # Native Quick Look preview
 ```
+
+Use `contacts ` to grant Contacts access on first use. Safari bookmarks and some recent-document lists require Full Disk Access. Recent documents depend on the app publishing its list to macOS; supported file types are never treated as usage history. Lock Screen requires Accessibility access.
 
 ---
 
 ## 🏗️ Architecture & Security First
 
 OpenFind is built using **Swift 6 & SwiftUI** with strict privacy guarantees:
-* **100% Local Execution**: No telemetry, no cloud analytics. The only network traffic is the Sparkle update check against GitHub Releases, and you can disable it.
+* **Local Search**: No telemetry or cloud analytics. Bookmarks, contacts, and recent documents stay local and are excluded from configuration sync. Web searches go to your browser only when activated. Sparkle update checks can be disabled.
 * **Unidirectional State Architecture**: Clean separation between `Views -> State -> Engine -> Models`.
 * **Process-Isolated Extraction**: Decompression and text extraction for untrusted archives run in isolated helper processes with output and time limits.
 
