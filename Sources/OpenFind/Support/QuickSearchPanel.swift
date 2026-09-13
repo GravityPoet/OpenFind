@@ -9,6 +9,7 @@ final class QuickSearchPanel: NSPanel {
     var onFullSearch: (() -> Void)?
     var onNavigateForward: (() -> Bool)?
     var onNavigateBack: (() -> Bool)?
+    var onQuickLook: ((_ explicitShortcut: Bool) -> Bool)?
     var onMoveSelection: ((Int) -> Void)?
     var onOpenNumber: ((Int) -> Void)?
 
@@ -45,6 +46,8 @@ final class QuickSearchPanel: NSPanel {
             if let editor = firstResponder as? NSTextView,
                editor.selectedRange() != NSRange(location: editor.string.utf16.count, length: 0) { return false }
             return onNavigateForward?() == true
+        case (kVK_Space, []): return onQuickLook?(false) == true
+        case (kVK_ANSI_Y, .command): return onQuickLook?(true) == true
         case (kVK_Return, .option), (kVK_ANSI_KeypadEnter, .option): onFullSearch?()
         case (kVK_Return, .command), (kVK_ANSI_KeypadEnter, .command): onReveal?()
         case (kVK_Return, []), (kVK_ANSI_KeypadEnter, []): onOpen?()

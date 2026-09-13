@@ -11,6 +11,9 @@ enum QuickPathSearch {
         let root = exists && directory.boolValue ? expanded : (expanded as NSString).deletingLastPathComponent
         let pattern = exists && directory.boolValue ? "" : (expanded as NSString).lastPathComponent
         if exists && !directory.boolValue {
+            if !includeHidden && URL(fileURLWithPath: expanded).lastPathComponent.hasPrefix(".") {
+                return .init(message: L("No Path Matches"))
+            }
             let url = URL(fileURLWithPath: expanded)
             let values = try? url.resourceValues(forKeys: [.localizedNameKey])
             return .init(items: [.init(url: url, name: values?.localizedName ?? url.lastPathComponent,

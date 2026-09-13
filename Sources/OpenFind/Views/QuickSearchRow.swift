@@ -7,6 +7,7 @@ struct QuickSearchRow: View {
     let scale: CGFloat
     let onOpen: () -> Void
     var onRecentDocuments: () -> Void = {}
+    var onQuickLook: () -> Void = {}
     @State private var isHovered = false
     @State private var icon: NSImage?
     @Environment(\.colorSchemeContrast) private var contrast
@@ -67,6 +68,7 @@ struct QuickSearchRow: View {
             Button(L("Open"), action: onOpen)
             if item.url.isFileURL {
                 Button(L("Reveal in Finder")) { FileActions.revealInFinder([item.url]) }
+                Button(L("Quick Look"), action: onQuickLook)
                 Button(L("Copy Path")) { FileActions.copyPaths([item.url]) }
                 Button(L("Copy File Name")) { FileActions.copyFileNames([item.url]) }
                 Button(L("Copy File")) { FileActions.copyFiles([item.url]) }

@@ -5,6 +5,8 @@ import SwiftUI
 final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     let viewModel: QuickSearchViewModel
     private let onShowFullSearch: (String) -> Void
+    private let onQuickLook: ([URL]) -> Void
+    private let isQuickLookVisible: () -> Bool
     private let onDismiss: () -> Void
     private(set) var panel: QuickSearchPanel?
     private weak var searchField: NSTextField?
@@ -12,14 +14,19 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     private var scale: CGFloat = 1
     private var launchTask: Task<Void, Never>?
     private var requestingContactsAccess = false
+    private var presentingQuickLook = false
 
     init(
         viewModel: QuickSearchViewModel = QuickSearchViewModel(),
         onShowFullSearch: @escaping (String) -> Void,
+        onQuickLook: @escaping ([URL]) -> Void = { _ in },
+        isQuickLookVisible: @escaping () -> Bool = { false },
         onDismiss: @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
         self.onShowFullSearch = onShowFullSearch
+        self.onQuickLook = onQuickLook
+        self.isQuickLookVisible = isQuickLookVisible
         self.onDismiss = onDismiss
         super.init()
     }
@@ -65,6 +72,9 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
             onRecentDocuments: { [weak self] item in
                 guard let application = item.application else { return }
                 self?.viewModel.showRecentDocuments(for: application)
+            },
+            onQuickLook: { [weak self] item in
+                _ = self?.preview(item)
             },
             onFullSearch: { [weak self] in self?.showFullSearch() },
             onResize: { [weak self] in self?.resize(to: $0) },
@@ -114,6 +124,11 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
             return true
         }
         panel.onNavigateBack = { [weak self] in self?.viewModel.navigateBack() == true }
+        panel.onQuickLook = { [weak self] explicitShortcut in
+            guard let self, explicitShortcut || viewModel.hasExplicitSelection,
+                  let result = viewModel.selectedResult else { return false }
+            return preview(result)
+        }
         panel.onMoveSelection = { [weak self] in self?.viewModel.moveSelection(by: $0) }
         panel.onOpenNumber = { [weak self] index in
             guard let self, viewModel.contactDetail == nil, viewModel.resultsAreCurrent,
@@ -126,6 +141,16 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         panel.contentView = host
         hostingView = host
         return panel
+    }
+
+    @discardableResult
+    func preview(_ item: QuickSearchItem) -> Bool {
+        guard viewModel.contactDetail == nil, viewModel.resultsAreCurrent,
+              viewModel.results.contains(item), item.url.isFileURL else { return false }
+        presentingQuickLook = true
+        defer { presentingQuickLook = false }
+        onQuickLook([item.url])
+        return true
     }
 
     func open(_ result: QuickSearchItem) {
@@ -234,7 +259,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        if !requestingContactsAccess { close() }
+        if !requestingContactsAccess, !presentingQuickLook, !isQuickLookVisible() { close() }
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { close(); return false }
 }
