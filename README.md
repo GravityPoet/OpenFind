@@ -175,6 +175,7 @@ report AND NOT draft    # Boolean operators: AND / OR / NOT
 ⌥↩                     # From Quick Search, open Full Search
 Tab / →                # Enter a folder or show an app’s recent documents
 ⇧Tab / ⌘←              # Go back
+⌘Y (Quick Search)     # Preview; Space also works after ↑↓ selection
 Space (Full Search)    # Native Quick Look preview
 ```
 

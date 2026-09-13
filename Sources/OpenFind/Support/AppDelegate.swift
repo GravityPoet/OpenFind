@@ -142,6 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             onShowFullSearch: { [weak self] query in
                 self?.showFullSearch(query: query)
             },
+            onQuickLook: { [weak self] urls in self?.quickLook.toggle(items: urls) },
+            isQuickLookVisible: { [weak self] in self?.quickLook.isVisible == true },
             onDismiss: { [weak self] in self?.enterBackgroundMode() }
         )
         Self.shared = self

@@ -9,6 +9,7 @@ final class QuickSearchViewModel {
     }
     private(set) var results: [QuickSearchItem] = []
     private(set) var selectedIndex = 0
+    private(set) var hasExplicitSelection = false
     private(set) var isSearching = false
     var errorMessage: String?
     private(set) var needsFullSearch = false
@@ -58,6 +59,7 @@ final class QuickSearchViewModel {
     }
 
     func scheduleSearch() {
+        hasExplicitSelection = false
         contactDetail = nil
         if QuickSearchCommand.parse(query).mode != .recent { recentApplication = nil }
         fileLimit = 50
@@ -277,6 +279,7 @@ final class QuickSearchViewModel {
         let selectedID = results.indices.contains(selectedIndex) ? results[selectedIndex].id : nil
         var seen = Set<URL>()
         results = items.filter { seen.insert($0.id).inserted }
+        if !results.contains(where: { $0.id == selectedID }) { hasExplicitSelection = false }
         selectedIndex = results.firstIndex { $0.id == selectedID } ?? 0
         resultsAreCurrent = true
     }
@@ -297,6 +300,7 @@ final class QuickSearchViewModel {
 
     func moveSelection(by offset: Int) {
         guard contactDetail == nil, resultsAreCurrent, !results.isEmpty else { return }
+        hasExplicitSelection = true
         if offset > 0, selectedIndex == results.count - 1, hasMoreFiles {
             loadMoreFiles()
             return
@@ -307,6 +311,7 @@ final class QuickSearchViewModel {
     func selectResult(at index: Int) {
         guard resultsAreCurrent, results.indices.contains(index) else { return }
         selectedIndex = index
+        hasExplicitSelection = true
     }
 
     var selectedResult: QuickSearchItem? {
@@ -349,6 +354,7 @@ final class QuickSearchViewModel {
         results.removeAll(keepingCapacity: false)
         selectedIndex = 0
         retainedRowCount = 0
+        hasExplicitSelection = false
         hasMoreFiles = false
         needsFullSearch = false
         resultsAreCurrent = false

@@ -250,6 +250,52 @@ struct QuickSearchTests {
         #expect(model.query == "/fixtures/")
     }
 
+    @Test func spaceInvokesQuickLookCallback() {
+        let panel = QuickSearchPanel(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
+        var count = 0
+        panel.onQuickLook = { _ in count += 1; return true }
+        #expect(panel.handleCommand(key(kVK_Space)))
+        #expect(count == 1)
+    }
+
+    @Test func quickLookPreservesTypedSpacesAndRejectsStaleAndNonFileRows() async throws {
+        let file = fileResult("Sample.txt")
+        let model = QuickSearchViewModel(searchApplications: { _ in [] }, searchSettings: { _ in [] },
+            searchFiles: { _ in .init(results: [file]) }, searchSource: { _, _, _ in .init() })
+        var previewed: [URL] = []
+        var previewVisible = false
+        let controller = QuickSearchWindowController(viewModel: model, onShowFullSearch: { _ in },
+            onQuickLook: { urls in previewed = urls; previewVisible = true }, isQuickLookVisible: { previewVisible })
+        controller.show()
+        defer { controller.close() }
+        let panel = try #require(controller.panel)
+        model.query = "Sample"
+        try await waitUntil { !model.isSearching }
+        #expect(!panel.handleCommand(key(kVK_Space, text: " ")))
+        #expect(previewed.isEmpty)
+        #expect(panel.handleCommand(key(kVK_ANSI_Y, flags: .command, text: "y")))
+        #expect(previewed == [file.url])
+        controller.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: panel))
+        #expect(controller.isVisible)
+        previewed = []
+        model.moveSelection(by: 1)
+        #expect(panel.handleCommand(key(kVK_Space, text: " ")))
+        #expect(previewed == [file.url])
+        model.query = "Sample Notes"
+        #expect(!panel.handleCommand(key(kVK_Space, text: " ")))
+        #expect(!panel.handleCommand(key(kVK_ANSI_Y, flags: .command, text: "y")))
+        try await waitUntil { !model.isSearching }
+        #expect(!panel.handleCommand(key(kVK_Space, text: " ")))
+        #expect(!controller.preview(.init(url: URL(string: "https://example.com")!, name: "Web", location: "", kind: .web)))
+        let editor = try #require(panel.firstResponder as? NSTextView)
+        editor.setMarkedText("sample", selectedRange: NSRange(location: 6, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(!panel.handleCommand(key(kVK_ANSI_Y, flags: .command, text: "y")))
+        editor.unmarkText()
+        previewVisible = false
+        controller.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: panel))
+        #expect(!controller.isVisible)
+    }
+
     @Test func contactCardAndPerAppRecentsAreReachableWithoutOpeningExternalApps() async throws {
         let contact = QuickContact(identifier: "fixture:ABPerson", name: "Test Contact", emails: ["test@example.com"], phones: [], aliases: [])
         let app = application("Fixture")

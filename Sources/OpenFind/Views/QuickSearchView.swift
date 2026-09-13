@@ -5,6 +5,7 @@ struct QuickSearchView: View {
     let scale: CGFloat
     let onOpen: (QuickSearchItem) -> Void
     let onRecentDocuments: (QuickSearchItem) -> Void
+    let onQuickLook: (QuickSearchItem) -> Void
     let onFullSearch: () -> Void
     let onResize: (CGFloat) -> Void
     let onInputReady: (NSTextField) -> Void
@@ -74,7 +75,8 @@ struct QuickSearchView: View {
                         QuickSearchRow(
                             item: result, index: index, isSelected: index == viewModel.selectedIndex,
                             scale: scale, onOpen: { onOpen(result) },
-                            onRecentDocuments: { onRecentDocuments(result) }
+                            onRecentDocuments: { onRecentDocuments(result) },
+                            onQuickLook: { onQuickLook(result) }
                         )
                         .id(result.id)
                         .disabled(!viewModel.resultsAreCurrent)
