@@ -653,6 +653,8 @@
 "Keyboard Lock Elapsed Format" = "Elapsed %02lld:%02lld:%02lld";
 "Keyboard Lock Countdown" = "Keyboard cleaning lock starts in %lld seconds";
 "Keyboard Lock Auto Unlock" = "Emergency auto-unlock";
+"Keyboard Lock Panel Opacity" = "Panel background opacity";
+"Keyboard Lock Panel Opacity Help" = "Lower values reveal more of the screen. Text and the unlock button stay visible. Move the pointer over the panel to make it easier to read. Reduce Transparency or Increase Contrast keeps the background opaque.";
 "Never" = "Never";
 "Keyboard Lock Hardware Limitation" = "macOS does not expose the hardware power or Touch ID buttons to event taps; those controls cannot be blocked.";
 "Keyboard Cleaning Lock Accessibility Permission Required" = "Keyboard Cleaning Lock requires Accessibility permission.";

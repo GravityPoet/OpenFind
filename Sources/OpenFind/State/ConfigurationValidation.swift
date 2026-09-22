@@ -8,6 +8,7 @@ extension ConfigurationPreferenceKeys {
             "search.maxContentIndexBytes": 0...Double(Int64.max / 2),
             "OpenFind.driveAliveIntervalV1": 1...3_600,
             "OpenFind.keyboardLockAutoUnlockMinutesV1": 0...60,
+            "OpenFind.keyboardLockPanelOpacityV1": KeyboardLockController.panelOpacityRange,
             "OpenFind.awakeDefaults.screenSaverDelayMinutesV1": 0...1_440,
             "OpenFind.awakeDefaults.durationMinutesV1": 0...10_080,
             "OpenFind.awakeAutomation.lowBatteryThresholdV1": 1...100,
@@ -62,7 +63,8 @@ extension ConfigurationPreferenceKeys {
                     ? 0...Double(UInt16.max) : key.lowercased().contains("modifiers") ? 0...Double(UInt32.max) : nil)
                 if let range {
                     guard !isBool, number.doubleValue.isFinite, range.contains(number.doubleValue),
-                          key == "OpenFind.driveAliveIntervalV1" || number.doubleValue.rounded() == number.doubleValue else {
+                          key == "OpenFind.driveAliveIntervalV1" || key == "OpenFind.keyboardLockPanelOpacityV1"
+                            || number.doubleValue.rounded() == number.doubleValue else {
                         throw ConfigurationError.invalidPreferences
                     }
                 } else if !isBool {

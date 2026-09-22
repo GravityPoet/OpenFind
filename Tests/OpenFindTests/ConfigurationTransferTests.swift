@@ -47,6 +47,7 @@ struct ConfigurationTransferTests {
         let source = try ConfigurationTestContext(), target = try ConfigurationTestContext()
         defer { source.cleanup(); target.cleanup() }
         source.defaults.set("compact", forKey: OpenFindInterfaceSize.persistenceKey)
+        source.defaults.set(0.35, forKey: "OpenFind.keyboardLockPanelOpacityV1")
         source.clipboard.setSnippetExpansionEnabled(true)
         source.clipboard.setQuickMergeEnabled(true)
         _ = try source.clipboard.createSnippet(name: "Work", content: "Synthetic snippet", keyword: "!work")
@@ -65,6 +66,7 @@ struct ConfigurationTransferTests {
         target.transfer.reload = { reloads += 1 }
         try await target.transfer.apply(archive)
         #expect(target.defaults.string(forKey: OpenFindInterfaceSize.persistenceKey) == "compact")
+        #expect(target.defaults.double(forKey: "OpenFind.keyboardLockPanelOpacityV1") == 0.35)
         #expect(target.clipboard.preferences.snippetExpansionEnabled && target.clipboard.preferences.quickMergeEnabled)
         #expect(target.clipboard.preferences.capturePaused && target.clipboard.preferences.popupScreen == 3)
         #expect(target.clipboard.entries.contains(history))

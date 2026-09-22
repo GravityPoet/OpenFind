@@ -15,6 +15,8 @@ final class KeyboardLockController {
         keyLabel: "K"
     )
     nonisolated static let defaultActivationCountdownSeconds = 0
+    nonisolated static let panelOpacityRange = 0.2...1.0
+    nonisolated static let defaultPanelOpacity = 0.85
 
     enum State: Equatable {
         case disabled
@@ -26,6 +28,7 @@ final class KeyboardLockController {
     }
 
     private static let autoUnlockKey = "OpenFind.keyboardLockAutoUnlockMinutesV1"
+    private static let panelOpacityKey = "OpenFind.keyboardLockPanelOpacityV1"
     private static let shortcutKeyCodeKey = "OpenFind.keyboardLockShortcut.keyCodeV1"
     private static let shortcutModifiersKey = "OpenFind.keyboardLockShortcut.modifiersV1"
     private static let shortcutLabelKey = "OpenFind.keyboardLockShortcut.labelV1"
@@ -44,6 +47,7 @@ final class KeyboardLockController {
     private var hasStarted = false
     private(set) var state: State = .disabled
     private(set) var autoUnlockMinutes: Int
+    private(set) var panelOpacity: Double
     private(set) var shortcut: GlobalShortcut
     private(set) var lastErrorMessage: String?
     private(set) var registrationState: GlobalHotKeyRegistry.State = .disabled
@@ -58,8 +62,10 @@ final class KeyboardLockController {
         self.defaults = defaults
         self.accessibilityChecker = accessibilityChecker
         self.secureInputChecker = secureInputChecker
-        let stored = defaults.object(forKey: Self.autoUnlockKey) as? Int ?? 5
-        autoUnlockMinutes = [0, 5, 15, 30, 60].contains(stored) ? stored : 5
+        let stored = defaults.object(forKey: Self.autoUnlockKey) as? Int ?? 0
+        autoUnlockMinutes = [0, 5, 15, 30, 60].contains(stored) ? stored : 0
+        let storedOpacity = defaults.object(forKey: Self.panelOpacityKey) as? Double ?? Self.defaultPanelOpacity
+        panelOpacity = Self.normalizedPanelOpacity(storedOpacity)
         shortcut = Self.loadShortcut(from: defaults)
     }
 
@@ -93,8 +99,10 @@ final class KeyboardLockController {
     func reloadPreferences() {
         let running = hasStarted
         if running { stop() }
-        let stored = defaults.object(forKey: Self.autoUnlockKey) as? Int ?? 5
-        autoUnlockMinutes = [0, 5, 15, 30, 60].contains(stored) ? stored : 5
+        let stored = defaults.object(forKey: Self.autoUnlockKey) as? Int ?? 0
+        autoUnlockMinutes = [0, 5, 15, 30, 60].contains(stored) ? stored : 0
+        let storedOpacity = defaults.object(forKey: Self.panelOpacityKey) as? Double ?? Self.defaultPanelOpacity
+        panelOpacity = Self.normalizedPanelOpacity(storedOpacity)
         shortcut = Self.loadShortcut(from: defaults)
         if running { start() }
     }
@@ -176,7 +184,9 @@ final class KeyboardLockController {
         registry.unbind(id: Self.hotKeyID)
         registrationState = .disabled
         let lockedAt = Date()
-        unlockPanel.show(lockedAt: lockedAt) { [weak self] in
+        unlockPanel.show(lockedAt: lockedAt, backgroundOpacity: panelOpacity, opacityChanged: { [weak self] in
+            self?.setPanelOpacity($0)
+        }) { [weak self] in
             self?.disable()
         }
         state = .locked
@@ -253,6 +263,17 @@ final class KeyboardLockController {
         autoUnlockMinutes = minutes
         defaults.set(minutes, forKey: Self.autoUnlockKey)
         if isLocked { scheduleAutoUnlock() }
+    }
+
+    func setPanelOpacity(_ opacity: Double) {
+        panelOpacity = Self.normalizedPanelOpacity(opacity)
+        defaults.set(panelOpacity, forKey: Self.panelOpacityKey)
+        unlockPanel.setBackgroundOpacity(panelOpacity)
+    }
+
+    nonisolated static func normalizedPanelOpacity(_ opacity: Double) -> Double {
+        guard opacity.isFinite else { return defaultPanelOpacity }
+        return max(panelOpacityRange.lowerBound, min(panelOpacityRange.upperBound, opacity))
     }
 
     @discardableResult

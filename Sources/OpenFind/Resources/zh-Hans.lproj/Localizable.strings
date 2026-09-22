@@ -653,6 +653,8 @@
 "Keyboard Lock Elapsed Format" = "已持续 %02lld:%02lld:%02lld";
 "Keyboard Lock Countdown" = "%lld 秒后开启键盘清洁锁定";
 "Keyboard Lock Auto Unlock" = "紧急自动解锁";
+"Keyboard Lock Panel Opacity" = "悬浮窗背景不透明度";
+"Keyboard Lock Panel Opacity Help" = "数值越低，越能看清后方屏幕。文字和解锁按钮保持显示；鼠标移入悬浮窗时恢复清晰背景。系统启用“降低透明度”或“增加对比度”时，背景保持不透明。";
 "Never" = "永不";
 "Keyboard Lock Hardware Limitation" = "macOS 不会把硬件电源键或 Touch ID 按钮暴露给事件 tap，因此无法拦截这些控制。";
 "Keyboard Cleaning Lock Accessibility Permission Required" = "键盘清洁锁定需要辅助功能权限。";
