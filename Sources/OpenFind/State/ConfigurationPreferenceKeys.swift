@@ -11,6 +11,7 @@ enum ConfigurationPreferenceKeys {
             "OpenFind.globalHotKeyEnabled", "OpenFind.globalHotKeyKeyCode",
             "OpenFind.globalHotKeyModifiers", "OpenFind.globalHotKeyLabel",
             "OpenFind.quickSearchTriggerV1", "OpenFind.keyboardLockAutoUnlockMinutesV1",
+            "OpenFind.keyboardLockPanelOpacityV1",
             "OpenFind.keyboardLockShortcut.keyCodeV1", "OpenFind.keyboardLockShortcut.modifiersV1",
             "OpenFind.keyboardLockShortcut.labelV1", "OpenFind.driveAliveEnabledV1",
             "OpenFind.driveAliveIntervalV1", "OpenFind.awakeTriggersEnabledV1",

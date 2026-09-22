@@ -72,6 +72,25 @@ struct KeyboardLockSettingsSection: View {
                     Text(String(format: L("Minutes Format"), minutes)).tag(minutes)
                 }
             }
+            HStack {
+                Slider(
+                    value: Binding(
+                        get: { controller.panelOpacity },
+                        set: { controller.setPanelOpacity($0) }
+                    ),
+                    in: KeyboardLockController.panelOpacityRange,
+                    step: 0.05
+                ) {
+                    Text(L("Keyboard Lock Panel Opacity"))
+                }
+                .accessibilityValue(controller.panelOpacity.formatted(.percent.precision(.fractionLength(0))))
+                Text(controller.panelOpacity, format: .percent.precision(.fractionLength(0)))
+                    .monospacedDigit()
+                    .frame(width: 44, alignment: .trailing)
+            }
+            Text(L("Keyboard Lock Panel Opacity Help"))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             if let error = controller.lastErrorMessage {
                 Text(error)
                     .font(.footnote)

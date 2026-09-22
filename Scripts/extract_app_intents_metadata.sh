@@ -71,8 +71,11 @@ xcodebuild \
     MACOSX_DEPLOYMENT_TARGET="$MINIMUM_MACOS_VERSION" \
     build
 
-OBJECTS_DIR="$DERIVED_DATA/Build/Intermediates.noindex/OpenFind.build/Release/OpenFind.build/Objects-normal/arm64"
-SOURCE_LIST="$OBJECTS_DIR/OpenFind.SwiftFileList"
+OBJECTS_ROOT="$DERIVED_DATA/Build/Intermediates.noindex/OpenFind.build/Release"
+SOURCE_LIST="$(find "$OBJECTS_ROOT" -type f \
+    -path '*/Objects-normal/arm64/OpenFind.SwiftFileList' \
+    -print -quit 2>/dev/null || true)"
+OBJECTS_DIR="$(dirname "$SOURCE_LIST")"
 CONST_VALUES="$OBJECTS_DIR/OpenFind-primary.swiftconstvalues"
 if [ ! -s "$SOURCE_LIST" ] || [ ! -s "$CONST_VALUES" ]; then
     echo "Error: Xcode did not emit the inputs required for App Intents metadata." >&2

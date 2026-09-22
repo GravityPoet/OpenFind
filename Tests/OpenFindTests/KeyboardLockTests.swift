@@ -86,7 +86,7 @@ struct KeyboardLockTests {
             defaults: defaults
         )
 
-        #expect(controller.autoUnlockMinutes == 5)
+        #expect(controller.autoUnlockMinutes == 0)
         controller.setAutoUnlockMinutes(30)
         #expect(KeyboardLockController(
             registry: GlobalHotKeyRegistry(),
@@ -119,5 +119,27 @@ struct KeyboardLockTests {
             defaults: defaults
         )
         #expect(reloaded.shortcut == custom)
+    }
+
+    @MainActor
+    @Test func panelOpacityPersistsAndReloadsWithoutEnablingAutoUnlock() throws {
+        let suite = "OpenFindTests.KeyboardOpacity.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = KeyboardLockController(registry: GlobalHotKeyRegistry(), defaults: defaults)
+        #expect(controller.panelOpacity == 0.85)
+        controller.setPanelOpacity(0.35)
+        let reloaded = KeyboardLockController(registry: GlobalHotKeyRegistry(), defaults: defaults)
+        #expect(reloaded.panelOpacity == 0.35)
+        #expect(reloaded.autoUnlockMinutes == 0)
+        defaults.set(0.65, forKey: "OpenFind.keyboardLockPanelOpacityV1")
+        reloaded.reloadPreferences()
+        #expect(reloaded.panelOpacity == 0.65)
+        reloaded.setPanelOpacity(-1)
+        #expect(reloaded.panelOpacity == 0.2)
+        reloaded.setPanelOpacity(2)
+        #expect(reloaded.panelOpacity == 1)
+        reloaded.setPanelOpacity(.nan)
+        #expect(reloaded.panelOpacity == 0.85)
     }
 }
