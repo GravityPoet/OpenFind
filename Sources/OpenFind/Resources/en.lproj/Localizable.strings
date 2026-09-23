@@ -268,7 +268,7 @@
 "Drive Alive Target Count" = "%lld targets";
 "Drive Alive Status Format" = "%lld active of %lld targets";
 "No Drive Alive Targets" = "No folders configured";
-"Refresh Drive Alive" = "Write now";
+"Refresh Drive Alive" = "Refresh status";
 "Drive Alive Help" = "External Disk Assistant shows each folder's connection and writability, and offers a one-time Wake now per folder. Continuous mode rewrites one small, bounded marker on a timer only when you explicitly enable it; it uses extra power and may only reduce wake-up waits on some external spinning drives or enclosures. It cannot fix disconnects caused by cables, power, docks, drivers, networks, or firmware.";
 "Wake Disk Now" = "Wake now";
 "Waking Disk" = "Waking…";
@@ -277,6 +277,8 @@
 "Advanced Continuous Mode" = "Advanced: continuous mode";
 "Continuous Mode On" = "Continuous mode is on";
 "Continuous Mode Off" = "Continuous mode is off";
+"Disk Connected" = "Connected";
+"Disk Disconnected" = "Disconnected";
 
 /* Triggers */
 "Triggers" = "Triggers";

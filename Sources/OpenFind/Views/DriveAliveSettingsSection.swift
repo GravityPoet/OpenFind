@@ -86,6 +86,7 @@ struct DriveAliveSettingsSection: View {
                 Label(target.displayName, systemImage: "externaldrive")
                     .lineLimit(1)
                 Spacer()
+                connectionLabel(for: target.id)
                 statusLabel(for: target.id)
                 Button {
                     wake(target)
@@ -93,7 +94,10 @@ struct DriveAliveSettingsSection: View {
                     Text(L("Wake Disk Now"))
                 }
                 .buttonStyle(.borderless)
-                .disabled(controller.wakingTargetIDs.contains(target.id))
+                .disabled(
+                    controller.wakingTargetIDs.contains(target.id)
+                        || !controller.reachableTargetIDs.contains(target.id)
+                )
                 .help(L("Wake Disk Now"))
                 .accessibilityLabel(
                     controller.wakingTargetIDs.contains(target.id)
@@ -123,6 +127,20 @@ struct DriveAliveSettingsSection: View {
             .labelsHidden()
             .pickerStyle(.menu)
         }
+    }
+
+    private func connectionLabel(for id: UUID) -> some View {
+        Group {
+            if controller.reachableTargetIDs.contains(id) {
+                Label(L("Disk Connected"), systemImage: "externaldrive.fill.badge.checkmark")
+                    .foregroundStyle(.green)
+            } else {
+                Label(L("Disk Disconnected"), systemImage: "externaldrive.fill.badge.xmark")
+                    .foregroundStyle(.orange)
+            }
+        }
+        .font(.footnote)
+        .lineLimit(1)
     }
 
     private func statusLabel(for id: UUID) -> some View {
