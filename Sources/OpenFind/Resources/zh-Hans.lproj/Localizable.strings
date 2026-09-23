@@ -253,8 +253,8 @@
 "Statistics Help" = "统计仅保存在本机，只记录汇总后的会话次数与时长。";
 
 /* Drive Alive */
-"Drive Alive" = "硬盘保活";
-"Enable Drive Alive" = "启用硬盘保活";
+"Drive Alive" = "外接磁盘助手";
+"Enable Drive Alive" = "持续保持磁盘活跃（高级）";
 "Write Interval" = "写入间隔";
 "Seconds" = "秒";
 "Add Drive Alive Folder" = "添加文件夹";
@@ -269,7 +269,14 @@
 "Drive Alive Status Format" = "%lld/%lld 个目标活跃";
 "No Drive Alive Targets" = "尚未配置文件夹";
 "Refresh Drive Alive" = "立即写入";
-"Drive Alive Help" = "硬盘保活会在每个选定文件夹中反复覆盖一个有上限的小标记文件。目标可设为仅在唤醒会话期间运行，或 OpenFind 运行时始终运行；网络卷和只读卷失败时会显示状态，不会阻塞应用。";
+"Drive Alive Help" = "外接磁盘助手显示每个文件夹的连接与可写状态，并为每个目标提供一次性的“立即唤醒”。持续模式仅在你显式开启后按间隔覆盖一个有上限的小标记文件，会增加耗电，只能减少部分外接机械硬盘或硬盘柜的唤醒等待，不能修复线缆、供电、扩展坞、驱动、网络或固件导致的断连。";
+"Wake Disk Now" = "立即唤醒";
+"Waking Disk" = "正在唤醒…";
+"Last Success Format" = "上次成功：%@";
+"Last Failure Format" = "上次失败：%@";
+"Advanced Continuous Mode" = "高级：持续模式";
+"Continuous Mode On" = "持续模式运行中";
+"Continuous Mode Off" = "持续模式未运行";
 
 /* Triggers */
 "Triggers" = "触发器";
@@ -892,8 +899,8 @@
 "Guide Clipboard Detail" = "不打断当前工作，即可查找、预览、粘贴和保存常用内容。";
 "Guide Keep Awake Title" = "保持 Mac 唤醒";
 "Guide Keep Awake Detail" = "从菜单栏开始定时会话，也可在设置中启用这个快捷键。";
-"Guide Drive Alive Title" = "让外置硬盘保持就绪";
-"Guide Drive Alive Detail" = "重要工作期间，避免选定的外置硬盘进入空闲状态。";
+"Guide Drive Alive Title" = "按需查看外接磁盘";
+"Guide Drive Alive Detail" = "按文件夹查看状态，需要时单次唤醒；持续保活是高级选项。";
 "Guide Keyboard Cleaning Title" = "安心清洁键盘";
 "Guide Keyboard Cleaning Detail" = "擦拭键盘时临时拦截按键输入。";
 "Menu Bar" = "菜单栏";

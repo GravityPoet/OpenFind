@@ -7,26 +7,6 @@ struct DriveAliveSettingsSection: View {
 
     var body: some View {
         Section {
-            Toggle(L("Enable Drive Alive"), isOn: enabledBinding)
-
-            HStack {
-                Text(L("Write Interval"))
-                Spacer()
-                TextField(
-                    L("Seconds"),
-                    value: intervalBinding,
-                    format: .number.precision(.fractionLength(0...1))
-                )
-                // The row already carries a visible "Write Interval" label and
-                // a "Seconds" suffix; the field's own title would render as a
-                // third, cramped label inside the grouped form row.
-                .labelsHidden()
-                .multilineTextAlignment(.trailing)
-                .frame(width: 72)
-                Text(L("Seconds"))
-                    .foregroundStyle(.secondary)
-            }
-
             ForEach(store.targets) { target in
                 targetRow(target)
             }
@@ -46,6 +26,32 @@ struct DriveAliveSettingsSection: View {
                         .foregroundStyle(.secondary)
                         .font(.footnote)
                 }
+            }
+
+            DisclosureGroup(L("Advanced Continuous Mode")) {
+                Toggle(L("Enable Drive Alive"), isOn: enabledBinding)
+
+                HStack {
+                    Text(L("Write Interval"))
+                    Spacer()
+                    TextField(
+                        L("Seconds"),
+                        value: intervalBinding,
+                        format: .number.precision(.fractionLength(0...1))
+                    )
+                    // The row already carries a visible "Write Interval" label and
+                    // a "Seconds" suffix; the field's own title would render as a
+                    // third, cramped label inside the grouped form row.
+                    .labelsHidden()
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 72)
+                    Text(L("Seconds"))
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(controller.isRunning ? L("Continuous Mode On") : L("Continuous Mode Off"))
+                    .foregroundStyle(.secondary)
+                    .font(.footnote)
             }
 
             if let errorMessage {
@@ -82,6 +88,18 @@ struct DriveAliveSettingsSection: View {
                 Spacer()
                 statusLabel(for: target.id)
                 Button {
+                    wake(target)
+                } label: {
+                    Text(L("Wake Disk Now"))
+                }
+                .buttonStyle(.borderless)
+                .disabled(controller.wakingTargetIDs.contains(target.id))
+                .help(L("Wake Disk Now"))
+                .accessibilityLabel(
+                    controller.wakingTargetIDs.contains(target.id)
+                        ? L("Waking Disk") : L("Wake Disk Now")
+                )
+                Button {
                     remove(target)
                 } label: {
                     Image(systemName: "minus.circle")
@@ -89,6 +107,13 @@ struct DriveAliveSettingsSection: View {
                 .buttonStyle(.borderless)
                 .help(L("Remove Drive Alive Folder"))
                 .accessibilityLabel(L("Remove Drive Alive Folder"))
+            }
+
+            if let lastResult = lastResultText(for: target.id) {
+                Text(lastResult)
+                    .foregroundStyle(.secondary)
+                    .font(.footnote)
+                    .lineLimit(2)
             }
 
             Picker(L("Drive Alive Policy"), selection: policyBinding(for: target)) {
@@ -102,22 +127,63 @@ struct DriveAliveSettingsSection: View {
 
     private func statusLabel(for id: UUID) -> some View {
         Group {
-            switch controller.statuses[id] ?? .inactive {
-            case .inactive:
-                Label(L("Drive Alive Inactive"), systemImage: "pause.circle")
-            case .writing:
-                Label(L("Drive Alive Writing"), systemImage: "arrow.triangle.2.circlepath")
-            case .healthy:
-                Label(L("Drive Alive Healthy"), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            case let .failed(failure):
-                Label(failure.localizedDescription, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+            if controller.wakingTargetIDs.contains(id) {
+                Label(L("Waking Disk"), systemImage: "arrow.triangle.2.circlepath")
+            } else {
+                switch controller.statuses[id] ?? .inactive {
+                case .inactive:
+                    Label(L("Drive Alive Inactive"), systemImage: "pause.circle")
+                case .writing:
+                    Label(L("Drive Alive Writing"), systemImage: "arrow.triangle.2.circlepath")
+                case .healthy:
+                    Label(L("Drive Alive Healthy"), systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                case let .failed(failure):
+                    Label(failure.localizedDescription, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .font(.footnote)
         .foregroundStyle(.secondary)
         .lineLimit(1)
+    }
+
+    private func lastResultText(for id: UUID) -> String? {
+        var parts: [String] = []
+        let successDate = controller.lastSucceededAt[id] ?? {
+            if case let .healthy(date) = controller.statuses[id] { return date }
+            return nil
+        }()
+        if let successDate {
+            parts.append(
+                String(
+                    format: L("Last Success Format"),
+                    successDate.formatted(date: .abbreviated, time: .shortened)
+                )
+            )
+        }
+        if let failure = controller.lastFailureByTarget[id],
+           let failureDate = controller.lastFailedAt[id]
+        {
+            parts.append(
+                String(
+                    format: L("Last Failure Format"),
+                    "\(failure.localizedDescription) · \(failureDate.formatted(date: .abbreviated, time: .shortened))"
+                )
+            )
+        } else if case let .failed(failure) = controller.statuses[id] {
+            parts.append(
+                String(format: L("Last Failure Format"), failure.localizedDescription)
+            )
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ")
+    }
+
+    private func wake(_ target: DriveAliveTarget) {
+        Task { @MainActor in
+            await controller.wake(targetID: target.id)
+        }
     }
 
     private var intervalBinding: Binding<TimeInterval> {

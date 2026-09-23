@@ -7,9 +7,9 @@
 [![Swift: 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 
 **One App, 5 Creative Tools**  
-*Millisecond Deep Search, Encrypted OCR Clipboard, Lid-Closed KeepAwake, DriveAlive & KeyLock.*
+*Millisecond Deep Search, Encrypted OCR Clipboard, Lid-Closed KeepAwake, External Disk Assistant & KeyLock.*
 
-OpenFind frees you from multi-app lag: **Zero-latency search inside ZIPs and PDFs**, **Instant text extraction from screenshot clipboards with AES encryption**, **Keep servers and builds running with lid closed**, and **Prevent external SSD/NAS disconnects**.
+OpenFind frees you from multi-app lag: **Zero-latency search inside ZIPs and PDFs**, **Instant text extraction from screenshot clipboards with AES encryption**, **Keep servers and builds running with lid closed**, and **Check external-disk status on demand with one-time wake**.
 
 [**🚀 Download OpenFind v1.1.3 (macOS Universal)**](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.3) ·
 [v1.1.3 Release Notes](https://github.com/GravityPoet/OpenFind/releases/tag/v1.1.3)
@@ -53,7 +53,7 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 | **File & Content Search** | ⏱️ 5~10s disk scans; no regex, no deep search in ZIPs. | ⚡ **Instant millisecond search** across code, PDFs, Office & inside ZIPs without extracting. |
 | **Clipboard History** | 🔓 Plaintext storage, security risk for API keys. | 🔐 **Encrypted SQLite storage**, Vision OCR text recognition, Paste Stack & auto-privacy masking. |
 | **Sleep Prevention** | ☕ Manual toggles; breaks when you close the MacBook lid. | ☕ **Smart Keep-Awake**, Clamshell (Lid-Closed) Mode, and condition-based automation (App/Download). |
-| **External Drive Health** | 🛑 Hard drives sleep, disconnect, or freeze Finder. | 💾 **DriveAlive Heartbeat**: Prevents external SSDs/HDDs/NAS from spinning down or disconnecting. |
+| **External Drive Health** | 🛑 Hard drives sleep, disconnect, or freeze Finder. | 💾 **External Disk Assistant**: Shows per-folder status with one-time wake; optional advanced continuous mode may only reduce wake-up waits on some spinning drives. |
 | **Keyboard Maintenance** | 🧼 Download another 3rd-party app to lock keyboard. | 🔒 **Instant Keyboard Lock** via shortcut to clean keycaps or block pet accidents. |
 
 ---
@@ -83,9 +83,9 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 * **Low-Battery Guard**: Automatically restores normal sleep rules when battery drops below safety thresholds.
 * **Amphetamine-Compatible AppleScript**: OpenFind implements Amphetamine's AppleScript command set, so your existing keep-awake automation scripts keep working (no affiliation with Amphetamine).
 
-### 4. 💾 DriveAlive External Storage Protector
-* **Prevents Disconnections**: Keeps external HDDs, SSDs, and NAS volumes active using background micro-heartbeats.
-* **No Finder Freezes**: Eliminates the 5-second spin-up lag when accessing external storage.
+### 4. 💾 External Disk Assistant
+* **On-Demand Status and Wake**: Shows connection and writability per folder, with a one-time wake per target that never starts a background loop.
+* **Advanced Continuous Mode (Optional)**: Rewrites one small bounded marker on a timer only when explicitly enabled; uses extra power and cannot fix disconnects caused by cables, power, docks, drivers, networks, or firmware.
 
 ### 5. 🔒 Instant Keyboard Lock
 * **One-Click Cleaning**: Instantly lock all keyboard inputs with a customizable hotkey to safely wipe your MacBook keyboard or protect against accidental pet typing.

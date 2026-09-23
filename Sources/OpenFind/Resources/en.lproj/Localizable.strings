@@ -253,8 +253,8 @@
 "Statistics Help" = "Statistics stay on this Mac and contain only aggregate session counts and durations.";
 
 /* Drive Alive */
-"Drive Alive" = "Drive Alive";
-"Enable Drive Alive" = "Enable Drive Alive";
+"Drive Alive" = "External Disk Assistant";
+"Enable Drive Alive" = "Keep disks active continuously (Advanced)";
 "Write Interval" = "Write interval";
 "Seconds" = "seconds";
 "Add Drive Alive Folder" = "Add folder";
@@ -269,7 +269,14 @@
 "Drive Alive Status Format" = "%lld active of %lld targets";
 "No Drive Alive Targets" = "No folders configured";
 "Refresh Drive Alive" = "Write now";
-"Drive Alive Help" = "Drive Alive rewrites one small, bounded marker in each selected folder. Targets can run only during awake sessions or whenever OpenFind is running. Network and read-only failures are reported without blocking the app.";
+"Drive Alive Help" = "External Disk Assistant shows each folder's connection and writability, and offers a one-time Wake now per folder. Continuous mode rewrites one small, bounded marker on a timer only when you explicitly enable it; it uses extra power and may only reduce wake-up waits on some external spinning drives or enclosures. It cannot fix disconnects caused by cables, power, docks, drivers, networks, or firmware.";
+"Wake Disk Now" = "Wake now";
+"Waking Disk" = "Waking…";
+"Last Success Format" = "Last success: %@";
+"Last Failure Format" = "Last failure: %@";
+"Advanced Continuous Mode" = "Advanced: continuous mode";
+"Continuous Mode On" = "Continuous mode is on";
+"Continuous Mode Off" = "Continuous mode is off";
 
 /* Triggers */
 "Triggers" = "Triggers";
@@ -892,8 +899,8 @@
 "Guide Clipboard Detail" = "Find, preview, paste, and save reusable items without leaving your flow.";
 "Guide Keep Awake Title" = "Keep your Mac awake";
 "Guide Keep Awake Detail" = "Start timed sessions from the menu bar or enable this optional shortcut.";
-"Guide Drive Alive Title" = "Keep external drives ready";
-"Guide Drive Alive Detail" = "Prevent selected external drives from idling during important work.";
+"Guide Drive Alive Title" = "Check external disks on demand";
+"Guide Drive Alive Detail" = "See status per folder and wake a disk once when needed; continuous keep-alive is an advanced option.";
 "Guide Keyboard Cleaning Title" = "Clean the keyboard safely";
 "Guide Keyboard Cleaning Detail" = "Temporarily block keystrokes while you wipe down your keyboard.";
 "Menu Bar" = "Menu Bar";

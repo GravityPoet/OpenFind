@@ -15,6 +15,10 @@ final class DriveAliveController {
 
     private(set) var statuses: [UUID: DriveAliveTargetStatus] = [:]
     private(set) var lastErrorMessage: String?
+    private(set) var lastSucceededAt: [UUID: Date] = [:]
+    private(set) var lastFailedAt: [UUID: Date] = [:]
+    private(set) var lastFailureByTarget: [UUID: DriveAliveFailure] = [:]
+    private(set) var wakingTargetIDs: Set<UUID> = []
 
     init(
         store: DriveAliveStore,
@@ -75,6 +79,16 @@ final class DriveAliveController {
         for id in statuses.keys where !configuredIDs.contains(id) {
             statuses.removeValue(forKey: id)
         }
+        for id in Array(lastSucceededAt.keys) where !configuredIDs.contains(id) {
+            lastSucceededAt.removeValue(forKey: id)
+        }
+        for id in Array(lastFailedAt.keys) where !configuredIDs.contains(id) {
+            lastFailedAt.removeValue(forKey: id)
+        }
+        for id in Array(lastFailureByTarget.keys) where !configuredIDs.contains(id) {
+            lastFailureByTarget.removeValue(forKey: id)
+        }
+        wakingTargetIDs = wakingTargetIDs.intersection(configuredIDs)
         guard store.isEnabled else {
             for target in targets { statuses[target.id] = .inactive }
             return
@@ -98,7 +112,11 @@ final class DriveAliveController {
                 resolved.append((target, resource))
                 statuses[target.id] = .writing
             } catch {
-                statuses[target.id] = .failed(failure(for: error))
+                let failure = failure(for: error)
+                let now = Date()
+                statuses[target.id] = .failed(failure)
+                lastFailedAt[target.id] = now
+                lastFailureByTarget[target.id] = failure
             }
         }
 
@@ -136,10 +154,59 @@ final class DriveAliveController {
             guard store.target(id: id) != nil else { continue }
             switch result {
             case .success:
-                statuses[id] = .healthy(Date())
+                let now = Date()
+                statuses[id] = .healthy(now)
+                lastSucceededAt[id] = now
             case let .failure(error):
+                let now = Date()
                 statuses[id] = .failed(error)
+                lastFailedAt[id] = now
+                lastFailureByTarget[id] = error
             }
+        }
+    }
+
+    /// One-time wake for a single target. Never starts the continuous loop.
+    /// Works even when continuous mode is disabled so users can pre-warm a disk on demand.
+    func wake(targetID: UUID) async {
+        guard let target = store.target(id: targetID) else { return }
+        guard !wakingTargetIDs.contains(targetID) else { return }
+        wakingTargetIDs.insert(targetID)
+        defer { wakingTargetIDs.remove(targetID) }
+        statuses[targetID] = .writing
+        do {
+            let resource = try resolver.resolve(target.bookmarkData)
+            defer { resource.close() }
+            if let refreshed = resource.refreshedBookmarkData {
+                try? store.replaceBookmark(refreshed, id: target.id)
+            }
+            try await writer.write(
+                to: resource.url,
+                timeout: POSIXDriveAliveWriter.defaultTimeout
+            )
+            guard store.target(id: targetID) != nil else { return }
+            let now = Date()
+            statuses[targetID] = .healthy(now)
+            lastSucceededAt[targetID] = now
+        } catch let failure as DriveAliveFailure {
+            guard store.target(id: targetID) != nil else { return }
+            let now = Date()
+            statuses[targetID] = .failed(failure)
+            lastFailedAt[targetID] = now
+            lastFailureByTarget[targetID] = failure
+        } catch is CancellationError {
+            guard store.target(id: targetID) != nil else { return }
+            let now = Date()
+            statuses[targetID] = .failed(.timedOut)
+            lastFailedAt[targetID] = now
+            lastFailureByTarget[targetID] = .timedOut
+        } catch {
+            guard store.target(id: targetID) != nil else { return }
+            let failure = failure(for: error)
+            let now = Date()
+            statuses[targetID] = .failed(failure)
+            lastFailedAt[targetID] = now
+            lastFailureByTarget[targetID] = failure
         }
     }
 
@@ -164,6 +231,10 @@ final class DriveAliveController {
         }
         _ = try store.remove(id: id)
         statuses.removeValue(forKey: id)
+        lastSucceededAt.removeValue(forKey: id)
+        lastFailedAt.removeValue(forKey: id)
+        lastFailureByTarget.removeValue(forKey: id)
+        wakingTargetIDs.remove(id)
         lastErrorMessage = cleanupFailure?.localizedDescription
         reconcileLoop()
     }
