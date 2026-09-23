@@ -129,6 +129,100 @@ struct DriveAliveControllerTests {
         #expect(controller.lastErrorMessage == DriveAliveFailure.targetUnavailable.localizedDescription)
     }
 
+    @Test func wakeWritesSingleTargetWithoutStartingLoop() async throws {
+        let suite = "OpenFindTests.DriveAliveWake.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let resolver = FakeControllerResolver()
+        let store = DriveAliveStore(defaults: defaults, resolver: resolver)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFindDriveAliveWake.\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let id = try store.add(directoryURL: directory, policy: .whileOpenFindRuns)
+        // Continuous mode stays disabled: wake must work on demand.
+        #expect(!store.isEnabled)
+        let writer = FakeDriveAliveWriter()
+        let controller = DriveAliveController(
+            store: store,
+            sessions: AwakeSessionController(assertions: FakeControllerAssertions()),
+            resolver: resolver,
+            writer: writer
+        )
+        controller.start()
+        #expect(!controller.isRunning)
+
+        await controller.wake(targetID: id)
+
+        #expect(writer.writtenURLs.count == 1)
+        #expect(!controller.isRunning)
+        #expect(controller.wakingTargetIDs.isEmpty)
+        guard case let .healthy(date) = controller.statuses[id] else {
+            Issue.record("Expected healthy status after wake")
+            return
+        }
+        #expect(controller.lastSucceededAt[id] == date)
+    }
+
+    @Test func wakeFailureRecordsLastFailure() async throws {
+        let suite = "OpenFindTests.DriveAliveWake.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let resolver = FakeControllerResolver()
+        let store = DriveAliveStore(defaults: defaults, resolver: resolver)
+        let id = try store.add(
+            directoryURL: FileManager.default.temporaryDirectory,
+            policy: .whileOpenFindRuns
+        )
+        let writer = FakeDriveAliveWriter()
+        writer.error = .readOnly
+        let controller = DriveAliveController(
+            store: store,
+            sessions: AwakeSessionController(assertions: FakeControllerAssertions()),
+            resolver: resolver,
+            writer: writer
+        )
+
+        await controller.wake(targetID: id)
+
+        #expect(controller.statuses[id] == .failed(.readOnly))
+        #expect(controller.lastFailureByTarget[id] == .readOnly)
+        #expect(controller.lastFailedAt[id] != nil)
+        #expect(!controller.isRunning)
+    }
+
+    @Test func wakeWithRealWriterCreatesBoundedMarker() async throws {
+        let suite = "OpenFindTests.DriveAliveWake.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let resolver = FakeControllerResolver()
+        let store = DriveAliveStore(defaults: defaults, resolver: resolver)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFindDriveAliveWakeReal.\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let id = try store.add(directoryURL: directory, policy: .whileOpenFindRuns)
+        let writer = POSIXDriveAliveWriter(
+            syncFile: { _ in 0 },
+            operationScheduler: { operation in operation() }
+        )
+        let controller = DriveAliveController(
+            store: store,
+            sessions: AwakeSessionController(assertions: FakeControllerAssertions()),
+            resolver: resolver,
+            writer: writer
+        )
+
+        await controller.wake(targetID: id)
+
+        let marker = directory.appendingPathComponent(POSIXDriveAliveWriter.markerName)
+        let payload = try Data(contentsOf: marker)
+        #expect(payload.count == POSIXDriveAliveWriter.payloadSize)
+        #expect(payload.prefix(24) == Data("OpenFind Drive Alive v1\n".utf8))
+        #expect(controller.lastSucceededAt[id] != nil)
+        #expect(!controller.isRunning)
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(1),
         condition: @escaping @MainActor () -> Bool
