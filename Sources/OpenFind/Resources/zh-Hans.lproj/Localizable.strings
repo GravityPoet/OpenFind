@@ -226,6 +226,7 @@
 "2 Hours" = "2 小时";
 "Dismiss Error" = "忽略错误";
 "Extend Awake Session" = "延长保持唤醒时间…";
+"Extend Awake By Format" = "延长 %@";
 "Disable Triggers and End Session" = "停用触发器并停止保持唤醒";
 "End Time Calculation" = "结束时间计算方式";
 "Timer" = "定时器";
