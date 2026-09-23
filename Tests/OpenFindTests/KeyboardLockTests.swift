@@ -127,7 +127,7 @@ struct KeyboardLockTests {
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let controller = KeyboardLockController(registry: GlobalHotKeyRegistry(), defaults: defaults)
-        #expect(controller.panelOpacity == 0.85)
+        #expect(controller.panelOpacity == 0.5)
         controller.setPanelOpacity(0.35)
         let reloaded = KeyboardLockController(registry: GlobalHotKeyRegistry(), defaults: defaults)
         #expect(reloaded.panelOpacity == 0.35)
@@ -140,6 +140,6 @@ struct KeyboardLockTests {
         reloaded.setPanelOpacity(2)
         #expect(reloaded.panelOpacity == 1)
         reloaded.setPanelOpacity(.nan)
-        #expect(reloaded.panelOpacity == 0.85)
+        #expect(reloaded.panelOpacity == 0.5)
     }
 }

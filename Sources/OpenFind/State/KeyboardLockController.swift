@@ -16,7 +16,7 @@ final class KeyboardLockController {
     )
     nonisolated static let defaultActivationCountdownSeconds = 0
     nonisolated static let panelOpacityRange = 0.2...1.0
-    nonisolated static let defaultPanelOpacity = 0.85
+    nonisolated static let defaultPanelOpacity = 0.5
 
     enum State: Equatable {
         case disabled
