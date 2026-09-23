@@ -191,7 +191,7 @@ final class KeyboardUnlockPanelController: NSObject {
 
 @MainActor
 private final class KeyboardUnlockBackgroundView: NSView {
-    var backgroundOpacity: CGFloat = 0.85 { didSet { needsDisplay = true } }
+    var backgroundOpacity: CGFloat = 0.5 { didSet { needsDisplay = true } }
     var previewOpacity = false { didSet { needsDisplay = true } }
     private var pointerInside = false
     private var pointerTrackingArea: NSTrackingArea?
