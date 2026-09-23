@@ -268,7 +268,7 @@
 "Drive Alive Target Count" = "%lld 个目标";
 "Drive Alive Status Format" = "%lld/%lld 个目标活跃";
 "No Drive Alive Targets" = "尚未配置文件夹";
-"Refresh Drive Alive" = "立即写入";
+"Refresh Drive Alive" = "刷新状态";
 "Drive Alive Help" = "外接磁盘助手显示每个文件夹的连接与可写状态，并为每个目标提供一次性的“立即唤醒”。持续模式仅在你显式开启后按间隔覆盖一个有上限的小标记文件，会增加耗电，只能减少部分外接机械硬盘或硬盘柜的唤醒等待，不能修复线缆、供电、扩展坞、驱动、网络或固件导致的断连。";
 "Wake Disk Now" = "立即唤醒";
 "Waking Disk" = "正在唤醒…";
@@ -277,6 +277,8 @@
 "Advanced Continuous Mode" = "高级：持续模式";
 "Continuous Mode On" = "持续模式运行中";
 "Continuous Mode Off" = "持续模式未运行";
+"Disk Connected" = "已连接";
+"Disk Disconnected" = "未连接";
 
 /* Triggers */
 "Triggers" = "触发器";

@@ -223,6 +223,123 @@ struct DriveAliveControllerTests {
         #expect(!controller.isRunning)
     }
 
+    @Test func removeDuringWakeLeavesNoOrphanMarker() async throws {
+        let suite = "OpenFindTests.DriveAliveWakeRemove.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let resolver = FakeControllerResolver()
+        let store = DriveAliveStore(defaults: defaults, resolver: resolver)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFindDriveAliveWakeRemove.\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let id = try store.add(directoryURL: directory, policy: .whileOpenFindRuns)
+        let gated = GatedRealDriveAliveWriter()
+        let controller = DriveAliveController(
+            store: store,
+            sessions: AwakeSessionController(assertions: FakeControllerAssertions()),
+            resolver: resolver,
+            writer: gated
+        )
+        controller.start()
+
+        let wakeTask = Task { @MainActor in
+            await controller.wake(targetID: id)
+        }
+        try await waitUntil { gated.didEnterWrite }
+        // Removal must wait for the in-flight wake, then clean its marker.
+        let removeTask = Task { @MainActor in
+            try await controller.removeTarget(id: id)
+        }
+        // Let removal reach its wait state before releasing the write.
+        try await Task.sleep(for: .milliseconds(50))
+        gated.release()
+        await wakeTask.value
+        try await removeTask.value
+
+        #expect(store.targets.isEmpty)
+        #expect(controller.statuses[id] == nil)
+        #expect(controller.reachableTargetIDs.contains(id) == false)
+        #expect(controller.wakingTargetIDs.contains(id) == false)
+        let marker = directory.appendingPathComponent(POSIXDriveAliveWriter.markerName)
+        #expect(FileManager.default.fileExists(atPath: marker.path) == false)
+        #expect(gated.writeCount == 1)
+        #expect(gated.removeCount == 1)
+    }
+
+    @Test func successThenUnavailableMarksDisconnected() async throws {
+        let suite = "OpenFindTests.DriveAliveRevalidate.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let resolver = FakeControllerResolver()
+        let store = DriveAliveStore(defaults: defaults, resolver: resolver)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFindDriveAliveGone.\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let id = try store.add(directoryURL: directory, policy: .whileOpenFindRuns)
+        let writer = POSIXDriveAliveWriter(
+            syncFile: { _ in 0 },
+            operationScheduler: { operation in operation() }
+        )
+        let controller = DriveAliveController(
+            store: store,
+            sessions: AwakeSessionController(assertions: FakeControllerAssertions()),
+            resolver: resolver,
+            writer: writer
+        )
+        await controller.wake(targetID: id)
+        guard case .healthy = controller.statuses[id] else {
+            Issue.record("Expected healthy before the target disappears")
+            return
+        }
+        #expect(controller.reachableTargetIDs.contains(id))
+        #expect(controller.activeTargetCount == 1)
+
+        try FileManager.default.removeItem(at: directory)
+        await controller.revalidate(targetID: id)
+
+        #expect(controller.reachableTargetIDs.contains(id) == false)
+        #expect(controller.statuses[id] == .failed(.targetUnavailable))
+        #expect(controller.activeTargetCount == 0)
+        // History is preserved for the UI's “last success” line.
+        #expect(controller.lastSucceededAt[id] != nil)
+        #expect(controller.lastFailureByTarget[id] == .targetUnavailable)
+    }
+
+    @Test func isRunningChangeDeliversObservation() async throws {
+        let suite = "OpenFindTests.DriveAliveIsRunning.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let resolver = FakeControllerResolver()
+        let store = DriveAliveStore(defaults: defaults, resolver: resolver)
+        let controller = DriveAliveController(
+            store: store,
+            sessions: AwakeSessionController(assertions: FakeControllerAssertions()),
+            resolver: resolver,
+            writer: FakeDriveAliveWriter()
+        )
+        controller.start()
+        #expect(!controller.isRunning)
+
+        let flag = ObservationFlag()
+        withObservationTracking {
+            _ = controller.isRunning
+        } onChange: {
+            flag.set()
+        }
+        _ = try store.add(
+            directoryURL: FileManager.default.temporaryDirectory,
+            policy: .whileOpenFindRuns
+        )
+        store.setEnabled(true)
+        try await waitUntil { controller.isRunning }
+        try await waitUntil { flag.value }
+
+        #expect(controller.isRunning)
+        #expect(flag.value)
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(1),
         condition: @escaping @MainActor () -> Bool
@@ -276,6 +393,47 @@ private final class FakeDriveAliveWriter: @unchecked Sendable, DriveAliveWriting
     }
 
     func removeMarker(from directoryURL: URL, timeout: Duration) async throws {}
+}
+
+private final class GatedRealDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
+    private let lock = NSLock()
+    private var entered = false
+    private var released = false
+    private var writes = 0
+    private var removes = 0
+    private let real = POSIXDriveAliveWriter(
+        syncFile: { _ in 0 },
+        operationScheduler: { operation in operation() }
+    )
+
+    var didEnterWrite: Bool { lock.withLock { entered } }
+    var writeCount: Int { lock.withLock { writes } }
+    var removeCount: Int { lock.withLock { removes } }
+
+    func release() {
+        lock.withLock { released = true }
+    }
+
+    func write(to directoryURL: URL, timeout: Duration) async throws {
+        lock.withLock { entered = true }
+        while !lock.withLock({ released }) {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        lock.withLock { writes += 1 }
+        try await real.write(to: directoryURL, timeout: timeout)
+    }
+
+    func removeMarker(from directoryURL: URL, timeout: Duration) async throws {
+        lock.withLock { removes += 1 }
+        try await real.removeMarker(from: directoryURL, timeout: timeout)
+    }
+}
+
+private final class ObservationFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+    var value: Bool { lock.withLock { flag } }
+    func set() { lock.withLock { flag = true } }
 }
 
 private final class FakeControllerAssertions: PowerAssertionControlling {

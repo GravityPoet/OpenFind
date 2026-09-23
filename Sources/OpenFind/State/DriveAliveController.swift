@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -12,13 +13,18 @@ final class DriveAliveController {
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshGeneration: UInt64 = 0
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var wakeTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var removingIDs: Set<UUID> = []
+    @ObservationIgnored private var workspaceObservers: [any NSObjectProtocol] = []
 
+    private(set) var isRunning = false
     private(set) var statuses: [UUID: DriveAliveTargetStatus] = [:]
     private(set) var lastErrorMessage: String?
     private(set) var lastSucceededAt: [UUID: Date] = [:]
     private(set) var lastFailedAt: [UUID: Date] = [:]
     private(set) var lastFailureByTarget: [UUID: DriveAliveFailure] = [:]
     private(set) var wakingTargetIDs: Set<UUID> = []
+    private(set) var reachableTargetIDs: Set<UUID> = []
 
     init(
         store: DriveAliveStore,
@@ -31,13 +37,13 @@ final class DriveAliveController {
         self.resolver = resolver
         self.writer = writer
         observeSessionChanges()
+        observeVolumeChanges()
     }
 
-    var isRunning: Bool { loopTask != nil }
-
     var activeTargetCount: Int {
-        statuses.values.reduce(into: 0) { count, status in
-            if case .healthy = status { count += 1 }
+        statuses.reduce(into: 0) { count, entry in
+            guard reachableTargetIDs.contains(entry.key) else { return }
+            if case .healthy = entry.value { count += 1 }
         }
     }
 
@@ -46,12 +52,16 @@ final class DriveAliveController {
         hasStarted = true
         observeStoreChanges()
         reconcileLoop()
+        Task { @MainActor [weak self] in
+            await self?.revalidateAll()
+        }
     }
 
     func stop() {
         hasStarted = false
         loopTask?.cancel()
         loopTask = nil
+        isRunning = false
         refreshTask?.cancel()
         refreshTask = nil
         for target in store.targets { statuses[target.id] = .inactive }
@@ -88,9 +98,31 @@ final class DriveAliveController {
         for id in Array(lastFailureByTarget.keys) where !configuredIDs.contains(id) {
             lastFailureByTarget.removeValue(forKey: id)
         }
+        reachableTargetIDs = reachableTargetIDs.intersection(configuredIDs)
         wakingTargetIDs = wakingTargetIDs.intersection(configuredIDs)
+        removingIDs = removingIDs.intersection(configuredIDs)
+        for id in Array(wakeTasks.keys) where !configuredIDs.contains(id) {
+            wakeTasks.removeValue(forKey: id)
+        }
         guard store.isEnabled else {
-            for target in targets { statuses[target.id] = .inactive }
+            // Disabled: no writes, but still report current reachability so the
+            // UI never shows a stale “healthy” as currently connected.
+            for target in targets {
+                statuses[target.id] = .inactive
+                do {
+                    let resource = try resolver.resolve(target.bookmarkData)
+                    defer { resource.close() }
+                    try ensureDirectoryExists(resource.url)
+                    reachableTargetIDs.insert(target.id)
+                } catch {
+                    let failure = failure(for: error)
+                    if failure == .targetUnavailable || failure == .bookmarkInvalid || failure == .unsupportedTarget {
+                        reachableTargetIDs.remove(target.id)
+                    } else {
+                        reachableTargetIDs.insert(target.id)
+                    }
+                }
+            }
             return
         }
 
@@ -104,12 +136,15 @@ final class DriveAliveController {
 
         var resolved: [(target: DriveAliveTarget, resource: DriveAliveResolvedResource)] = []
         for target in eligible {
+            // A removal holds removingIDs to block new work during cleanup.
+            if removingIDs.contains(target.id) { continue }
             do {
                 let resource = try resolver.resolve(target.bookmarkData)
                 if let refreshed = resource.refreshedBookmarkData {
                     try? store.replaceBookmark(refreshed, id: target.id)
                 }
                 resolved.append((target, resource))
+                reachableTargetIDs.insert(target.id)
                 statuses[target.id] = .writing
             } catch {
                 let failure = failure(for: error)
@@ -117,6 +152,12 @@ final class DriveAliveController {
                 statuses[target.id] = .failed(failure)
                 lastFailedAt[target.id] = now
                 lastFailureByTarget[target.id] = failure
+                if failure == .targetUnavailable || failure == .bookmarkInvalid || failure == .unsupportedTarget {
+                    reachableTargetIDs.remove(target.id)
+                } else {
+                    // Resolve threw a permission-style error but the volume still exists.
+                    reachableTargetIDs.insert(target.id)
+                }
             }
         }
 
@@ -152,31 +193,106 @@ final class DriveAliveController {
         guard store.isEnabled else { return }
         for (id, result) in outcomes {
             guard store.target(id: id) != nil else { continue }
+            guard !removingIDs.contains(id) else { continue }
             switch result {
             case .success:
                 let now = Date()
                 statuses[id] = .healthy(now)
                 lastSucceededAt[id] = now
+                reachableTargetIDs.insert(id)
             case let .failure(error):
                 let now = Date()
                 statuses[id] = .failed(error)
                 lastFailedAt[id] = now
                 lastFailureByTarget[id] = error
+                // Write-phase failures keep reachability when resolve had succeeded.
+                reachableTargetIDs.insert(id)
             }
+        }
+    }
+
+    /// Re-check whether a target is currently reachable without writing.
+    /// Keeps lastSucceededAt as history; unreachable targets become failed
+    /// so the UI never shows stale “healthy” as currently connected.
+    func revalidate(targetID: UUID) async {
+        guard let target = store.target(id: targetID) else { return }
+        guard !removingIDs.contains(targetID) else { return }
+        do {
+            let resource = try resolver.resolve(target.bookmarkData)
+            defer { resource.close() }
+            try ensureDirectoryExists(resource.url)
+            if let refreshed = resource.refreshedBookmarkData {
+                try? store.replaceBookmark(refreshed, id: target.id)
+            }
+            reachableTargetIDs.insert(targetID)
+            // If we previously marked it unreachable but it is back, drop the
+            // stale unavailable status. Keep healthy/last-success history.
+            if case let .failed(failure) = statuses[targetID],
+               failure == .targetUnavailable || failure == .bookmarkInvalid || failure == .unsupportedTarget
+            {
+                statuses[targetID] = .inactive
+            }
+        } catch {
+            let failure = failure(for: error)
+            let now = Date()
+            // Only treat resolve failures as connectivity loss.
+            if failure == .targetUnavailable || failure == .bookmarkInvalid || failure == .unsupportedTarget {
+                reachableTargetIDs.remove(targetID)
+                // Never report stale healthy as currently connected.
+                statuses[targetID] = .failed(failure)
+                lastFailedAt[targetID] = now
+                lastFailureByTarget[targetID] = failure
+            } else {
+                reachableTargetIDs.insert(targetID)
+                statuses[targetID] = .failed(failure)
+                lastFailedAt[targetID] = now
+                lastFailureByTarget[targetID] = failure
+            }
+        }
+    }
+
+    func revalidateAll() async {
+        for target in store.targets {
+            // Serialize lightly: resolve is cheap, no writes here.
+            await revalidate(targetID: target.id)
         }
     }
 
     /// One-time wake for a single target. Never starts the continuous loop.
     /// Works even when continuous mode is disabled so users can pre-warm a disk on demand.
+    /// Serialized per target with removeTarget: deletion waits for an in-flight
+    /// wake, and a deletion in progress blocks new wakes so no orphan marker remains.
     func wake(targetID: UUID) async {
-        guard let target = store.target(id: targetID) else { return }
-        guard !wakingTargetIDs.contains(targetID) else { return }
+        if removingIDs.contains(targetID) { return }
+        if wakingTargetIDs.contains(targetID) { return }
+        if wakeTasks[targetID] != nil { return }
+        guard store.target(id: targetID) != nil else { return }
         wakingTargetIDs.insert(targetID)
-        defer { wakingTargetIDs.remove(targetID) }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performWake(targetID: targetID)
+        }
+        wakeTasks[targetID] = task
+        await task.value
+        wakeTasks.removeValue(forKey: targetID)
+        // performWake always clears its own waking flag via defer; this is a
+        // safety net if the task was cancelled before it started.
+        wakingTargetIDs.remove(targetID)
+    }
+
+    private func performWake(targetID: UUID) async {
+        defer {
+            // Only clear if no removal is holding the target; removal cleans up
+            // after awaiting this task, and Set removal is idempotent.
+            wakingTargetIDs.remove(targetID)
+        }
+        guard let target = store.target(id: targetID) else { return }
+        if removingIDs.contains(targetID) { return }
         statuses[targetID] = .writing
         do {
             let resource = try resolver.resolve(target.bookmarkData)
             defer { resource.close() }
+            if removingIDs.contains(targetID) { return }
             if let refreshed = resource.refreshedBookmarkData {
                 try? store.replaceBookmark(refreshed, id: target.id)
             }
@@ -185,33 +301,68 @@ final class DriveAliveController {
                 timeout: POSIXDriveAliveWriter.defaultTimeout
             )
             guard store.target(id: targetID) != nil else { return }
+            guard !removingIDs.contains(targetID) else { return }
             let now = Date()
             statuses[targetID] = .healthy(now)
             lastSucceededAt[targetID] = now
+            reachableTargetIDs.insert(targetID)
         } catch let failure as DriveAliveFailure {
             guard store.target(id: targetID) != nil else { return }
+            guard !removingIDs.contains(targetID) else { return }
             let now = Date()
             statuses[targetID] = .failed(failure)
             lastFailedAt[targetID] = now
             lastFailureByTarget[targetID] = failure
+            updateReachabilityAfterResolveFailure(targetID: targetID, failure: failure)
         } catch is CancellationError {
             guard store.target(id: targetID) != nil else { return }
+            guard !removingIDs.contains(targetID) else { return }
             let now = Date()
             statuses[targetID] = .failed(.timedOut)
             lastFailedAt[targetID] = now
             lastFailureByTarget[targetID] = .timedOut
+            reachableTargetIDs.insert(targetID)
         } catch {
             guard store.target(id: targetID) != nil else { return }
+            guard !removingIDs.contains(targetID) else { return }
             let failure = failure(for: error)
             let now = Date()
             statuses[targetID] = .failed(failure)
             lastFailedAt[targetID] = now
             lastFailureByTarget[targetID] = failure
+            updateReachabilityAfterResolveFailure(targetID: targetID, failure: failure)
+        }
+    }
+
+    private func updateReachabilityAfterResolveFailure(targetID: UUID, failure: DriveAliveFailure) {
+        if failure == .targetUnavailable || failure == .bookmarkInvalid || failure == .unsupportedTarget {
+            reachableTargetIDs.remove(targetID)
+        } else {
+            reachableTargetIDs.insert(targetID)
         }
     }
 
     func removeTarget(id: UUID) async throws {
+        // Serialize with an in-flight wake: wait first, then hold the removal
+        // gate so no new wake can slip in between cleanup and store removal.
+        // Do NOT clear wakingTargetIDs prematurely; the wake task owns its flag.
+        if let inFlight = wakeTasks[id] {
+            await inFlight.value
+        }
         if let refreshTask { await refreshTask.value }
+        // A new wake may have queued while we waited; drain once more.
+        if let retry = wakeTasks[id] {
+            await retry.value
+        }
+        // If a wake somehow restarted (should be blocked by removingIDs below
+        // on the next attempt), keep waiting instead of racing its write.
+        removingIDs.insert(id)
+        defer { removingIDs.remove(id) }
+        // After holding the gate, re-check for a wake that slipped in just
+        // before the gate was set.
+        if let late = wakeTasks[id] {
+            await late.value
+        }
         guard let target = store.target(id: id) else {
             throw DriveAliveStoreError.targetNotFound
         }
@@ -234,7 +385,9 @@ final class DriveAliveController {
         lastSucceededAt.removeValue(forKey: id)
         lastFailedAt.removeValue(forKey: id)
         lastFailureByTarget.removeValue(forKey: id)
+        reachableTargetIDs.remove(id)
         wakingTargetIDs.remove(id)
+        wakeTasks.removeValue(forKey: id)
         lastErrorMessage = cleanupFailure?.localizedDescription
         reconcileLoop()
     }
@@ -279,12 +432,18 @@ final class DriveAliveController {
             refreshTask = nil
             loopTask?.cancel()
             loopTask = nil
+            isRunning = false
             let configuredIDs = Set(store.targets.map(\.id))
             statuses = statuses.filter { configuredIDs.contains($0.key) }
             for target in store.targets { statuses[target.id] = .inactive }
             return
         }
-        guard loopTask == nil else { return }
+        guard loopTask == nil else {
+            // Keep the observable flag in sync even when the task already exists.
+            isRunning = true
+            return
+        }
+        isRunning = true
         loopTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -298,8 +457,40 @@ final class DriveAliveController {
         }
     }
 
+    private func observeVolumeChanges() {
+        let center = NSWorkspace.shared.notificationCenter
+        let mount = center.addObserver(
+            forName: NSWorkspace.didMountNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.revalidateAll()
+            }
+        }
+        let unmount = center.addObserver(
+            forName: NSWorkspace.didUnmountNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.revalidateAll()
+            }
+        }
+        workspaceObservers = [mount, unmount]
+    }
+
     private var activeSessionIsRunning: Bool {
         sessions.isActive
+    }
+
+    private func ensureDirectoryExists(_ url: URL) throws {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue
+        else {
+            throw DriveAliveFailure.targetUnavailable
+        }
     }
 
     private func failure(for error: Error) -> DriveAliveFailure {
