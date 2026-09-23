@@ -267,7 +267,9 @@
 "Drive Alive Healthy" = "Healthy";
 "Drive Alive Target Count" = "%lld targets";
 "Drive Alive Status Format" = "%lld active of %lld targets";
+"Wake Target Format" = "Wake %@";
 "No Drive Alive Targets" = "No folders configured";
+"Configure Drive Alive" = "Configure external disk folders";
 "Refresh Drive Alive" = "Refresh status";
 "Drive Alive Help" = "External Disk Assistant shows each folder's connection and writability, and offers a one-time Wake now per folder. Continuous mode rewrites one small, bounded marker on a timer only when you explicitly enable it; it uses extra power and may only reduce wake-up waits on some external spinning drives or enclosures. It cannot fix disconnects caused by cables, power, docks, drivers, networks, or firmware.";
 "Wake Disk Now" = "Wake now";
@@ -298,6 +300,8 @@
 "Trigger Operation Failed" = "The Trigger could not be changed.";
 "Triggers Help" = "Triggers are evaluated from top to bottom. The first enabled Trigger whose criteria are all true owns the automatic awake session.";
 "No Active Trigger" = "No active Trigger";
+"Triggers Running" = "Triggers Running";
+"Manage Triggers" = "Manage Triggers…";
 "Trigger Details" = "Trigger Details";
 "New Trigger" = "New Trigger";
 "Trigger Name" = "Name";

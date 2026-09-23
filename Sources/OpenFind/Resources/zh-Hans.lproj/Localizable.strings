@@ -267,7 +267,9 @@
 "Drive Alive Healthy" = "正常";
 "Drive Alive Target Count" = "%lld 个目标";
 "Drive Alive Status Format" = "%lld/%lld 个目标活跃";
+"Wake Target Format" = "唤醒 %@";
 "No Drive Alive Targets" = "尚未配置文件夹";
+"Configure Drive Alive" = "配置外接磁盘文件夹";
 "Refresh Drive Alive" = "刷新状态";
 "Drive Alive Help" = "外接磁盘助手显示每个文件夹的连接与可写状态，并为每个目标提供一次性的“立即唤醒”。持续模式仅在你显式开启后按间隔覆盖一个有上限的小标记文件，会增加耗电，只能减少部分外接机械硬盘或硬盘柜的唤醒等待，不能修复线缆、供电、扩展坞、驱动、网络或固件导致的断连。";
 "Wake Disk Now" = "立即唤醒";
@@ -298,6 +300,8 @@
 "Trigger Operation Failed" = "无法修改触发器。";
 "Triggers Help" = "触发器按从上到下的顺序评估。第一个启用且所有条件均满足的触发器拥有自动保持唤醒会话。";
 "No Active Trigger" = "当前没有活动触发器";
+"Triggers Running" = "触发器运行中";
+"Manage Triggers" = "管理触发器…";
 "Trigger Details" = "触发器详情";
 "New Trigger" = "新建触发器";
 "Trigger Name" = "名称";

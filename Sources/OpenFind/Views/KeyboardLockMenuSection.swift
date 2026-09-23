@@ -4,7 +4,7 @@ struct KeyboardLockMenuSection: View {
     @Bindable var controller: KeyboardLockController
 
     var body: some View {
-        Section(L("Keyboard Cleaning")) {
+        Group {
             Button {
                 controller.toggle()
             } label: {

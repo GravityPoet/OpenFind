@@ -5,7 +5,7 @@ struct AwakeMenuSection: View {
     @Bindable var preferences: AwakeSessionPreferences
 
     var body: some View {
-        Section(L("Keep Awake")) {
+        Menu {
             if let session = controller.activeSession {
                 Text(statusText(for: session))
                 Button {
@@ -18,94 +18,53 @@ struct AwakeMenuSection: View {
                         systemImage: "stop.fill"
                     )
                 }
-
+                Divider()
                 if session.deadline != nil {
-                    Menu(L("Extend Awake Session")) {
-                        extensionButton(L("15 Minutes"), duration: 15 * 60)
-                        extensionButton(L("30 Minutes"), duration: 30 * 60)
-                        extensionButton(L("1 Hour"), duration: 60 * 60)
-                        extensionButton(L("2 Hours"), duration: 2 * 60 * 60)
-                        Button(L("Custom Duration")) {
-                            guard let duration = AwakeSessionPrompt.customExtension() else { return }
-                            controller.requestExtend(by: duration)
-                        }
+                    extensionButton(L("15 Minutes"), duration: 15 * 60)
+                    extensionButton(L("30 Minutes"), duration: 30 * 60)
+                    extensionButton(L("1 Hour"), duration: 60 * 60)
+                    extensionButton(L("2 Hours"), duration: 2 * 60 * 60)
+                    Button(L("Extend Awake Session")) {
+                        guard let duration = AwakeSessionPrompt.customExtension() else { return }
+                        controller.requestExtend(by: duration)
                     }
+                    Divider()
                 }
-
-                Toggle(
-                    L("Allow Display Sleep"),
-                    isOn: Binding(
-                        get: { session.options.allowsDisplaySleep },
-                        set: { controller.requestDisplaySleepAllowed($0) }
-                    )
-                )
-
-                Toggle(
-                    L("Allow Screen Saver"),
-                    isOn: Binding(
-                        get: { controller.allowsScreenSaver },
-                        set: { controller.requestScreenSaverAllowed($0) }
-                    )
-                )
-
-                if controller.closedDisplayModeSupported {
-                    Toggle(
-                        L("Allow Closed Display Sleep"),
-                        isOn: Binding(
-                            get: { !controller.allowsClosedDisplaySleep },
-                            set: { controller.requestClosedDisplaySleepAllowed(!$0) }
-                        )
-                    )
-                }
+                sessionOptions
             } else {
-                Menu {
-                    sessionButton(L("Indefinitely"), condition: .indefinitely)
-                    Divider()
-                    sessionButton(L("15 Minutes"), condition: .after(15 * 60))
-                    sessionButton(L("30 Minutes"), condition: .after(30 * 60))
-                    sessionButton(L("1 Hour"), condition: .after(60 * 60))
-                    sessionButton(L("2 Hours"), condition: .after(2 * 60 * 60))
-                    Button(L("Custom Duration")) {
-                        guard let duration = AwakeSessionPrompt.customDuration() else { return }
-                        startSession(.after(duration))
-                    }
-                    Button(L("Until Date and Time")) {
-                        guard let date = AwakeSessionPrompt.endDate() else { return }
-                        startSession(.at(date))
-                    }
-                    Button(L("While Application Runs")) {
-                        guard let identifier = AwakeSessionPrompt.applicationBundleIdentifier() else { return }
-                        startSession(.whileApplicationRuns(bundleIdentifier: identifier))
-                    }
-                    Divider()
-                    Menu(L("While File Is Downloading")) {
-                        fileDownloadButton(L("30 Second Timeout"), timeout: 30)
-                        fileDownloadButton(L("1 Minute Timeout"), timeout: 60)
-                        fileDownloadButton(L("5 Minute Timeout"), timeout: 5 * 60)
-                    }
-                    Divider()
-                    Menu(L("Next Session Options")) {
-                        Toggle(L("Allow Display Sleep"), isOn: Binding(
-                            get: { preferences.allowsDisplaySleep },
-                            set: { preferences.setAllowsDisplaySleep($0) }
-                        ))
-                        Toggle(L("Allow Screen Saver"), isOn: Binding(
-                            get: { preferences.allowsScreenSaver },
-                            set: { preferences.setAllowsScreenSaver($0) }
-                        ))
-                        if controller.closedDisplayModeSupported {
-                            Toggle(L("Allow Closed Display Sleep"), isOn: Binding(
-                                get: { !preferences.allowsClosedDisplaySleep },
-                                set: { preferences.setAllowsClosedDisplaySleep(!$0) }
-                            ))
-                        }
-                    }
+                Button {
+                    startSession(.indefinitely)
                 } label: {
-                    Label(L("Start Awake Session"), systemImage: "play.fill")
+                    Label(L("Indefinitely"), systemImage: "play.fill")
                 }
+                extensionButton(L("15 Minutes"), duration: 15 * 60, starting: true)
+                extensionButton(L("30 Minutes"), duration: 30 * 60, starting: true)
+                extensionButton(L("1 Hour"), duration: 60 * 60, starting: true)
+                extensionButton(L("2 Hours"), duration: 2 * 60 * 60, starting: true)
+                Button(L("Custom Duration")) {
+                    guard let duration = AwakeSessionPrompt.customDuration() else { return }
+                    startSession(.after(duration))
+                }
+                Button(L("Until Date and Time")) {
+                    guard let date = AwakeSessionPrompt.endDate() else { return }
+                    startSession(.at(date))
+                }
+                Button(L("While Application Runs")) {
+                    guard let identifier = AwakeSessionPrompt.applicationBundleIdentifier() else { return }
+                    startSession(.whileApplicationRuns(bundleIdentifier: identifier))
+                }
+                Section(L("While File Is Downloading")) {
+                    fileDownloadButton(L("30 Second Timeout"), timeout: 30)
+                    fileDownloadButton(L("1 Minute Timeout"), timeout: 60)
+                    fileDownloadButton(L("5 Minute Timeout"), timeout: 5 * 60)
+                }
+                Divider()
+                Text(L("Next Session Options"))
+                sessionOptions
             }
 
             if let error = controller.lastErrorMessage {
+                Divider()
                 Text(error)
                 Button(L("Dismiss Error")) {
                     controller.clearError()
@@ -115,8 +74,60 @@ struct AwakeMenuSection: View {
             if controller.isPowerTransitionInProgress {
                 Label(L("Updating Keep Awake"), systemImage: "hourglass")
             }
+        } label: {
+            Label(
+                controller.isPowerTransitionInProgress
+                    ? L("Updating Keep Awake")
+                    : controller.activeSession.map(statusText(for:)) ?? L("Keep Awake"),
+                systemImage: controller.isActive ? "sun.max" : "moon.zzz"
+            )
         }
         .disabled(controller.isPowerTransitionInProgress)
+    }
+
+    @ViewBuilder
+    private var sessionOptions: some View {
+        Toggle(
+            L("Allow Display Sleep"),
+            isOn: Binding(
+                get: { controller.activeSession?.options.allowsDisplaySleep ?? preferences.allowsDisplaySleep },
+                set: { enabled in
+                    if controller.activeSession != nil {
+                        controller.requestDisplaySleepAllowed(enabled)
+                    } else {
+                        preferences.setAllowsDisplaySleep(enabled)
+                    }
+                }
+            )
+        )
+        Toggle(
+            L("Allow Screen Saver"),
+            isOn: Binding(
+                get: { controller.activeSession != nil ? controller.allowsScreenSaver : preferences.allowsScreenSaver },
+                set: { enabled in
+                    if controller.activeSession != nil {
+                        controller.requestScreenSaverAllowed(enabled)
+                    } else {
+                        preferences.setAllowsScreenSaver(enabled)
+                    }
+                }
+            )
+        )
+        if controller.closedDisplayModeSupported {
+            Toggle(
+                L("Allow Closed Display Sleep"),
+                isOn: Binding(
+                    get: { controller.activeSession != nil ? !controller.allowsClosedDisplaySleep : !preferences.allowsClosedDisplaySleep },
+                    set: { enabled in
+                        if controller.activeSession != nil {
+                            controller.requestClosedDisplaySleepAllowed(!enabled)
+                        } else {
+                            preferences.setAllowsClosedDisplaySleep(!enabled)
+                        }
+                    }
+                )
+            )
+        }
     }
 
     private func fileDownloadButton(_ title: String, timeout: TimeInterval) -> some View {
@@ -125,25 +136,21 @@ struct AwakeMenuSection: View {
                 message: L("Select Downloading File"),
                 prompt: L("Monitor File")
             ) else { return }
-            controller.requestStart(.init(
-                endCondition: .whileFileDownloads(url, inactivityTimeout: timeout),
-                options: preferences.sessionOptions
-            ))
+            startSession(.whileFileDownloads(url, inactivityTimeout: timeout))
         }
     }
 
-    private func sessionButton(
+    private func extensionButton(
         _ title: String,
-        condition: AwakeSessionEndCondition
+        duration: TimeInterval,
+        starting: Bool = false
     ) -> some View {
         Button(title) {
-            startSession(condition)
-        }
-    }
-
-    private func extensionButton(_ title: String, duration: TimeInterval) -> some View {
-        Button(title) {
-            controller.requestExtend(by: duration)
+            if starting {
+                startSession(.after(duration))
+            } else {
+                controller.requestExtend(by: duration)
+            }
         }
     }
 
