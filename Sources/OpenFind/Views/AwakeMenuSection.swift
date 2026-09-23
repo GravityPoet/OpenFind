@@ -145,7 +145,7 @@ struct AwakeMenuSection: View {
         duration: TimeInterval,
         starting: Bool = false
     ) -> some View {
-        Button(title) {
+        Button(starting ? title : String(format: L("Extend Awake By Format"), title)) {
             if starting {
                 startSession(.after(duration))
             } else {

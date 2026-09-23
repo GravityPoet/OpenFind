@@ -226,6 +226,7 @@
 "2 Hours" = "2 Hours";
 "Dismiss Error" = "Dismiss Error";
 "Extend Awake Session" = "Keep Awake Longer…";
+"Extend Awake By Format" = "Extend by %@";
 "Disable Triggers and End Session" = "Disable Triggers and Stop Keeping Awake";
 "End Time Calculation" = "End Time Calculation";
 "Timer" = "Timer";
