@@ -94,10 +94,7 @@ struct DriveAliveSettingsSection: View {
                     Text(L("Wake Disk Now"))
                 }
                 .buttonStyle(.borderless)
-                .disabled(
-                    controller.wakingTargetIDs.contains(target.id)
-                        || !controller.reachableTargetIDs.contains(target.id)
-                )
+                .disabled(!controller.canWake(targetID: target.id))
                 .help(L("Wake Disk Now"))
                 .accessibilityLabel(
                     controller.wakingTargetIDs.contains(target.id)
@@ -109,6 +106,10 @@ struct DriveAliveSettingsSection: View {
                     Image(systemName: "minus.circle")
                 }
                 .buttonStyle(.borderless)
+                .disabled(
+                    controller.wakingTargetIDs.contains(target.id)
+                        || controller.removingTargetIDs.contains(target.id)
+                )
                 .help(L("Remove Drive Alive Folder"))
                 .accessibilityLabel(L("Remove Drive Alive Folder"))
             }
@@ -131,10 +132,17 @@ struct DriveAliveSettingsSection: View {
 
     private func connectionLabel(for id: UUID) -> some View {
         Group {
-            if controller.reachableTargetIDs.contains(id) {
+            switch controller.accessStates[id] {
+            case .checking:
+                Label(L("Disk Checking"), systemImage: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(.secondary)
+            case .unknown, nil:
+                Label(L("Disk Status Unknown"), systemImage: "questionmark.circle")
+                    .foregroundStyle(.secondary)
+            case .writable, .readOnly, .permissionDenied:
                 Label(L("Disk Connected"), systemImage: "externaldrive.fill.badge.checkmark")
                     .foregroundStyle(.green)
-            } else {
+            case .unavailable:
                 Label(L("Disk Disconnected"), systemImage: "externaldrive.fill.badge.xmark")
                     .foregroundStyle(.orange)
             }

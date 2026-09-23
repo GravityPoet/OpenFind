@@ -279,6 +279,9 @@
 "Continuous Mode Off" = "Continuous mode is off";
 "Disk Connected" = "Connected";
 "Disk Disconnected" = "Disconnected";
+"Disk Checking" = "Checking…";
+"Disk Status Unknown" = "Connection unknown";
+"Disk Cleanup Pending" = "Disk cleanup is still finishing. Try removing it again shortly.";
 
 /* Triggers */
 "Triggers" = "Triggers";

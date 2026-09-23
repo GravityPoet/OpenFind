@@ -97,5 +97,10 @@ struct DriveAliveWriterTests {
                 return
             }
         }
+        #expect(
+            FileManager.default.fileExists(
+                atPath: directory.appendingPathComponent(POSIXDriveAliveWriter.markerName).path
+            ) == false
+        )
     }
 }

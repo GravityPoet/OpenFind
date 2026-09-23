@@ -31,6 +31,24 @@ enum DriveAliveTargetStatus: Equatable, Sendable {
     case failed(DriveAliveFailure)
 }
 
+enum DriveAliveAccess: Equatable, Sendable {
+    case unknown, checking, writable, readOnly, permissionDenied, unavailable
+
+    var isReachable: Bool {
+        self == .writable || self == .readOnly || self == .permissionDenied
+    }
+
+    var failure: DriveAliveFailure? {
+        switch self {
+        case .readOnly: .readOnly
+        case .permissionDenied: .permissionDenied
+        case .unavailable: .targetUnavailable
+        case .unknown, .checking, .writable: nil
+        }
+    }
+
+}
+
 enum DriveAliveFailure: Equatable, Sendable, LocalizedError {
     case bookmarkInvalid
     case targetUnavailable
@@ -41,6 +59,20 @@ enum DriveAliveFailure: Equatable, Sendable, LocalizedError {
     case markerConflict
     case unsupportedTarget
     case ioFailure(Int32)
+
+    static func from(_ error: Error) -> Self {
+        if let failure = error as? Self { return failure }
+        if error is DriveAliveStoreError { return .bookmarkInvalid }
+        if let cocoa = error as? CocoaError {
+            switch cocoa.code {
+            case .fileReadNoPermission, .fileWriteNoPermission: return .permissionDenied
+            case .fileWriteVolumeReadOnly: return .readOnly
+            case .fileNoSuchFile, .fileReadNoSuchFile: return .targetUnavailable
+            default: break
+            }
+        }
+        return .targetUnavailable
+    }
 
     var errorDescription: String? {
         switch self {

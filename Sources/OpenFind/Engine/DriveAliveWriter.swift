@@ -12,93 +12,38 @@ final class POSIXDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
     static let defaultTimeout: Duration = .seconds(10)
 
     private static let header = Data("OpenFind Drive Alive v1\n".utf8)
-    private let operationLock = NSLock()
-    private var activePaths: Set<String> = []
     private let syncFile: @Sendable (Int32) -> Int32
-    private let operationScheduler: (@Sendable (@escaping @Sendable () -> Void) -> Void)?
-    private let queue = DispatchQueue(label: "com.openfind.drive-alive", qos: .utility, attributes: .concurrent)
+    private let executor: DriveAliveIOExecutor
 
     init(
         syncFile: (@Sendable (Int32) -> Int32)? = nil,
         operationScheduler: (@Sendable (@escaping @Sendable () -> Void) -> Void)? = nil
     ) {
         self.syncFile = syncFile ?? { Darwin.fsync($0) }
-        self.operationScheduler = operationScheduler
+        self.executor = DriveAliveIOExecutor(schedule: operationScheduler)
     }
 
     func write(to directoryURL: URL, timeout: Duration = defaultTimeout) async throws {
-        try await runWithTimeout(for: directoryURL, timeout: timeout) {
-            try self.writeSynchronously(to: directoryURL)
+        guard directoryURL.isFileURL else { throw DriveAliveFailure.unsupportedTarget }
+        try await executor.run(key: directoryURL.standardizedFileURL.path, timeout: timeout) { cancellation in
+            try self.writeSynchronously(to: directoryURL, cancellation: cancellation)
         }
     }
 
     func removeMarker(from directoryURL: URL, timeout: Duration = defaultTimeout) async throws {
-        try await runWithTimeout(for: directoryURL, timeout: timeout) {
+        guard directoryURL.isFileURL else { throw DriveAliveFailure.unsupportedTarget }
+        try await executor.run(
+            key: directoryURL.standardizedFileURL.path,
+            timeout: timeout,
+            waitForPending: true
+        ) { cancellation in
+            try cancellation.check()
             try self.removeSynchronously(from: directoryURL)
         }
     }
 
-    private func runWithTimeout(
-        for directoryURL: URL,
-        timeout: Duration,
-        operation: @escaping @Sendable () throws -> Void
-    ) async throws {
-        guard timeout > .zero else { throw DriveAliveFailure.timedOut }
-        guard directoryURL.isFileURL else { throw DriveAliveFailure.unsupportedTarget }
-        let key = directoryURL.standardizedFileURL.path
-        guard begin(path: key) else { throw DriveAliveFailure.writeAlreadyPending }
-
-        let completion = DriveAliveWriteCompletion()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                completion.install(continuation)
-                let work: @Sendable () -> Void = { [self] in
-                    let result: Result<Void, Error>
-                    do {
-                        try operation()
-                        result = .success(())
-                    } catch {
-                        result = .failure(error)
-                    }
-                    // Release the logical path before resuming the caller so a
-                    // sequential write cannot observe a completed operation as
-                    // still pending.
-                    finish(path: key)
-                    completion.resolve(result)
-                }
-                if let operationScheduler {
-                    operationScheduler(work)
-                } else {
-                    queue.async(execute: work)
-                }
-                _ = Task.detached(priority: .utility) {
-                    do {
-                        try await Task.sleep(for: timeout)
-                        completion.resolve(.failure(DriveAliveFailure.timedOut))
-                    } catch {
-                        // The timeout task is best effort; the write completion owns the result.
-                    }
-                }
-            }
-        } onCancel: {
-            completion.resolve(.failure(CancellationError()))
-        }
-    }
-
-    private func begin(path: String) -> Bool {
-        operationLock.lock()
-        defer { operationLock.unlock() }
-        guard activePaths.insert(path).inserted else { return false }
-        return true
-    }
-
-    private func finish(path: String) {
-        operationLock.lock()
-        activePaths.remove(path)
-        operationLock.unlock()
-    }
-
-    private func writeSynchronously(to directoryURL: URL) throws {
+    private func writeSynchronously(to directoryURL: URL, cancellation: DriveAliveIOCancellation) throws {
+        try cancellation.check()
         let directoryPath = directoryURL.standardizedFileURL.path
         var directoryInfo = stat()
         guard stat(directoryPath, &directoryInfo) == 0 else {
@@ -108,6 +53,7 @@ final class POSIXDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
             throw DriveAliveFailure.unsupportedTarget
         }
 
+        try cancellation.check()
         let markerURL = directoryURL.appendingPathComponent(Self.markerName, isDirectory: false)
         let fd = try openMarker(markerURL.path)
         defer { _ = Darwin.close(fd.descriptor) }
@@ -115,29 +61,35 @@ final class POSIXDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
         let isNew = fd.wasCreated
         if !isNew { try verifyExistingMarker(fd: fd.descriptor) }
 
-        let payload = Self.makePayload()
-        var offset: off_t = 0
-        while offset < off_t(payload.count) {
-            let written = payload.withUnsafeBytes { bytes -> Int in
-                guard let base = bytes.baseAddress else { return -1 }
-                return Darwin.pwrite(
-                    fd.descriptor,
-                    base.advanced(by: Int(offset)),
-                    payload.count - Int(offset),
-                    offset
-                )
+        do {
+            let payload = Self.makePayload()
+            var offset: off_t = 0
+            while offset < off_t(payload.count) {
+                try cancellation.check()
+                let written = payload.withUnsafeBytes { bytes -> Int in
+                    guard let base = bytes.baseAddress else { return -1 }
+                    return Darwin.pwrite(
+                        fd.descriptor,
+                        base.advanced(by: Int(offset)),
+                        payload.count - Int(offset),
+                        offset
+                    )
+                }
+                guard written > 0 else {
+                    throw DriveAliveFailure.ioFailure(errno)
+                }
+                offset += off_t(written)
             }
-            guard written > 0 else {
-                if isNew { unlinkMarker(markerURL.path) }
+            try cancellation.check()
+            guard ftruncate(fd.descriptor, off_t(payload.count)) == 0 else {
                 throw DriveAliveFailure.ioFailure(errno)
             }
-            offset += off_t(written)
-        }
-        guard ftruncate(fd.descriptor, off_t(payload.count)) == 0 else {
-            throw DriveAliveFailure.ioFailure(errno)
-        }
-        guard syncFile(fd.descriptor) == 0 else {
-            throw DriveAliveFailure.ioFailure(errno)
+            guard syncFile(fd.descriptor) == 0 else {
+                throw DriveAliveFailure.ioFailure(errno)
+            }
+        } catch {
+            if isNew { unlinkMarker(markerURL.path) }
+            throw error
         }
     }
 
@@ -218,40 +170,4 @@ final class POSIXDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
 private struct OpenedMarker {
     let descriptor: Int32
     let wasCreated: Bool
-}
-
-private final class DriveAliveWriteCompletion: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<Void, Error>?
-    private var pendingResult: Result<Void, Error>?
-    private var isResolved = false
-
-    func install(_ continuation: CheckedContinuation<Void, Error>) {
-        lock.lock()
-        if let pendingResult {
-            self.pendingResult = nil
-            lock.unlock()
-            continuation.resume(with: pendingResult)
-            return
-        }
-        self.continuation = continuation
-        lock.unlock()
-    }
-
-    func resolve(_ result: Result<Void, Error>) {
-        lock.lock()
-        guard !isResolved else {
-            lock.unlock()
-            return
-        }
-        isResolved = true
-        guard let continuation else {
-            pendingResult = result
-            lock.unlock()
-            return
-        }
-        self.continuation = nil
-        lock.unlock()
-        continuation.resume(with: result)
-    }
 }
