@@ -110,13 +110,16 @@ enum FileActions {
     }
 
     @MainActor
-    static func openSettings(showSettings: () -> Void = {
+    static func openSettings(pane: SettingsPane? = nil, showSettings: () -> Void = {
         if let delegate = AppDelegate.shared {
             delegate.showSettingsWindow(nil)
         } else {
             NSApp.sendAction(#selector(AppDelegate.showSettingsWindow(_:)), to: nil, from: nil)
         }
     }) {
+        if let pane {
+            UserDefaults.standard.set(pane.rawValue, forKey: SettingsPane.persistenceKey)
+        }
         NSApp.unhide(nil)
         showSettings()
         // MenuBarExtra dismisses its menu after this action returns. Activate on

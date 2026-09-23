@@ -11,6 +11,24 @@ struct SettingsPaneTests {
     }
 
     @MainActor
+    @Test func openSettingsPersistsRequestedPane() {
+        let key = SettingsPane.persistenceKey
+        let defaults = UserDefaults.standard
+        let previous = defaults.string(forKey: key)
+        defer {
+            if let previous {
+                defaults.set(previous, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+        FileActions.openSettings(pane: .driveAlive, showSettings: {})
+        #expect(defaults.string(forKey: key) == SettingsPane.driveAlive.rawValue)
+        FileActions.openSettings(pane: .triggers, showSettings: {})
+        #expect(defaults.string(forKey: key) == SettingsPane.triggers.rawValue)
+    }
+
+    @MainActor
     @Test func customNavigationRetainsPageDraftsAndHasNoSecondTabBar() async throws {
         var drafts: [SettingsPane: Binding<String>] = [:]
         let content: (SettingsPane) -> AnyView = { pane in

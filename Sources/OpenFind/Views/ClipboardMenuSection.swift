@@ -5,7 +5,7 @@ struct ClipboardMenuSection: View {
     @Bindable var controller: ClipboardController
 
     var body: some View {
-        Section(L("Clipboard")) {
+        Group {
             Button {
                 controller.showWindow()
             } label: {

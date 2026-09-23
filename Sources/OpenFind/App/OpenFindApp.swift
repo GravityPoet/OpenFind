@@ -8,20 +8,28 @@ struct OpenFindApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            Button(L("Quick Search")) {
+            Button {
                 appDelegate.showQuickSearch(nil)
+            } label: {
+                Label(L("Quick Search"), systemImage: "magnifyingglass")
+            }
+
+            Button {
+                appDelegate.showOpenFindWindow(nil)
+            } label: {
+                Label(L("Full Search"), systemImage: "doc.text.magnifyingglass")
             }
 
             Divider()
-
-            Button(L("Full Search")) {
-                appDelegate.showOpenFindWindow(nil)
-            }
 
             ClipboardMenuSection(
                 store: appDelegate.clipboardStore,
                 controller: appDelegate.clipboard
             )
+            KeyboardLockMenuSection(controller: appDelegate.keyboardLock)
+
+            Divider()
+
             AwakeMenuSection(
                 controller: appDelegate.awakeSession,
                 preferences: appDelegate.awakeSessionPreferences
@@ -34,8 +42,6 @@ struct OpenFindApp: App {
                 store: appDelegate.driveAliveStore,
                 controller: appDelegate.driveAlive
             )
-            KeyboardLockMenuSection(controller: appDelegate.keyboardLock)
-
             Divider()
 
             OpenFindSettingsMenuItem()
@@ -43,6 +49,7 @@ struct OpenFindApp: App {
             Button(L("Quit OpenFind")) {
                 NSApp.terminate(nil)
             }
+            .keyboardShortcut("q", modifiers: .command)
         } label: {
             OpenFindMenuBarLabel(
                 controller: appDelegate.awakeSession,
