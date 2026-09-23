@@ -22,7 +22,7 @@ struct DriveAliveMenuSection: View {
                             Task { @MainActor in await controller.wake(targetID: target.id) }
                         }
                         .buttonStyle(.borderless)
-                        .disabled(controller.wakingTargetIDs.contains(target.id))
+                        .disabled(!controller.canWake(targetID: target.id))
                         .help(L("Wake Disk Now"))
                         .accessibilityLabel(
                             controller.wakingTargetIDs.contains(target.id)
@@ -34,7 +34,7 @@ struct DriveAliveMenuSection: View {
                         : L("During Awake Sessions"))
                 }
                 Button(L("Refresh Drive Alive")) {
-                    Task { await controller.refresh() }
+                    Task { await controller.refreshStatus() }
                 }
             }
             DisclosureGroup(L("Advanced Continuous Mode")) {

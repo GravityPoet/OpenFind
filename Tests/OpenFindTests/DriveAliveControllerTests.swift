@@ -307,6 +307,67 @@ struct DriveAliveControllerTests {
         #expect(controller.lastFailureByTarget[id] == .targetUnavailable)
     }
 
+    @Test func refreshStatusNeverCreatesAMarker() async throws {
+        let suite = "OpenFindTests.DriveAliveStatusOnly.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let resolver = FakeControllerResolver()
+        let store = DriveAliveStore(defaults: defaults, resolver: resolver)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFindDriveAliveStatusOnly.\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let id = try store.add(directoryURL: directory, policy: .whileOpenFindRuns)
+        let writer = POSIXDriveAliveWriter(
+            syncFile: { _ in 0 },
+            operationScheduler: { operation in operation() }
+        )
+        let controller = DriveAliveController(
+            store: store,
+            sessions: AwakeSessionController(assertions: FakeControllerAssertions()),
+            resolver: resolver,
+            writer: writer
+        )
+
+        await controller.refreshStatus()
+
+        let marker = directory.appendingPathComponent(POSIXDriveAliveWriter.markerName)
+        #expect(FileManager.default.fileExists(atPath: marker.path) == false)
+        #expect(controller.accessStates[id] == .writable)
+        #expect(controller.statuses[id] == .inactive)
+    }
+
+    @Test func continuousAndManualWakeShareOneWriteSlot() async throws {
+        let suite = "OpenFindTests.DriveAliveWriteSlot.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let resolver = FakeControllerResolver()
+        let store = DriveAliveStore(defaults: defaults, resolver: resolver)
+        let id = try store.add(
+            directoryURL: FileManager.default.temporaryDirectory,
+            policy: .whileOpenFindRuns
+        )
+        store.setEnabled(true)
+        let writer = SerialCheckingDriveAliveWriter()
+        let controller = DriveAliveController(
+            store: store,
+            sessions: AwakeSessionController(assertions: FakeControllerAssertions()),
+            resolver: resolver,
+            writer: writer
+        )
+
+        let continuous = Task { @MainActor in await controller.refresh() }
+        try await waitUntil { writer.didEnterWrite }
+        let manual = Task { @MainActor in await controller.wake(targetID: id) }
+        try await Task.sleep(for: .milliseconds(25))
+        writer.release()
+        await continuous.value
+        await manual.value
+
+        #expect(writer.writeCount == 1)
+        #expect(writer.maximumConcurrentWrites == 1)
+    }
+
     @Test func isRunningChangeDeliversObservation() async throws {
         let suite = "OpenFindTests.DriveAliveIsRunning.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -427,6 +488,34 @@ private final class GatedRealDriveAliveWriter: @unchecked Sendable, DriveAliveWr
         lock.withLock { removes += 1 }
         try await real.removeMarker(from: directoryURL, timeout: timeout)
     }
+}
+
+private final class SerialCheckingDriveAliveWriter: @unchecked Sendable, DriveAliveWriting {
+    private let lock = NSLock()
+    private var released = false
+    private var activeWrites = 0
+    private(set) var writeCount = 0
+    private(set) var maximumConcurrentWrites = 0
+
+    var didEnterWrite: Bool { lock.withLock { writeCount > 0 } }
+
+    func release() {
+        lock.withLock { released = true }
+    }
+
+    func write(to directoryURL: URL, timeout: Duration) async throws {
+        lock.withLock {
+            activeWrites += 1
+            writeCount += 1
+            maximumConcurrentWrites = max(maximumConcurrentWrites, activeWrites)
+        }
+        defer { lock.withLock { activeWrites -= 1 } }
+        while !lock.withLock({ released }) {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
+    func removeMarker(from directoryURL: URL, timeout: Duration) async throws {}
 }
 
 private final class ObservationFlag: @unchecked Sendable {
