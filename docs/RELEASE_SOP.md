@@ -79,10 +79,10 @@ Run every command from the repository root.
    NODES=250000 bash Scripts/benchmark_name_index.sh
    ```
 
-3. Build the exact customer artifact. For the current `v1.1.3` target, use:
+3. Build the exact customer artifact. For the current `v1.1.4` target, use:
 
    ```bash
-   APP_VERSION=1.1.3 BUILD_NUMBER=1001003 \
+   APP_VERSION=1.1.4 BUILD_NUMBER=1001004 \
      bash Scripts/build_customer_app.sh
    ```
 
@@ -121,7 +121,7 @@ Run every command from the repository root.
    ```bash
    git status --short --branch
    git add <intended-files>
-   git commit -m "release: prepare v1.1.3"
+   git commit -m "release: prepare v1.1.4"
    git push origin main
    RELEASE_SHA="$(git rev-parse HEAD)"
    gh run list --workflow ci.yml --commit "${RELEASE_SHA}" --limit 1
