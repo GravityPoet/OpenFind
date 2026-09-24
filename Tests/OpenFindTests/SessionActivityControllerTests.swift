@@ -97,7 +97,9 @@ struct SessionActivityControllerTests {
         #expect(performer.moveCount == 0)
         performer.screenSaverActive = false
         performer.isAccessibilityTrusted = false
-        try await Task.sleep(for: .milliseconds(80))
+        try await waitUntil {
+            controller.lastErrorMessage == L("Accessibility Permission Required for Cursor")
+        }
         #expect(performer.moveCount == 0)
         #expect(controller.lastErrorMessage == L("Accessibility Permission Required for Cursor"))
     }
