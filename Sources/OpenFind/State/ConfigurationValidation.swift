@@ -44,6 +44,10 @@ extension ConfigurationPreferenceKeys {
                       Set(triggers.map { $0.name.lowercased() }).count == triggers.count else {
                     throw ConfigurationError.invalidPreferences
                 }
+            } else if key == QuickTerminalPrefix.persistenceKey {
+                guard let prefix = value as? String, QuickTerminalPrefix.normalized(prefix) == prefix else {
+                    throw ConfigurationError.invalidPreferences
+                }
             } else if let allowed = enums[key] {
                 guard let string = value as? String, allowed.contains(string) else {
                     throw ConfigurationError.invalidPreferences

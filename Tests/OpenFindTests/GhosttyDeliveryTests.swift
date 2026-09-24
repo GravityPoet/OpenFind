@@ -5,6 +5,34 @@ import Testing
 @MainActor
 @Suite("Ghostty Delivery", .serialized)
 struct GhosttyDeliveryTests {
+    @Test(arguments: ["g", "x"])
+    func terminalEntryPrefillsPrefixAndFocusesInputWithoutExecuting(prefix: String) async throws {
+        _ = NSApplication.shared
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: QuickTerminalPrefix.persistenceKey)
+        defaults.set(prefix, forKey: QuickTerminalPrefix.persistenceKey)
+        defer {
+            if let previous { defaults.set(previous, forKey: QuickTerminalPrefix.persistenceKey) }
+            else { defaults.removeObject(forKey: QuickTerminalPrefix.persistenceKey) }
+        }
+        let controller = QuickSearchWindowController(
+            onShowFullSearch: { _ in },
+            sendGhosttyCommand: { _ in Issue.record("Discovery hint must not execute a command") }
+        )
+        defer { controller.close() }
+        controller.show()
+        #expect(controller.viewModel.query.isEmpty)
+        controller.beginTerminalCommand()
+        try await waitUntil { !controller.viewModel.isSearching }
+        #expect(controller.viewModel.query == prefix + " ")
+        #expect(controller.viewModel.commandMode == .terminal)
+        #expect(controller.viewModel.results.isEmpty)
+        let editor = try #require(controller.panel?.firstResponder as? NSTextView)
+        #expect(editor.isFieldEditor)
+        #expect(editor.string == prefix + " ")
+        #expect(editor.selectedRange() == NSRange(location: 2, length: 0))
+    }
+
     @Test func concurrentDeliveriesAreSerializedOffMainThread() async throws {
         let probe = GhosttyExecutionProbe()
         let runner = GhosttyCommandRunner(

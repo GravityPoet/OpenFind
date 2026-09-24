@@ -210,6 +210,8 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            TerminalCommandSettingsSection()
+
             Section {
                 Button(L("Clear Recent Searches"), role: .destructive) {
                     viewModel.clearRecentSearches()

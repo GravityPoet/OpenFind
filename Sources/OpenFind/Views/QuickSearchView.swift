@@ -7,11 +7,14 @@ struct QuickSearchView: View {
     let onRecentDocuments: (QuickSearchItem) -> Void
     let onQuickLook: (QuickSearchItem) -> Void
     let onFullSearch: () -> Void
+    let onStartTerminalCommand: () -> Void
     let onResize: (CGFloat) -> Void
     let onInputReady: (NSTextField) -> Void
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(QuickTerminalPrefix.persistenceKey)
+    private var terminalPrefix = QuickTerminalPrefix.defaultValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,6 +40,7 @@ struct QuickSearchView: View {
         .background { glassSurface }
         .clipShape(RoundedRectangle(cornerRadius: 24 * scale, style: .continuous))
         .onChange(of: viewModel.presentationHeight) { _, value in onResize(value * scale) }
+        .onChange(of: terminalPrefix) { viewModel.scheduleSearch() }
     }
 
     private var searchField: some View {
@@ -116,13 +120,27 @@ struct QuickSearchView: View {
             .help(L("Search Modes"))
             .accessibilityLabel(L("Search Modes"))
             .accessibilityIdentifier("OpenFind.quickSearch.modes")
-            Text(viewModel.recentApplication.map { L("Recent Documents") + " · " + $0.name }
-                 ?? (viewModel.query.isEmpty ? L("Quick Search Scope")
-                     : LD(QuickSearchCommand.parse(viewModel.query).hintKey)))
-                .lineLimit(1)
-                .foregroundStyle(.secondary)
-                .help(viewModel.recentApplication.map { L("Recent Documents") + " · " + $0.name }
-                      ?? LD(QuickSearchCommand.parse(viewModel.query).hintKey))
+            if viewModel.query.isEmpty {
+                Button(action: onStartTerminalCommand) {
+                    Label(String(format: L("Quick Search Terminal Entry"),
+                                 QuickTerminalPrefix.normalized(terminalPrefix) ?? QuickTerminalPrefix.defaultValue),
+                          systemImage: "terminal")
+                        .lineLimit(1)
+                        .padding(.horizontal, 8 * scale)
+                        .frame(minHeight: 28 * scale)
+                        .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 6 * scale))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                .accessibilityIdentifier("OpenFind.quickSearch.terminalHint")
+            } else {
+                Text(viewModel.recentApplication.map { L("Recent Documents") + " · " + $0.name }
+                     ?? QuickSearchCommand.parse(viewModel.query).localizedHint)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+                    .help(viewModel.recentApplication.map { L("Recent Documents") + " · " + $0.name }
+                          ?? QuickSearchCommand.parse(viewModel.query).localizedHint)
+            }
             Spacer(minLength: 4)
             Button(action: onFullSearch) {
                 HStack(spacing: 6 * scale) {

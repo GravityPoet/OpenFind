@@ -64,10 +64,20 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         onDismiss()
     }
 
-    private func focusSearch() {
+    private func focusSearch(atEnd: Bool = false) {
         guard let panel, panel.isVisible, let searchField else { return }
         panel.makeKey()
         panel.makeFirstResponder(searchField)
+        if atEnd, let editor = searchField.currentEditor() as? NSTextView {
+            editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
+        }
+    }
+
+    func beginTerminalCommand() {
+        guard !viewModel.isSendingCommand else { return }
+        viewModel.selectMode(.terminal)
+        focusSearch(atEnd: true)
+        DispatchQueue.main.async { [weak self] in self?.focusSearch(atEnd: true) }
     }
 
     private func makeView() -> QuickSearchView {
@@ -82,6 +92,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
                 _ = self?.preview(item)
             },
             onFullSearch: { [weak self] in self?.showFullSearch() },
+            onStartTerminalCommand: { [weak self] in self?.beginTerminalCommand() },
             onResize: { [weak self] in self?.resize(to: $0) },
             onInputReady: { [weak self] in self?.searchField = $0 }
         )

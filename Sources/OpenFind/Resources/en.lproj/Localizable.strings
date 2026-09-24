@@ -939,7 +939,12 @@
 "Quick Search Bookmarks Hint" = "bm: Safari, Chrome bookmarks and Safari Reading List";
 "Quick Search Contacts Hint" = "contacts: search Contacts";
 "Quick Search Web Hint" = "web: choose a web search engine";
-"Quick Search Terminal Hint" = "g: type a command, Return runs it in a new Ghostty tab";
+"Quick Search Terminal Hint" = "%@: type a command, Return runs it in a new Ghostty tab";
+"Quick Search Terminal Entry" = "Type %@ + Space to run a command in Ghostty";
+"Terminal Command Prefix" = "Command prefix letter";
+"Terminal Command Prefix Help" = "Defaults to g. Choose any English letter, then type it followed by a space and a command in Quick Search.";
+"Terminal Command Example Format" = "Example: %@ pwd (Return to run)";
+"Restore Default Terminal Prefix" = "Restore default prefix g";
 "Run in Ghostty" = "Run in Ghostty";
 "Run in Ghostty Format" = "Run in Ghostty: %@";
 "Ghostty" = "Ghostty";

@@ -341,7 +341,7 @@ final class QuickSearchViewModel {
         if let errorMessage { return errorMessage }
         if let sourceMessage { return sourceMessage }
         if commandMode != .combined, results.isEmpty, !isSearching {
-            return LD(QuickSearchCommand(mode: commandMode, term: query).hintKey)
+            return QuickSearchCommand(mode: commandMode, term: query).localizedHint
         }
         if needsFullSearch { return L("Quick Search Advanced Hint") }
         guard !query.isEmpty, results.isEmpty else { return nil }

@@ -939,7 +939,12 @@
 "Quick Search Bookmarks Hint" = "bm：Safari、Chrome 书签与 Safari 阅读列表";
 "Quick Search Contacts Hint" = "contacts：搜索联系人";
 "Quick Search Web Hint" = "web：选择网页搜索引擎";
-"Quick Search Terminal Hint" = "g：输入命令，回车后在 Ghostty 新标签页中运行";
+"Quick Search Terminal Hint" = "%@：输入命令，回车后在 Ghostty 新标签页中运行";
+"Quick Search Terminal Entry" = "输入 %@ + 空格，在 Ghostty 中运行命令";
+"Terminal Command Prefix" = "命令前缀字母";
+"Terminal Command Prefix Help" = "默认 g，可选择任一英文字母。在快速搜索中输入该字母和空格，再输入命令。";
+"Terminal Command Example Format" = "示例：%@ pwd（回车执行）";
+"Restore Default Terminal Prefix" = "恢复默认前缀 g";
 "Run in Ghostty" = "在 Ghostty 中运行";
 "Run in Ghostty Format" = "在 Ghostty 中运行：%@";
 "Ghostty" = "Ghostty";
