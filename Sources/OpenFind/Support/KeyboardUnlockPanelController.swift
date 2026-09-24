@@ -64,12 +64,11 @@ final class KeyboardUnlockPanelController: NSObject {
         if let panel { return panel }
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 210),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 184),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        panel.title = L("Keyboard Locked")
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -81,11 +80,8 @@ final class KeyboardUnlockPanelController: NSObject {
         let background = KeyboardUnlockBackgroundView()
         backgroundView = background
 
-        let title = NSTextField(labelWithString: L("Keyboard Locked"))
-        title.font = .systemFont(ofSize: 18, weight: .semibold)
-        title.alignment = .center
-
         let help = NSTextField(wrappingLabelWithString: L("Keyboard Lock Pointer Help"))
+        help.font = .systemFont(ofSize: 14, weight: .medium)
         help.textColor = .secondaryLabelColor
         help.alignment = .center
         help.maximumNumberOfLines = 2
@@ -124,10 +120,10 @@ final class KeyboardUnlockPanelController: NSObject {
         opacityLabel = value
         let opacityControls = NSStackView(views: [slider, value])
         opacityControls.spacing = 8
-        let stack = NSStackView(views: [title, help, elapsed, opacityTitle, opacityControls, button])
+        let stack = NSStackView(views: [help, elapsed, opacityTitle, opacityControls, button])
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.spacing = 9
+        stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         panel.contentView = background
         background.addSubview(stack)
