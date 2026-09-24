@@ -95,12 +95,16 @@ struct TerminalCommandRunner: Sendable {
         }
     }
 
+    static func defaultScript(for command: TerminalCommand) -> String {
+        "#!/bin/zsh -i\n" + command.text + "\n"
+    }
+
     static func defaultOpenCommand(_ command: TerminalCommand) throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenFind-TerminalCommands", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension("command")
-        let script = "#!/bin/zsh\n" + command.text + "\n"
+        let script = defaultScript(for: command)
         try script.write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
         guard NSWorkspace.shared.open(url) else { throw TerminalCommandError.terminalUnavailable }
