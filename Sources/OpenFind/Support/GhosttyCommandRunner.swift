@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-/// A validated single-line shell command typed after the `g ` prefix.
+/// A validated single-line shell command typed after the configured prefix.
 /// Validation keeps user text as paste-like data: surrounding whitespace is
 /// trimmed, empty input is rejected, and anything that could change single-line
 /// semantics (NUL, CR/LF, other C0 controls except tab, DEL, Unicode line
