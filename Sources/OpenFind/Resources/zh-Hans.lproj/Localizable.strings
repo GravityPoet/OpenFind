@@ -666,7 +666,7 @@
 "Open Accessibility Settings" = "打开辅助功能设置";
 "Keyboard Lock Help" = "键盘清洁锁定使用 macOS 辅助功能权限和会话级事件 tap，在清洁期间拦截所有软件可见按键；请用仅支持鼠标的悬浮按钮、菜单项或紧急自动解锁恢复输入。";
 "Keyboard Locked" = "键盘已锁定";
-"Keyboard Lock Pointer Help" = "现在可以清洁键盘，完成后请用鼠标点击下方按钮。";
+"Keyboard Lock Pointer Help" = "现在可以清洁键盘，完成后请点击下方解锁按钮。";
 "Keyboard Lock Elapsed Format" = "已持续 %02lld:%02lld:%02lld";
 "Keyboard Lock Countdown" = "%lld 秒后开启键盘清洁锁定";
 "Keyboard Lock Auto Unlock" = "紧急自动解锁";
