@@ -8,6 +8,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     private let onQuickLook: ([URL]) -> Void
     private let isQuickLookVisible: () -> Bool
     private let onDismiss: () -> Void
+    private let sendGhosttyCommand: @Sendable (GhosttyCommand) async throws -> Void
     private(set) var panel: QuickSearchPanel?
     private weak var searchField: NSTextField?
     private var hostingView: NSHostingView<QuickSearchView>?
@@ -21,20 +22,24 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         onShowFullSearch: @escaping (String) -> Void,
         onQuickLook: @escaping ([URL]) -> Void = { _ in },
         isQuickLookVisible: @escaping () -> Bool = { false },
-        onDismiss: @escaping () -> Void = {}
+        onDismiss: @escaping () -> Void = {},
+        sendGhosttyCommand: @escaping @Sendable (GhosttyCommand) async throws -> Void = {
+            try await GhosttyCommandRunner().send($0)
+        }
     ) {
         self.viewModel = viewModel
         self.onShowFullSearch = onShowFullSearch
         self.onQuickLook = onQuickLook
         self.isQuickLookVisible = isQuickLookVisible
         self.onDismiss = onDismiss
+        self.sendGhosttyCommand = sendGhosttyCommand
         super.init()
     }
 
     var isVisible: Bool { panel?.isVisible == true }
 
     func show() {
-        viewModel.prepareForPresentation()
+        if !viewModel.isSendingCommand { viewModel.prepareForPresentation() }
         scale = OpenFindInterfaceSize.resolve(
             UserDefaults.standard.string(forKey: OpenFindInterfaceSize.persistenceKey) ?? ""
         ).scale
@@ -55,7 +60,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     func close() {
         guard isVisible else { return }
         panel?.orderOut(nil)
-        viewModel.releaseTransientResults()
+        if !viewModel.isSendingCommand { viewModel.releaseTransientResults() }
         onDismiss()
     }
 
@@ -198,6 +203,25 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
                     try QuickSystemCommands.run(action)
                     close()
                     return
+                case .ghostty(let commandText):
+                    viewModel.isSendingCommand = true
+                    do {
+                        guard let ghostty = GhosttyCommand(input: commandText) else {
+                            throw GhosttyCommandError.invalidCommand
+                        }
+                        try await sendGhosttyCommand(ghostty)
+                        viewModel.isSendingCommand = false
+                        close()
+                    } catch {
+                        viewModel.isSendingCommand = false
+                        viewModel.errorMessage = (error as? GhosttyCommandError)?.userMessage
+                            ?? L("Ghostty Send Failed")
+                        if !isVisible {
+                            panel?.makeKeyAndOrderFront(nil)
+                        }
+                        DispatchQueue.main.async { [weak self] in self?.focusSearch() }
+                    }
+                    return
                 case .reveal:
                     guard result.url.isFileURL else { throw CocoaError(.fileReadUnknown) }
                     close()
@@ -232,6 +256,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     }
 
     private func showFullSearch() {
+        guard viewModel.commandMode != .terminal, !viewModel.isSendingCommand else { return }
         let query = viewModel.query
         close()
         onShowFullSearch(query)
@@ -259,7 +284,8 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        if !requestingContactsAccess, !presentingQuickLook, !isQuickLookVisible() { close() }
+        if !requestingContactsAccess, !presentingQuickLook, !viewModel.isSendingCommand,
+           !isQuickLookVisible() { close() }
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { close(); return false }
 }

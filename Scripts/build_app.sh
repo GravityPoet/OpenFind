@@ -335,6 +335,15 @@ if [ "$(plutil -extract NSAppleScriptEnabled raw "$CONTENTS_DIR/Info.plist")" !=
     exit 1
 fi
 sdp -fh -o - "$RESOURCES_DIR/OpenFind.sdef" >/dev/null
+if [ -z "$(plutil -extract NSAppleEventsUsageDescription raw "$CONTENTS_DIR/Info.plist")" ]; then
+    echo "Error: Apple Events usage description is missing." >&2
+    exit 1
+fi
+codesign -d --entitlements :- "$APP_DIR" > "$BUILD_TMP/signed-entitlements.plist" 2>/dev/null
+if [ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.automation.apple-events' "$BUILD_TMP/signed-entitlements.plist")" != "true" ]; then
+    echo "Error: signed app cannot request Apple Events automation permission." >&2
+    exit 1
+fi
 for arch in $ARCHS; do
     lipo "$MACOS_DIR/OpenFind" -verify_arch "$arch"
 done

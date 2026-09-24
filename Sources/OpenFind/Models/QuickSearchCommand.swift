@@ -1,7 +1,7 @@
 import Foundation
 
 enum QuickSearchMode: String, CaseIterable, Sendable {
-    case combined, applications, settings, open, find, content, tags, path, bookmarks, contacts, recent, calculator, dictionary, system, web
+    case combined, applications, settings, open, find, content, tags, path, bookmarks, contacts, recent, calculator, dictionary, system, web, terminal
 
     var prefix: String {
         switch self {
@@ -10,6 +10,7 @@ enum QuickSearchMode: String, CaseIterable, Sendable {
         case .settings: return "settings "
         case .path: return "~/"
         case .bookmarks: return "bm "
+        case .terminal: return "g "
         default: return rawValue == "content" ? "in " : rawValue + " "
         }
     }
@@ -31,6 +32,7 @@ enum QuickSearchMode: String, CaseIterable, Sendable {
         case .dictionary: return "Dictionary"
         case .system: return "System Commands"
         case .web: return "Web Search"
+        case .terminal: return "Run in Ghostty"
         }
     }
 }
@@ -42,6 +44,10 @@ struct QuickSearchCommand: Equatable, Sendable {
     let term: String
 
     static func parse(_ rawQuery: String) -> Self {
+        // Preserve command bytes until validation, including boundary newlines.
+        if rawQuery.hasPrefix("g ") || rawQuery.hasPrefix("G ") {
+            return .init(mode: .terminal, term: String(rawQuery.dropFirst(2)))
+        }
         let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         if rawQuery.hasPrefix(" ") { return .init(mode: .open, term: query) }
         if query.hasPrefix("/") || query.hasPrefix("~") { return .init(mode: .path, term: query) }
@@ -109,6 +115,7 @@ struct QuickSearchCommand: Equatable, Sendable {
         case .dictionary: return "Quick Search Dictionary Hint"
         case .system: return "Quick Search System Hint"
         case .web: return "Quick Search Web Hint"
+        case .terminal: return "Quick Search Terminal Hint"
         }
     }
 }

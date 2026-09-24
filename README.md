@@ -156,6 +156,7 @@ calc (2+3)*4           # Return copies the result; direct arithmetic also works
 define launch          # Local dictionary; Return opens Dictionary
 web OpenFind           # Choose a search engine, then Return opens the browser
 system lock            # Lock Screen; system screensaver / sleep
+g pwd                  # Return runs the command in a new Ghostty tab
 
 # --- SEARCH SYNTAX ---
 *.pdf briefing          # PDF files containing briefing in name
@@ -180,6 +181,8 @@ Space (Full Search)    # Native Quick Look preview
 ```
 
 Use `contacts ` to grant Contacts access on first use. Safari bookmarks and some recent-document lists require Full Disk Access. Recent documents depend on the app publishing its list to macOS; supported file types are never treated as usage history. Lock Screen requires Accessibility access.
+
+The `g ` command mode requires Ghostty 1.3 or later and macOS Automation permission on first use. Commands run in Ghostty's shell using its normal new-tab working directory; use `g cd /target/directory && command` to choose a directory explicitly. OpenFind does not save command history; your shell's history settings still apply.
 
 ---
 
