@@ -135,15 +135,15 @@ final class QuickSearchViewModel {
                 return
             }
             if command.mode == .terminal {
-                if let ghostty = GhosttyCommand(input: command.term) {
-                    let encoded = ghostty.text.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
-                    self.publish([.init(url: URL(string: "openfind-action:/ghostty?command=\(encoded)")!,
-                                       name: String(format: L("Run in Ghostty Format"), ghostty.text),
-                                       location: L("Ghostty"), kind: .command, action: .ghostty(ghostty.text))])
+                if let terminal = TerminalCommand(input: command.term) {
+                    let encoded = terminal.text.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+                    self.publish([.init(url: URL(string: "openfind-action:/terminal?command=\(encoded)")!,
+                                       name: String(format: L("Run in Terminal Format"), terminal.text),
+                                       location: L("Terminal"), kind: .command, action: .terminal(terminal.text))])
                 } else {
                     self.publish([])
                     if !command.term.trimmingCharacters(in: .whitespaces).isEmpty {
-                        self.sourceMessage = L("Ghostty Invalid Command")
+                        self.sourceMessage = L("Terminal Invalid Command")
                     }
                 }
                 self.isSearching = false
@@ -337,7 +337,7 @@ final class QuickSearchViewModel {
 
     var statusMessage: String? {
         if contactDetail != nil { return nil }
-        if isSendingCommand { return L("Ghostty Sending") }
+        if isSendingCommand { return L("Terminal Sending") }
         if let errorMessage { return errorMessage }
         if let sourceMessage { return sourceMessage }
         if commandMode != .combined, results.isEmpty, !isSearching {

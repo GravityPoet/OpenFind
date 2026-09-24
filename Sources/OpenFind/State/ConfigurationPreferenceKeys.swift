@@ -12,6 +12,7 @@ enum ConfigurationPreferenceKeys {
             "OpenFind.globalHotKeyModifiers", "OpenFind.globalHotKeyLabel",
             "OpenFind.quickSearchTriggerV1", "OpenFind.keyboardLockAutoUnlockMinutesV1",
             QuickTerminalPrefix.persistenceKey,
+            TerminalCommandTarget.persistenceKey,
             "OpenFind.keyboardLockPanelOpacityV1",
             "OpenFind.keyboardLockShortcut.keyCodeV1", "OpenFind.keyboardLockShortcut.modifiersV1",
             "OpenFind.keyboardLockShortcut.labelV1", "OpenFind.driveAliveEnabledV1",

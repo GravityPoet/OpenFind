@@ -8,8 +8,25 @@ struct TerminalCommandSettingsSection: View {
         QuickTerminalPrefix.normalized(storedPrefix) ?? QuickTerminalPrefix.defaultValue
     }
 
+    @AppStorage(TerminalCommandTarget.persistenceKey)
+    private var targetValue = TerminalCommandTarget.defaultValue.rawValue
+
+    private var target: TerminalCommandTarget {
+        TerminalCommandTarget(rawValue: targetValue) ?? .defaultValue
+    }
+
     var body: some View {
         Section {
+            Picker(L("Terminal App"), selection: Binding(
+                get: { target }, set: { targetValue = $0.rawValue }
+            )) {
+                ForEach(TerminalCommandTarget.allCases, id: \.self) { item in
+                    Text(LD(item.titleKey)).tag(item)
+                }
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("OpenFind.settings.terminalTarget")
+
             Picker(L("Terminal Command Prefix"), selection: Binding(
                 get: { prefix }, set: { storedPrefix = $0 }
             )) {
@@ -30,7 +47,7 @@ struct TerminalCommandSettingsSection: View {
                 }
             }
         } header: {
-            Text(L("Run in Ghostty"))
+            Text(L("Run in Terminal"))
         } footer: {
             Text(L("Terminal Command Prefix Help"))
         }

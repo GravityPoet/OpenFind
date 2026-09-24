@@ -32,7 +32,7 @@ enum QuickSearchMode: String, CaseIterable, Sendable {
         case .dictionary: return "Dictionary"
         case .system: return "System Commands"
         case .web: return "Web Search"
-        case .terminal: return "Run in Ghostty"
+        case .terminal: return "Run in Terminal"
         }
     }
 }
