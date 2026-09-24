@@ -155,6 +155,11 @@ struct TerminalCommandRunnerTests {
         try await runner.send(command)
         #expect(opened.value == "printf ok")
     }
+
+    @Test func systemDefaultScriptUsesInteractiveZshAndKeepsCommandSyntax() throws {
+        let command = try #require(TerminalCommand(input: "echo \"$HOME\" && pwd"))
+        #expect(TerminalCommandRunner.defaultScript(for: command) == "#!/bin/zsh -i\necho \"$HOME\" && pwd\n")
+    }
 }
 
 private final class TerminalScriptCallLog: @unchecked Sendable {
