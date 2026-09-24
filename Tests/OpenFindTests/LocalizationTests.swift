@@ -118,6 +118,8 @@ struct LocalizationTests {
                 #expect(strings["Keyboard Cleaning Lock"] == "Keyboard Cleaning Lock")
                 #expect(strings["Keyboard Lock"] == "Keyboard Cleaning Lock")
             } else if identifier == "zh-Hans" {
+                #expect(strings["Keyboard Lock Pointer Help"] == "现在可以清洁键盘，完成后请点击下方解锁按钮。")
+                #expect(strings["Keyboard Lock Pointer Help"]?.contains("用鼠标") == false)
                 #expect(strings["Full Search"] == "全量搜索")
                 #expect(strings["New Trigger"] == "新建触发器")
                 #expect(strings["Keyboard Cleaning Lock"] == "键盘清洁锁定")
