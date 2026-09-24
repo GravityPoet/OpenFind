@@ -48,6 +48,10 @@ extension ConfigurationPreferenceKeys {
                 guard let prefix = value as? String, QuickTerminalPrefix.normalized(prefix) == prefix else {
                     throw ConfigurationError.invalidPreferences
                 }
+            } else if key == TerminalCommandTarget.persistenceKey {
+                guard let target = value as? String, TerminalCommandTarget(rawValue: target) != nil else {
+                    throw ConfigurationError.invalidPreferences
+                }
             } else if let allowed = enums[key] {
                 guard let string = value as? String, allowed.contains(string) else {
                     throw ConfigurationError.invalidPreferences

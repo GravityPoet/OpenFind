@@ -8,7 +8,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     private let onQuickLook: ([URL]) -> Void
     private let isQuickLookVisible: () -> Bool
     private let onDismiss: () -> Void
-    private let sendGhosttyCommand: @Sendable (GhosttyCommand) async throws -> Void
+    private let sendTerminalCommand: @Sendable (TerminalCommand) async throws -> Void
     private(set) var panel: QuickSearchPanel?
     private weak var searchField: NSTextField?
     private var hostingView: NSHostingView<QuickSearchView>?
@@ -23,8 +23,8 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         onQuickLook: @escaping ([URL]) -> Void = { _ in },
         isQuickLookVisible: @escaping () -> Bool = { false },
         onDismiss: @escaping () -> Void = {},
-        sendGhosttyCommand: @escaping @Sendable (GhosttyCommand) async throws -> Void = {
-            try await GhosttyCommandRunner().send($0)
+        sendTerminalCommand: @escaping @Sendable (TerminalCommand) async throws -> Void = {
+            try await TerminalCommandRunner(target: TerminalCommandTarget.load()).send($0)
         }
     ) {
         self.viewModel = viewModel
@@ -32,7 +32,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
         self.onQuickLook = onQuickLook
         self.isQuickLookVisible = isQuickLookVisible
         self.onDismiss = onDismiss
-        self.sendGhosttyCommand = sendGhosttyCommand
+        self.sendTerminalCommand = sendTerminalCommand
         super.init()
     }
 
@@ -214,19 +214,19 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
                     try QuickSystemCommands.run(action)
                     close()
                     return
-                case .ghostty(let commandText):
+                case .terminal(let commandText):
                     viewModel.isSendingCommand = true
                     do {
-                        guard let ghostty = GhosttyCommand(input: commandText) else {
-                            throw GhosttyCommandError.invalidCommand
+                        guard let terminal = TerminalCommand(input: commandText) else {
+                            throw TerminalCommandError.invalidCommand
                         }
-                        try await sendGhosttyCommand(ghostty)
+                        try await sendTerminalCommand(terminal)
                         viewModel.isSendingCommand = false
                         close()
                     } catch {
                         viewModel.isSendingCommand = false
-                        viewModel.errorMessage = (error as? GhosttyCommandError)?.userMessage
-                            ?? L("Ghostty Send Failed")
+                        viewModel.errorMessage = (error as? TerminalCommandError)?.userMessage
+                            ?? L("Terminal Send Failed")
                         if !isVisible {
                             panel?.makeKeyAndOrderFront(nil)
                         }

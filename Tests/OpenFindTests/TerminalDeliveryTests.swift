@@ -3,8 +3,8 @@ import Testing
 @testable import OpenFind
 
 @MainActor
-@Suite("Ghostty Delivery", .serialized)
-struct GhosttyDeliveryTests {
+@Suite("Terminal Delivery", .serialized)
+struct TerminalDeliveryTests {
     @Test(arguments: ["g", "x"])
     func terminalEntryPrefillsPrefixAndFocusesInputWithoutExecuting(prefix: String) async throws {
         _ = NSApplication.shared
@@ -17,7 +17,7 @@ struct GhosttyDeliveryTests {
         }
         let controller = QuickSearchWindowController(
             onShowFullSearch: { _ in },
-            sendGhosttyCommand: { _ in Issue.record("Discovery hint must not execute a command") }
+            sendTerminalCommand: { _ in Issue.record("Discovery hint must not execute a command") }
         )
         defer { controller.close() }
         controller.show()
@@ -34,12 +34,12 @@ struct GhosttyDeliveryTests {
     }
 
     @Test func concurrentDeliveriesAreSerializedOffMainThread() async throws {
-        let probe = GhosttyExecutionProbe()
-        let runner = GhosttyCommandRunner(
-            findApplication: { URL(fileURLWithPath: "/Applications/Ghostty.app") },
+        let probe = TerminalExecutionProbe()
+        let runner = TerminalCommandRunner(target: .ghostty,
+            findApplication: { _ in URL(fileURLWithPath: "/Applications/Ghostty.app") },
             runScript: { _ in probe.run() }
         )
-        let command = try #require(GhosttyCommand(input: "printf ok"))
+        let command = try #require(TerminalCommand(input: "printf ok"))
         async let first: Void = runner.send(command)
         async let second: Void = runner.send(command)
         try await first
@@ -49,10 +49,10 @@ struct GhosttyDeliveryTests {
 
     @Test func failureAfterDismissalPreservesCommandAndCanRetry() async throws {
         _ = NSApplication.shared
-        let delivery = GhosttyTestDelivery()
+        let delivery = TerminalTestDelivery()
         let controller = QuickSearchWindowController(
             onShowFullSearch: { _ in Issue.record("Terminal command entered full search") },
-            sendGhosttyCommand: { try await delivery.send($0) }
+            sendTerminalCommand: { try await delivery.send($0) }
         )
         defer { controller.close() }
         controller.show()
@@ -69,7 +69,7 @@ struct GhosttyDeliveryTests {
         try await waitUntil { controller.viewModel.errorMessage != nil }
         #expect(controller.isVisible)
         #expect(controller.viewModel.query == "g printf ok")
-        #expect(controller.viewModel.selectedResult?.action == .ghostty("printf ok"))
+        #expect(controller.viewModel.selectedResult?.action == .terminal("printf ok"))
         controller.open(try #require(controller.viewModel.selectedResult))
         try await waitUntil { !controller.isVisible }
         #expect(await delivery.calls == 2)
@@ -81,13 +81,13 @@ struct GhosttyDeliveryTests {
         model.query = "g printf ok\n"
         try await waitUntil { !model.isSearching }
         #expect(model.results.isEmpty)
-        #expect(model.statusMessage == L("Ghostty Invalid Command"))
+        #expect(model.statusMessage == L("Terminal Invalid Command"))
     }
 
     @Test func appleScriptLiteralRoundTripsShellSyntaxWithoutExecutingIt() throws {
         let text = "printf '%s' \"中文 \\ $HOME $(printf unsafe)\" && echo done | cat"
-        let command = try #require(GhosttyCommand(input: text))
-        let source = "return \"" + GhosttyCommandRunner.escapedForAppleScript(command.text) + "\""
+        let command = try #require(TerminalCommand(input: text))
+        let source = "return \"" + TerminalCommandRunner.escapedForAppleScript(command.text) + "\""
         let script = try #require(NSAppleScript(source: source))
         var error: NSDictionary?
         #expect(script.executeAndReturnError(&error).stringValue == text)
@@ -103,22 +103,22 @@ struct GhosttyDeliveryTests {
     }
 }
 
-private actor GhosttyTestDelivery {
+private actor TerminalTestDelivery {
     private(set) var calls = 0
     private var pending: CheckedContinuation<Void, Error>?
-    func send(_ command: GhosttyCommand) async throws {
+    func send(_ command: TerminalCommand) async throws {
         calls += 1
         if calls == 1 {
             try await withCheckedThrowingContinuation { pending = $0 }
         }
     }
     func finishWithFailure() {
-        pending?.resume(throwing: GhosttyCommandError.automationDenied)
+        pending?.resume(throwing: TerminalCommandError.automationDenied)
         pending = nil
     }
 }
 
-private final class GhosttyExecutionProbe: @unchecked Sendable {
+private final class TerminalExecutionProbe: @unchecked Sendable {
     private let lock = NSLock()
     private var calls = 0
     private var active = 0

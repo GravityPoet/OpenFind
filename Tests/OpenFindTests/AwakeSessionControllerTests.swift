@@ -430,7 +430,8 @@ struct AwakeSessionControllerTests {
 
     @Test func repeatedManualStartDuringAuthorizationIsRejectedWithoutQueuing() async throws {
         let closedDisplay = FakeClosedDisplayModeManager()
-        closedDisplay.enableDelay = .milliseconds(60)
+        closedDisplay.suspendEnable = true
+        defer { closedDisplay.resumeEnable() }
         let controller = AwakeSessionController(
             assertions: FakePowerAssertionController(),
             closedDisplay: closedDisplay
@@ -441,10 +442,12 @@ struct AwakeSessionControllerTests {
         ))
 
         let first = Task { await controller.requestStartAsync(request) }
-        try await waitUntil { controller.isPowerTransitionInProgress }
+        try await waitUntil { closedDisplay.enableContinuation != nil }
+        #expect(controller.isPowerTransitionInProgress)
         let second = await controller.requestStartAsync(request)
 
         #expect(!second)
+        closedDisplay.resumeEnable()
         #expect(await first.value)
         #expect(closedDisplay.enableCount == 1)
         #expect(controller.isActive)
@@ -651,7 +654,15 @@ private final class FakeClosedDisplayModeManager: ClosedDisplayModeManaging {
     private(set) var enablePolicies: [ClosedDisplayAuthorizationPolicy] = []
     private(set) var disablePolicies: [ClosedDisplayAuthorizationPolicy] = []
     var reconcileResult = true
-    var enableDelay: Duration?
+    var suspendEnable = false
+    private(set) var enableContinuation: CheckedContinuation<Void, Never>?
+
+    func resumeEnable() {
+        suspendEnable = false
+        let continuation = enableContinuation
+        enableContinuation = nil
+        continuation?.resume()
+    }
 
     func recoverIfNeeded() async -> Bool { true }
 
@@ -667,7 +678,9 @@ private final class FakeClosedDisplayModeManager: ClosedDisplayModeManaging {
     func enable(interaction: ClosedDisplayAuthorizationPolicy) async throws {
         enableCount += 1
         enablePolicies.append(interaction)
-        if let enableDelay { try await Task.sleep(for: enableDelay) }
+        if suspendEnable {
+            await withCheckedContinuation { enableContinuation = $0 }
+        }
         isEnabled = true
     }
 
