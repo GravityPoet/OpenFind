@@ -33,6 +33,7 @@ struct QuickSearchView: View {
             footer
         }
         .padding(8 * scale)
+        .disabled(viewModel.isSendingCommand)
         .background { glassSurface }
         .clipShape(RoundedRectangle(cornerRadius: 24 * scale, style: .continuous))
         .onChange(of: viewModel.presentationHeight) { _, value in onResize(value * scale) }
@@ -51,7 +52,7 @@ struct QuickSearchView: View {
             }
             QuickSearchInput(text: $viewModel.query, scale: scale, onReady: onInputReady)
                 .frame(height: 34 * scale)
-            if viewModel.isSearching {
+            if viewModel.isSearching || viewModel.isSendingCommand {
                 ProgressView().controlSize(.small).accessibilityLabel(L("Searching..."))
             }
             if !viewModel.query.isEmpty {
@@ -135,6 +136,7 @@ struct QuickSearchView: View {
             .buttonStyle(.plain)
             .help(L("Quick Search Full Help"))
             .accessibilityIdentifier("OpenFind.quickSearch.fullSearch")
+            .disabled(viewModel.commandMode == .terminal)
         }
         .font(.system(size: 11 * scale))
         .padding(.horizontal, 14 * scale)

@@ -154,6 +154,7 @@ calc (2+3)*4           # 计算并按回车复制；普通算式也可直接输�
 define launch          # 本机字典摘要，回车打开系统字典
 web OpenFind           # 选择搜索引擎，回车后才打开网页
 system lock            # 锁屏；system screensaver / sleep
+g pwd                  # 回车后在 Ghostty 新标签页中运行命令
 
 # --- 全量搜索语法示例 ---
 *.pdf briefing          # 文件名包含 briefing 的 PDF
@@ -178,6 +179,8 @@ Space (全量搜索结果)     # 调起原生 Quick Look 快速预览
 ```
 
 联系人首次使用需在 `contacts ` 模式授权；Safari 书签和部分最近文档需要完全磁盘访问权限。最近文档取决于应用是否向 macOS 保存记录，不会把“该应用能打开的文件”冒充为最近使用的文档。锁屏需要辅助功能权限。
+
+`g ` 命令模式需要 Ghostty 1.3 或更新版本，首次使用由 macOS 请求自动化权限。命令交给 Ghostty 的 shell 执行，工作目录沿用 Ghostty 新标签页的规则；需要指定目录时输入 `g cd /目标目录 && 命令`。OpenFind 不保存命令历史，Ghostty 的 shell 历史仍按你的 shell 设置处理。
 
 ---
 

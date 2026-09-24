@@ -28,6 +28,8 @@
 	<string>NSApplication</string>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>OpenFind sends commands you confirm in Quick Search to a new Ghostty terminal tab.</string>
 	<key>NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac</key>
 	<true/>
 	<key>OSAScriptingDefinition</key>

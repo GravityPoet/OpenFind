@@ -10,6 +10,7 @@ enum QuickSearchItemAction: Hashable, Sendable {
     case openWithApplication(URL)
     case copyText(String)
     case system(QuickSystemAction)
+    case ghostty(String)
 }
 
 struct QuickSearchItem: Identifiable, Hashable, Sendable {

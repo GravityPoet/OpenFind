@@ -29,6 +29,7 @@ struct QuickSearchInput: NSViewRepresentable {
 
     func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.text = $text
+        field.isEditable = context.environment.isEnabled
         field.font = .systemFont(ofSize: 24 * scale, weight: .regular)
         if field.stringValue != text, !((field.currentEditor() as? NSTextView)?.hasMarkedText() ?? false) {
             field.stringValue = text
