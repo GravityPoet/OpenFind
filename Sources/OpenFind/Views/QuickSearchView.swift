@@ -15,6 +15,8 @@ struct QuickSearchView: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(QuickTerminalPrefix.persistenceKey)
     private var terminalPrefix = QuickTerminalPrefix.defaultValue
+    @AppStorage(TerminalCommandTarget.persistenceKey)
+    private var terminalTarget = TerminalCommandTarget.defaultValue.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,6 +43,7 @@ struct QuickSearchView: View {
         .clipShape(RoundedRectangle(cornerRadius: 24 * scale, style: .continuous))
         .onChange(of: viewModel.presentationHeight) { _, value in onResize(value * scale) }
         .onChange(of: terminalPrefix) { viewModel.scheduleSearch() }
+        .onChange(of: terminalTarget) { viewModel.scheduleSearch() }
     }
 
     private var searchField: some View {

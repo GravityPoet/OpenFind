@@ -37,7 +37,8 @@ struct TerminalDeliveryTests {
         let probe = TerminalExecutionProbe()
         let runner = TerminalCommandRunner(target: .ghostty,
             findApplication: { _ in URL(fileURLWithPath: "/Applications/Ghostty.app") },
-            runScript: { _ in probe.run() }
+            runScript: { _ in probe.run() },
+            validateApplication: { _, _ in }
         )
         let command = try #require(TerminalCommand(input: "printf ok"))
         async let first: Void = runner.send(command)

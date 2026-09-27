@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import OSLog
 
 /// A validated single-line shell command typed after the configured prefix.
 struct TerminalCommand: Hashable, Sendable {
@@ -35,6 +36,9 @@ enum TerminalCommandError: Error, Equatable {
     case launchFailed
     case unsupportedTerminal(String)
     case sendFailed(String)
+    case updateRequired(String, String)
+    case scriptingUnavailable(String)
+    case testNotConfirmed
 }
 
 extension TerminalCommandError {
@@ -48,6 +52,25 @@ extension TerminalCommandError {
         case .launchFailed: return L("Terminal Launch Failed")
         case .unsupportedTerminal: return L("Terminal Unsupported")
         case .sendFailed: return L("Terminal Send Failed")
+        case .updateRequired(let app, let version):
+            return String(format: L("Terminal Update Required"), app, version)
+        case .scriptingUnavailable(let app):
+            return String(format: L("Terminal Scripting Unavailable"), app)
+        case .testNotConfirmed: return L("Terminal Test Not Confirmed")
+        }
+    }
+
+    var recoveryURL: URL? {
+        switch self {
+        case .automationDenied:
+            return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
+        case .appleScriptDisabled:
+            return URL(string: "https://ghostty.org/docs/features/applescript#security")
+        case .updateRequired(let app, _), .scriptingUnavailable(let app):
+            if app == "Ghostty" { return URL(string: "https://ghostty.org/download") }
+            if app == "iTerm2" { return URL(string: "https://iterm2.com/downloads.html") }
+            return nil
+        default: return nil
         }
     }
 }
@@ -55,7 +78,7 @@ extension TerminalCommandError {
 /// Sends an explicitly confirmed command to a selected macOS terminal.
 /// System Default uses an ephemeral `.command` file, so the user's configured
 /// default terminal decides the destination without requiring an app-specific
-/// AppleScript permission. Explicit Terminal/Ghostty targets use AppleScript.
+/// AppleScript permission. Direct targets use their native scripting interfaces.
 struct TerminalCommandRunner: Sendable {
     static let appleEventsDeniedNumber = -1743
     static let eventTimeoutSeconds = 15
@@ -65,19 +88,24 @@ struct TerminalCommandRunner: Sendable {
     var findApplication: @Sendable (String) -> URL?
     var runScript: @Sendable (String) throws -> Void
     var openDefaultCommand: @Sendable (TerminalCommand) throws -> Void
+    var validateApplication: @Sendable (TerminalCommandTarget, URL) throws -> Void
 
     init(
-        target: TerminalCommandTarget = .systemDefault,
+        target: TerminalCommandTarget = .defaultValue,
         findApplication: @Sendable @escaping (String) -> URL? = { id in
             NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
         },
         runScript: @Sendable @escaping (String) throws -> Void = TerminalCommandRunner.defaultRunScript,
-        openDefaultCommand: @Sendable @escaping (TerminalCommand) throws -> Void = TerminalCommandRunner.defaultOpenCommand
+        openDefaultCommand: @Sendable @escaping (TerminalCommand) throws -> Void = TerminalCommandRunner.defaultOpenCommand,
+        validateApplication: @Sendable @escaping (TerminalCommandTarget, URL) throws -> Void = { target, url in
+            if let error = TerminalInstallation(target: target, url: url).error { throw error }
+        }
     ) {
         self.target = target
         self.findApplication = findApplication
         self.runScript = runScript
         self.openDefaultCommand = openDefaultCommand
+        self.validateApplication = validateApplication
     }
 
     static func defaultRunScript(_ source: String) throws {
@@ -109,10 +137,9 @@ struct TerminalCommandRunner: Sendable {
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
         guard NSWorkspace.shared.open(url) else { throw TerminalCommandError.terminalUnavailable }
         // The terminal has received the URL; keep it briefly for slow launchers,
-        // then remove the command file and its directory.
+        // then remove only this file; other deliveries may still be using the directory.
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 120) {
             try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: directory)
         }
     }
 
@@ -145,6 +172,26 @@ struct TerminalCommandRunner: Sendable {
             end tell
             end timeout
             """
+        case .iterm2:
+            return """
+            with timeout of \(Self.eventTimeoutSeconds) seconds
+            tell application id "com.googlecode.iterm2"
+                activate
+                if (count of windows) > 0 then
+                    set targetWindow to current window
+                    tell targetWindow
+                        set targetTab to create tab with default profile
+                    end tell
+                else
+                    set targetWindow to create window with default profile
+                    set targetTab to current tab of targetWindow
+                end if
+                tell current session of targetTab
+                    write text "\(Self.escapedForAppleScript(command.text))"
+                end tell
+            end tell
+            end timeout
+            """
         case .systemDefault:
             return ""
         }
@@ -173,16 +220,42 @@ struct TerminalCommandRunner: Sendable {
             return
         }
         guard let bundleIdentifier = target.bundleIdentifier,
-              findApplication(bundleIdentifier) != nil else {
+              let applicationURL = findApplication(bundleIdentifier) else {
             throw TerminalCommandError.terminalUnavailable
         }
+        try validateApplication(target, applicationURL)
         let source = source(for: command)
         let execute = runScript
         do {
             try await Self.runOffMain { try execute(source) }
         } catch let error as TerminalAppleScriptError {
+            // Raw error messages can contain user commands; log only target and code.
+            Logger(subsystem: "com.openfind.app", category: "Terminal")
+                .error("Terminal delivery failed: target=\(target.rawValue, privacy: .public) code=\(error.number)")
             throw Self.classify(error)
         }
+    }
+
+    /// A successful Apple event proves delivery, not shell execution. The
+    /// explicit settings test confirms execution with a unique local receipt.
+    func testConnection(timeout: Duration = .seconds(10)) async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFind-TerminalTest-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let receipt = directory.appendingPathComponent("receipt")
+        let nonce = UUID().uuidString
+        let quotedPath = "'" + receipt.path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let command = TerminalCommand(input: "printf 'OpenFind terminal test OK\\n'; printf '%s' '\(nonce)' > \(quotedPath)")!
+        try await send(command)
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            try Task.checkCancellation()
+            if (try? String(contentsOf: receipt, encoding: .utf8)) == nonce { return }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        throw TerminalCommandError.testNotConfirmed
     }
 
     private static func runOffMain(_ operation: @escaping @Sendable () throws -> Void) async throws {

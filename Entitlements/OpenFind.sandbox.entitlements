@@ -8,6 +8,7 @@
 	<array>
 		<string>com.mitchellh.ghostty</string>
 		<string>com.apple.Terminal</string>
+		<string>com.googlecode.iterm2</string>
 	</array>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>

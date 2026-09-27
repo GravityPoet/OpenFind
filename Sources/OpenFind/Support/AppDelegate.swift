@@ -69,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         defaults: UserDefaults,
         launchAtLoginService: any LaunchAtLoginServicing
     ) {
+        TerminalCommandTarget.initializeSelection(in: defaults)
         self.viewModel = viewModel
         shouldPresentFirstRunGuide = FirstRunGuideStore.shouldPresent(defaults: defaults)
         let hotKeyRegistry = GlobalHotKeyRegistry()
