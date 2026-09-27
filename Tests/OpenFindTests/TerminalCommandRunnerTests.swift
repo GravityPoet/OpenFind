@@ -96,7 +96,8 @@ struct TerminalCommandRunnerTests {
         let log = TerminalScriptCallLog()
         let runner = TerminalCommandRunner(target: .ghostty,
             findApplication: { _ in URL(fileURLWithPath: "/Applications/Ghostty.app") },
-            runScript: { source in log.record(source) }
+            runScript: { source in log.record(source) },
+            validateApplication: { _, _ in }
         )
         try await runner.send(TerminalCommand(input: "git status")!)
         #expect(log.sources.count == 1)
@@ -115,7 +116,8 @@ struct TerminalCommandRunnerTests {
 
         let denied = TerminalCommandRunner(target: .ghostty,
             findApplication: { _ in URL(fileURLWithPath: "/Applications/Ghostty.app") },
-            runScript: { _ in throw TerminalAppleScriptError(number: -1743, message: "Not permitted") }
+            runScript: { _ in throw TerminalAppleScriptError(number: -1743, message: "Not permitted") },
+            validateApplication: { _, _ in }
         )
         await #expect(throws: TerminalCommandError.automationDenied) {
             try await denied.send(TerminalCommand(input: "git status")!)
@@ -126,7 +128,8 @@ struct TerminalCommandRunnerTests {
             runScript: { _ in throw TerminalAppleScriptError(
                 number: -1743,
                 message: "Ghostty got an error: AppleScript is disabled by the macos-applescript configuration."
-            ) }
+            ) },
+            validateApplication: { _, _ in }
         )
         await #expect(throws: TerminalCommandError.appleScriptDisabled) {
             try await probeFailed.send(TerminalCommand(input: "git status")!)
@@ -134,7 +137,8 @@ struct TerminalCommandRunnerTests {
 
         let sendFailed = TerminalCommandRunner(target: .ghostty,
             findApplication: { _ in URL(fileURLWithPath: "/Applications/Ghostty.app") },
-            runScript: { _ in throw TerminalAppleScriptError(number: -1700, message: "Some failure") }
+            runScript: { _ in throw TerminalAppleScriptError(number: -1700, message: "Some failure") },
+            validateApplication: { _, _ in }
         )
         await #expect(throws: TerminalCommandError.sendFailed("Some failure")) {
             try await sendFailed.send(TerminalCommand(input: "git status")!)
@@ -159,6 +163,27 @@ struct TerminalCommandRunnerTests {
     @Test func systemDefaultScriptUsesInteractiveZshAndKeepsCommandSyntax() throws {
         let command = try #require(TerminalCommand(input: "echo \"$HOME\" && pwd"))
         #expect(TerminalCommandRunner.defaultScript(for: command) == "#!/bin/zsh -i\necho \"$HOME\" && pwd\n")
+    }
+
+    @Test func supportedTargetsUseTerminalAsTheNewDefault() {
+        #expect(TerminalCommandTarget.directTargets == [.terminal, .ghostty, .iterm2])
+        #expect(TerminalCommandTarget.defaultValue == .terminal)
+        #expect(TerminalCommandTarget.systemDefault.bundleIdentifier == nil)
+    }
+
+    @Test func terminalCompatibilityChecksGhosttyVersion() {
+        #expect(TerminalInstallation.compatibilityError(target: .ghostty, version: "1.2.2") == .updateRequired("Ghostty", "1.3"))
+        #expect(TerminalInstallation.compatibilityError(target: .ghostty, version: "1.3.0") == nil)
+        #expect(TerminalInstallation.compatibilityError(target: .terminal, version: nil) == nil)
+    }
+
+    @Test func iterm2ScriptCreatesTabAndSubmitsCommand() {
+        let source = TerminalCommandRunner(target: .iterm2)
+            .source(for: TerminalCommand(input: "git status")!)
+        #expect(source.contains("com.googlecode.iterm2"))
+        #expect(source.contains("create tab with default profile"))
+        #expect(source.contains("write text \"git status\""))
+        #expect(!source.contains("do shell script"))
     }
 }
 

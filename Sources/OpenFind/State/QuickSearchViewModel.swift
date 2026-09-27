@@ -138,8 +138,9 @@ final class QuickSearchViewModel {
                 if let terminal = TerminalCommand(input: command.term) {
                     let encoded = terminal.text.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
                     self.publish([.init(url: URL(string: "openfind-action:/terminal?command=\(encoded)")!,
-                                       name: String(format: L("Run in Terminal Format"), terminal.text),
-                                       location: L("Terminal"), kind: .command, action: .terminal(terminal.text))])
+                                       name: String(format: L("Run in Selected Terminal Format"),
+                                                    LD(TerminalCommandTarget.load().titleKey), terminal.text),
+                                       location: LD(TerminalCommandTarget.load().titleKey), kind: .command, action: .terminal(terminal.text))])
                 } else {
                     self.publish([])
                     if !command.term.trimmingCharacters(in: .whitespaces).isEmpty {

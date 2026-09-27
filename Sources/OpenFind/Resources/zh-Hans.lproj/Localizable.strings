@@ -951,6 +951,8 @@
 "Terminal App" = "终端应用";
 "System Default Terminal" = "系统默认终端";
 "Ghostty" = "Ghostty";
+"iTerm2" = "iTerm2";
+"Terminal Target Help" = "选择一次终端，命令将在新窗口或新标签页运行。首次使用时，macOS 可能要求允许自动化控制。";
 "Terminal Sending" = "正在发送到终端…";
 "Terminal Timed Out" = "终端响应超时。重试前请先查看终端，命令可能已收到。";
 "Terminal Launch Failed" = "无法连接所选终端，请打开后重试。";
@@ -960,6 +962,12 @@
 "Terminal Script Disabled" = "所选终端的脚本支持已关闭，请打开终端脚本功能。";
 "Terminal Unsupported" = "当前默认终端不支持自动接收命令，请在设置中选择终端.app 或 Ghostty。";
 "Terminal Send Failed" = "无法将命令发送到所选终端。";
+"Terminal Target Legacy" = "已保留你原来的系统文件关联。选择上方终端.app、Ghostty 或 iTerm2，即可直接连接。";
+"Test Terminal Connection" = "测试运行";
+"Terminal Test Passed" = "测试命令已在所选终端中成功运行。";
+"Terminal Test Not Confirmed" = "未能确认测试命令执行，请查看终端后再重试。";
+"Terminal Update Required" = "%@ 需要 %@ 或更高版本。";
+"Terminal Scripting Unavailable" = "%@ 的脚本接口不可用。";
 "Quick Search Recent Hint" = "recent：选应用或筛选文档；应用结果按 → 查看最近文档";
 "Applications" = "应用";
 "Go Back" = "返回";
@@ -1044,3 +1052,19 @@
 "Reading List" = "阅读列表";
 
 "Copy Link" = "复制链接";
+
+"System Terminal Compatibility" = "按系统文件关联打开（兼容方式）";
+
+"Terminal Target Detected" = "已检测到 %@ %@，可测试运行以确认权限和命令执行。";
+
+"Terminal Detecting" = "正在检测已安装的终端…";
+
+"Terminal Testing" = "正在测试…";
+
+"Refresh Terminal Detection" = "重新检测";
+
+"Open Automation Settings" = "打开自动化设置";
+
+"Terminal Setup Help" = "查看设置说明";
+
+"Run in Selected Terminal Format" = "在 %@ 中运行：%@";

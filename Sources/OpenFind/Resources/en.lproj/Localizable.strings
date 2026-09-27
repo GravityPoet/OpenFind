@@ -951,6 +951,8 @@
 "Terminal App" = "Terminal App";
 "System Default Terminal" = "System Default Terminal";
 "Ghostty" = "Ghostty";
+"iTerm2" = "iTerm2";
+"Terminal Target Help" = "Choose a terminal once. Commands run in a new window or tab. macOS may request Automation permission on first use.";
 "Terminal Sending" = "Sending to Terminal…";
 "Terminal Timed Out" = "The terminal did not respond in time. Check it before trying again; the command may already have been received.";
 "Terminal Launch Failed" = "Could not connect to the selected terminal. Open it and try again.";
@@ -960,6 +962,12 @@
 "Terminal Script Disabled" = "Terminal scripting is turned off. Enable scripting in the selected terminal.";
 "Terminal Unsupported" = "The selected default terminal cannot receive commands automatically. Choose Terminal or Ghostty in Settings.";
 "Terminal Send Failed" = "Could not send the command to the selected terminal.";
+"Terminal Target Legacy" = "Your previous system file association is preserved. Choose Terminal, Ghostty, or iTerm2 above to connect directly.";
+"Test Terminal Connection" = "Test Run";
+"Terminal Test Passed" = "Test command ran successfully in the selected terminal.";
+"Terminal Test Not Confirmed" = "Could not confirm that the test command ran. Check the terminal before trying again.";
+"Terminal Update Required" = "%@ requires version %@ or newer.";
+"Terminal Scripting Unavailable" = "%@ scripting is unavailable.";
 "Quick Search Recent Hint" = "recent: choose an app or filter documents; → on an app opens its recents";
 "Applications" = "Applications";
 "Go Back" = "Go Back";
@@ -1044,3 +1052,19 @@
 "Reading List" = "Reading List";
 
 "Copy Link" = "Copy Link";
+
+"System Terminal Compatibility" = "System file association (compatibility)";
+
+"Terminal Target Detected" = "Detected: %@ %@. Test execution to check permission and shell setup.";
+
+"Terminal Detecting" = "Detecting installed terminals…";
+
+"Terminal Testing" = "Testing…";
+
+"Refresh Terminal Detection" = "Refresh";
+
+"Open Automation Settings" = "Open Automation Settings";
+
+"Terminal Setup Help" = "Setup Help";
+
+"Run in Selected Terminal Format" = "Run in %@: %@";
