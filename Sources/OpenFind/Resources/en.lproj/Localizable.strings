@@ -131,6 +131,7 @@
 "Search Summary Styled Paged Format" = "Search: **%@** shown of **%@** · **%@**";
 "Searching Summary Styled Paged Format" = "Searching: **%@** shown of **%@** · **%@**";
 "Search Summary Refreshing Styled Format" = "Refreshing results: **%@** shown of **%@**";
+"Sorting Summary Styled Format" = "Sorting **%@** shown of **%@**";
 "Event Summary Styled Format" = "Events: **%@** shown · **%@** stored";
 "No file-system changes have been processed for this index yet." = "No file-system changes have been processed for this index yet.";
 "If results look stale or the event count is high, run a full refresh to rebuild the local index." = "If results look stale or the event count is high, run a full refresh to rebuild the local index.";

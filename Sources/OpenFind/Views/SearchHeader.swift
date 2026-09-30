@@ -109,7 +109,7 @@ struct SearchHeader: View {
                         searchSyntaxHelp
                     }
 
-                    if viewModel.isSearching {
+                    if viewModel.isSearching || viewModel.isSortingResults {
                         ProgressView()
                             .controlSize(.small)
                     }

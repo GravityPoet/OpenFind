@@ -92,6 +92,9 @@ struct ContentView: View {
                 quickLook.close()
             }
         }
+        .onChange(of: sortOrder) { _, newSortOrder in
+            viewModel.updateResultSortOrder(newSortOrder)
+        }
         .onDisappear {
             quickLook.close()
         }
@@ -429,8 +432,7 @@ struct ContentView: View {
     }
 
     private var sortedResults: [SearchResult] {
-        guard !sortOrder.isEmpty else { return viewModel.results }
-        return viewModel.results.sorted(using: sortOrder)
+        viewModel.resultsForDisplay(using: sortOrder)
     }
 
     private var sortedEvents: [FileSystemEventLogEntry] {

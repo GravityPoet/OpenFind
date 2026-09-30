@@ -44,6 +44,7 @@ final class SearchViewModel {
     private(set) var isRefreshingSearchResults = false
     private(set) var isManualRefreshInFlight = false
     private(set) var isExpandingResults = false
+    private(set) var isSortingResults = false
 
     /// Search always retains the complete ordered result set. Only this bounded
     /// number of rows is materialized for SwiftUI at a time, keeping large
@@ -70,7 +71,13 @@ final class SearchViewModel {
     @ObservationIgnored private var indexPreparationGeneration = 0
     @ObservationIgnored private var manualRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var resultPageTask: Task<Void, Never>?
+    @ObservationIgnored private var resultSortTask: Task<Void, Never>?
     @ObservationIgnored private var pendingResultPageExpansions = 0
+    @ObservationIgnored private var activeResultSortOrder: [KeyPathComparator<SearchResult>] = []
+    @ObservationIgnored private var sortedNameResults: [SearchResult] = []
+    @ObservationIgnored private var sortedCompleteResults: [SearchResult] = []
+    @ObservationIgnored private var hasMaterializedSortedNameResults = false
+    @ObservationIgnored private var hasMaterializedSortedCompleteResults = false
     private var startedAt: ContinuousClock.Instant?
     private var elapsedBeforeCurrentPass: TimeInterval = 0
     private var publishesLiveElapsed = true
@@ -237,6 +244,13 @@ final class SearchViewModel {
         isBroadContentSearchBlocked = false
         searchErrorMessage = nil
         allowBroadContentSearch = false
+        resultSortTask?.cancel()
+        resultSortTask = nil
+        sortedNameResults.removeAll(keepingCapacity: false)
+        sortedCompleteResults.removeAll(keepingCapacity: false)
+        hasMaterializedSortedNameResults = false
+        hasMaterializedSortedCompleteResults = false
+        isSortingResults = false
         if recordRecent { recordRecentSearch() }
         let currentOptions = options
         let currentScopes = scopes
@@ -391,6 +405,7 @@ final class SearchViewModel {
             pendingResultPageExpansions = 0
             return
         }
+        guard !isSortingResults else { return }
         if isRefreshingSearchResults {
             if pendingResultPageExpansions < Int.max {
                 pendingResultPageExpansions += 1
@@ -443,13 +458,50 @@ final class SearchViewModel {
         runPendingResultPageExpansionIfNeeded()
     }
 
+    /// Updates the table's explicit column order. Streamed searches already
+    /// retain the complete result buffer, so the sort can be computed globally.
+    /// The compact name-search path materializes the matching snapshot only
+    /// when the user asks for a column sort, keeping the common relevance view
+    /// bounded while making the explicit sort semantically correct.
+    func updateResultSortOrder(_ sortOrder: [KeyPathComparator<SearchResult>]) {
+        activeResultSortOrder = sortOrder
+        resultSortTask?.cancel()
+        resultSortTask = nil
+        sortedNameResults.removeAll(keepingCapacity: false)
+        sortedCompleteResults.removeAll(keepingCapacity: false)
+        hasMaterializedSortedNameResults = false
+        hasMaterializedSortedCompleteResults = false
+
+        guard !sortOrder.isEmpty else {
+            isSortingResults = false
+            return
+        }
+        startActiveResultSortIfNeeded()
+    }
+
+    /// Returns the page that the table should display. Column sorting is
+    /// applied to the complete retained buffer rather than only to the page
+    /// currently visible in SwiftUI.
+    func resultsForDisplay(using sortOrder: [KeyPathComparator<SearchResult>]) -> [SearchResult] {
+        guard !sortOrder.isEmpty else { return results }
+        if hasMaterializedSortedNameResults {
+            return Array(sortedNameResults.prefix(min(visibleResultLimit, sortedNameResults.count)))
+        }
+        if hasMaterializedSortedCompleteResults {
+            return Array(sortedCompleteResults.prefix(min(visibleResultLimit, sortedCompleteResults.count)))
+        }
+        // The full sort is performed once in the background. Until it is
+        // ready, keep the visible page responsive by sorting only that page.
+        return Array(results.sorted(using: sortOrder).prefix(min(visibleResultLimit, results.count)))
+    }
+
     private func runPendingResultPageExpansionIfNeeded() {
         guard pendingResultPageExpansions > 0 else { return }
         guard hasMoreResults else {
             pendingResultPageExpansions = 0
             return
         }
-        guard !isSearching, !isRefreshingSearchResults, !isExpandingResults else { return }
+        guard !isSearching, !isRefreshingSearchResults, !isExpandingResults, !isSortingResults else { return }
         pendingResultPageExpansions -= 1
         showMoreResults()
     }
@@ -598,12 +650,21 @@ final class SearchViewModel {
                         - self.staleNameResultCount
                         - self.excludedNameResultIdentities.count
                 )
+                if !self.activeResultSortOrder.isEmpty {
+                    self.updateResultSortOrder(self.activeResultSortOrder)
+                }
                 return
             }
             self.synchronizeCompleteResultsWithVisibleRowsIfNeeded()
+            self.resultSortTask?.cancel()
+            self.resultSortTask = nil
+            self.sortedCompleteResults.removeAll(keepingCapacity: false)
+            self.hasMaterializedSortedCompleteResults = false
+            self.isSortingResults = false
             self.completeResults.removeAll { moved.contains(SearchPath.canonicalAliasPath($0.path)) }
             self.totalResultCount = self.completeResults.count
             self.publishVisibleResults()
+            self.startActiveResultSortIfNeeded()
         }
     }
 
@@ -665,6 +726,7 @@ final class SearchViewModel {
             if replaceResultsOnCompletion {
                 lastAutomaticSearchCompletedAt = .now
             }
+            startActiveResultSortIfNeeded()
             runPendingResultPageExpansionIfNeeded()
             runPendingAutoSearchIfNeeded()
             return
@@ -725,6 +787,7 @@ final class SearchViewModel {
             if replaceResultsOnCompletion {
                 lastAutomaticSearchCompletedAt = .now
             }
+            startActiveResultSortIfNeeded()
             runPendingResultPageExpansionIfNeeded()
             runPendingAutoSearchIfNeeded()
         }
@@ -843,6 +906,13 @@ final class SearchViewModel {
         resultPageTask = nil
         isExpandingResults = false
         pendingResultPageExpansions = 0
+        resultSortTask?.cancel()
+        resultSortTask = nil
+        sortedNameResults.removeAll(keepingCapacity: false)
+        sortedCompleteResults.removeAll(keepingCapacity: false)
+        hasMaterializedSortedNameResults = false
+        hasMaterializedSortedCompleteResults = false
+        isSortingResults = false
         clearNameSnapshot()
         completeResults.removeAll(keepingCapacity: false)
         results.removeAll(keepingCapacity: false)
@@ -876,6 +946,99 @@ final class SearchViewModel {
         nameSnapshotOffset = 0
         staleNameResultCount = 0
         excludedNameResultIdentities.removeAll(keepingCapacity: false)
+    }
+
+    private func startNameResultSort(_ sortOrder: [KeyPathComparator<SearchResult>]) {
+        guard let snapshot = completeNameSnapshot else {
+            isSortingResults = false
+            return
+        }
+        let generation = searchGeneration
+        let excludedIdentities = excludedNameResultIdentities
+        isSortingResults = true
+        resultSortTask = Task { [weak self] in
+            var allResults: [SearchResult] = []
+            allResults.reserveCapacity(snapshot.count)
+            var offset = 0
+            var staleResultCount = 0
+
+            while offset < snapshot.count, !Task.isCancelled {
+                let page = await SearchEngine.materializeNamePage(
+                    from: snapshot,
+                    startingAt: offset,
+                    count: 10_000,
+                    excluding: excludedIdentities
+                )
+                guard page.nextOffset > offset else { break }
+                allResults.append(contentsOf: page.results)
+                offset = page.nextOffset
+                staleResultCount += page.staleResultCount
+            }
+
+            guard let self,
+                  !Task.isCancelled,
+                  generation == self.searchGeneration,
+                  self.completeNameSnapshot != nil else { return }
+
+            let unsortedResults = allResults
+            allResults = await Task.detached(priority: .userInitiated) {
+                var sorted = unsortedResults
+                sorted.sort(using: sortOrder)
+                return sorted
+            }.value
+            self.sortedNameResults = allResults
+            self.hasMaterializedSortedNameResults = true
+            if offset >= snapshot.count {
+                self.totalResultCount = allResults.count
+            } else {
+                self.totalResultCount = max(
+                    self.totalResultCount,
+                    allResults.count + max(0, snapshot.count - offset - staleResultCount)
+                )
+            }
+            self.resultSortTask = nil
+            self.isSortingResults = false
+        }
+    }
+
+    private func startActiveResultSortIfNeeded() {
+        guard !activeResultSortOrder.isEmpty, !isSearching else {
+            if isSearching { isSortingResults = false }
+            return
+        }
+        if completeNameSnapshot != nil {
+            startNameResultSort(activeResultSortOrder)
+        } else if !completeResults.isEmpty {
+            startCompleteResultSort(activeResultSortOrder)
+        } else {
+            isSortingResults = false
+        }
+    }
+
+    private func startCompleteResultSort(_ sortOrder: [KeyPathComparator<SearchResult>]) {
+        let source = completeResults
+        guard !source.isEmpty else {
+            isSortingResults = false
+            return
+        }
+        let generation = searchGeneration
+        isSortingResults = true
+        resultSortTask = Task { [weak self] in
+            let sorted = await Task.detached(priority: .userInitiated) {
+                var sorted = source
+                sorted.sort(using: sortOrder)
+                return sorted
+            }.value
+            guard let self,
+                  !Task.isCancelled,
+                  generation == self.searchGeneration,
+                  self.completeNameSnapshot == nil,
+                  self.completeResults.count == source.count else { return }
+            self.sortedCompleteResults = sorted
+            self.hasMaterializedSortedCompleteResults = true
+            self.resultSortTask = nil
+            self.isSortingResults = false
+        }
     }
 
     private func finish(publishElapsed: Bool) {
