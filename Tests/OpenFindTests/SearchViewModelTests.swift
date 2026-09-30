@@ -354,6 +354,81 @@ struct SearchViewModelTests {
     }
 
     @MainActor
+    @Test func explicitColumnSortCoversCompletePagedNameSnapshot() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFind-SortSnapshotTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for name in ["sortable-a.txt", "sortable-b.txt", "sortable-c.txt", "sortable-d.txt", "sortable-e.txt"] {
+            try Data().write(to: root.appendingPathComponent(name))
+        }
+
+        let viewModel = makeViewModel(resultPageSize: 2)
+        viewModel.scopes = [root]
+        viewModel.options = SearchOptions(query: "sortable")
+        viewModel.startSearch()
+
+        for _ in 0..<300 where viewModel.isSearching {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!viewModel.isSearching)
+        #expect(viewModel.resultCount == 2)
+        #expect(viewModel.hasMoreResults)
+
+        let descending = [KeyPathComparator<SearchResult>(\.name, order: .reverse)]
+        viewModel.updateResultSortOrder(descending)
+        for _ in 0..<300 where viewModel.isSortingResults {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!viewModel.isSortingResults)
+        #expect(viewModel.resultsForDisplay(using: descending).map(\.name) == [
+            "sortable-e.txt", "sortable-d.txt"
+        ])
+
+        viewModel.showMoreResults()
+        for _ in 0..<300 where viewModel.isExpandingResults {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(viewModel.resultsForDisplay(using: descending).map(\.name) == [
+            "sortable-e.txt", "sortable-d.txt", "sortable-c.txt", "sortable-b.txt"
+        ])
+    }
+
+    @MainActor
+    @Test func explicitColumnSortUsesCompleteStreamedContentResults() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenFind-SortContentTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for name in ["content-a.txt", "content-b.txt", "content-c.txt", "content-d.txt"] {
+            try Data("needle".utf8).write(to: root.appendingPathComponent(name))
+        }
+
+        let viewModel = makeViewModel(resultPageSize: 2)
+        viewModel.scopes = [root]
+        viewModel.options = SearchOptions(query: "needle", target: .content)
+        viewModel.startSearch()
+
+        for _ in 0..<300 where viewModel.isSearching {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!viewModel.isSearching)
+        #expect(viewModel.totalResultCount == 4)
+
+        let descending = [KeyPathComparator<SearchResult>(\.name, order: .reverse)]
+        viewModel.updateResultSortOrder(descending)
+        for _ in 0..<300 where viewModel.isSortingResults {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!viewModel.isSortingResults)
+        #expect(viewModel.resultsForDisplay(using: descending).map(\.name) == [
+            "content-d.txt", "content-c.txt"
+        ])
+    }
+
+    @MainActor
     @Test func automaticReplacementKeepsCompleteResultsBehindVisiblePage() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenFind-AutoPaginationTests-\(UUID().uuidString)", isDirectory: true)

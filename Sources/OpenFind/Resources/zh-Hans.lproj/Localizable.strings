@@ -131,6 +131,7 @@
 "Search Summary Styled Paged Format" = "搜索：已显示 **%@** / 共 **%@** 个 · 用时 **%@**";
 "Searching Summary Styled Paged Format" = "搜索中：已显示 **%@** / 共 **%@** 个 · **%@**";
 "Search Summary Refreshing Styled Format" = "正在同步结果：已显示 **%@** / 共 **%@** 个";
+"Sorting Summary Styled Format" = "正在排序：已显示 **%@** / 共 **%@** 个";
 "Event Summary Styled Format" = "事件：显示 **%@** 条 · 已记录 **%@** 条";
 "No file-system changes have been processed for this index yet." = "当前索引还没有处理过文件系统变更。";
 "If results look stale or the event count is high, run a full refresh to rebuild the local index." = "如果结果看起来过期，或者事件数量很高，建议完整刷新并重建本地索引。";

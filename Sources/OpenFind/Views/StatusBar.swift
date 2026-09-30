@@ -171,7 +171,10 @@ struct StatusBar: View {
                 .accessibilityLabel(L("Full Disk Access disabled"))
             }
 
-            if viewModel.hasMoreResults && !viewModel.isRefreshingSearchResults && !viewModel.isSearching {
+            if viewModel.hasMoreResults
+                && !viewModel.isRefreshingSearchResults
+                && !viewModel.isSearching
+                && !viewModel.isSortingResults {
                 Button {
                     viewModel.showMoreResults()
                 } label: {
@@ -434,6 +437,12 @@ struct StatusBar: View {
                 format: L("Event Summary Styled Format"),
                 formattedNumber(viewModel.filteredEventEntries.count),
                 formattedNumber(viewModel.eventEntries.count)
+            )
+        } else if viewModel.isSortingResults {
+            markdown = String(
+                format: L("Sorting Summary Styled Format"),
+                formattedNumber(viewModel.resultCount),
+                formattedNumber(viewModel.totalResultCount)
             )
         } else if viewModel.isRefreshingSearchResults {
             markdown = String(
