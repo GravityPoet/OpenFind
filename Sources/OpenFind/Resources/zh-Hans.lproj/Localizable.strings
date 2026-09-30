@@ -124,6 +124,9 @@
 "Search Duration Seconds Format" = "%.1f 秒";
 "Show %lld More Results" = "再显示 %lld 个";
 "Loading Results" = "正在加载结果";
+"OpenFind is checking matching files and will show results as they arrive." = "OpenFind 正在检查匹配文件，结果会陆续显示。";
+"Search Syntax Help" = "搜索语法";
+"Search Syntax Help Detail" = "可以把关键词、筛选条件和运算符组合使用。加引号可保持短语完整；OR、AND 和 ! 可进一步缩小或扩展匹配范围。";
 "Event Summary Format" = "事件：显示 %lld 条 · 已记录 %lld 条";
 "Search Summary Styled Paged Format" = "搜索：已显示 **%@** / 共 **%@** 个 · 用时 **%@**";
 "Searching Summary Styled Paged Format" = "搜索中：已显示 **%@** / 共 **%@** 个 · **%@**";
@@ -188,6 +191,7 @@
 "Menu Bar Controls" = "菜单栏控制";
 "Default Target" = "默认搜索目标";
 "Default Match Mode" = "默认匹配模式";
+"Match Mode" = "匹配模式";
 "Max Content File Size (MB)" = "内容搜索最大文件体积";
 "1 GB" = "1 GB";
 "No Limit" = "不限制";

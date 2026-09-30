@@ -123,6 +123,8 @@ struct ContentView: View {
             searchErrorView(errorMessage)
         } else if viewModel.shouldShowSearchIncompleteState {
             indexingInProgressView
+        } else if viewModel.shouldShowSearchInProgressState {
+            searchInProgressView
         } else if viewModel.results.isEmpty && !viewModel.isSearching {
             noResultsView
         } else {
@@ -280,6 +282,18 @@ struct ContentView: View {
         viewModel.indexStats.loadedFromDisk
             ? L("Updating recent file changes")
             : L("Indexing is still in progress")
+    }
+
+    private var searchInProgressView: some View {
+        ContentUnavailableView {
+            Label(L("Loading Results"), systemImage: "magnifyingglass")
+        } description: {
+            Text(L("OpenFind is checking matching files and will show results as they arrive."))
+        } actions: {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel(L("Loading Results"))
+        }
     }
 
     private var indexingInProgressDescription: String {

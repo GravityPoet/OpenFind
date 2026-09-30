@@ -170,6 +170,10 @@ final class SearchViewModel {
         canSearch && results.isEmpty && indexStats.isIndexing && !indexStats.isMetadataEnriching
     }
 
+    var shouldShowSearchInProgressState: Bool {
+        canSearch && results.isEmpty && isSearching
+    }
+
     var shouldShowReadinessGuidance: Bool {
         !hasFullDiskAccess || indexStats.isIndexing
     }

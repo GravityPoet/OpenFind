@@ -124,6 +124,9 @@
 "Search Duration Seconds Format" = "%.1f s";
 "Show %lld More Results" = "Show %lld more";
 "Loading Results" = "Loading results";
+"OpenFind is checking matching files and will show results as they arrive." = "OpenFind is checking matching files and will show results as they arrive.";
+"Search Syntax Help" = "Search syntax";
+"Search Syntax Help Detail" = "Combine words with filters and operators. Quoted text stays together; OR, AND, and ! refine the match.";
 "Event Summary Format" = "Events: %lld shown · %lld stored";
 "Search Summary Styled Paged Format" = "Search: **%@** shown of **%@** · **%@**";
 "Searching Summary Styled Paged Format" = "Searching: **%@** shown of **%@** · **%@**";
@@ -188,6 +191,7 @@
 "Menu Bar Controls" = "Menu Bar Controls";
 "Default Target" = "Default Target";
 "Default Match Mode" = "Default Match Mode";
+"Match Mode" = "Match Mode";
 "Max Content File Size (MB)" = "Max Content File Size";
 "1 GB" = "1 GB";
 "No Limit" = "No Limit";

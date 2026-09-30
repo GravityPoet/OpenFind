@@ -6,6 +6,7 @@ struct SearchHeader: View {
     @FocusState.Binding var focusedTarget: SearchFocusTarget?
     let onMoveToResults: () -> Bool
     @State private var showRecentSearches = false
+    @State private var showSearchHelp = false
     @Environment(\.openFindInterfaceSize) private var interfaceSize
 
     private var isFocused: Bool { focusedTarget == .query }
@@ -28,6 +29,8 @@ struct SearchHeader: View {
 
                     TextField(LD(viewModel.searchPlaceholderKey), text: $viewModel.options.query)
                         .textFieldStyle(.plain)
+                        .accessibilityIdentifier("OpenFind.fullSearch.query")
+                        .accessibilityLabel(L("Full Search"))
                         .focused($focusedTarget, equals: .query)
                         .onSubmit {
                             viewModel.startSearch()
@@ -45,6 +48,8 @@ struct SearchHeader: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
+                        .help(L("Clear Search"))
+                        .accessibilityLabel(L("Clear Search"))
                     }
 
                     if !viewModel.recentSearches.isEmpty {
@@ -64,6 +69,8 @@ struct SearchHeader: View {
                         }
                         .buttonStyle(.plain)
                         .help(L("Recent Searches"))
+                        .accessibilityLabel(L("Recent Searches"))
+                        .accessibilityIdentifier("OpenFind.fullSearch.recent")
                         .popover(isPresented: $showRecentSearches, arrowEdge: .top) {
                             recentSearchesPopover
                         }
@@ -85,6 +92,22 @@ struct SearchHeader: View {
                     }
                     .buttonStyle(.plain)
                     .help(viewModel.options.caseSensitive ? L("Case Sensitive On") : L("Case Sensitive Off"))
+                    .accessibilityLabel(viewModel.options.caseSensitive ? L("Case Sensitive On") : L("Case Sensitive Off"))
+                    .accessibilityIdentifier("OpenFind.fullSearch.caseSensitive")
+
+                    Button {
+                        showSearchHelp.toggle()
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("Search Syntax Help"))
+                    .accessibilityLabel(L("Search Syntax Help"))
+                    .accessibilityIdentifier("OpenFind.fullSearch.syntaxHelp")
+                    .popover(isPresented: $showSearchHelp, arrowEdge: .top) {
+                        searchSyntaxHelp
+                    }
 
                     if viewModel.isSearching {
                         ProgressView()
@@ -145,9 +168,44 @@ struct SearchHeader: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            Divider()
+
+            Button {
+                showRecentSearches = false
+                viewModel.clearRecentSearches()
+            } label: {
+                Label(L("Clear Recent Searches"), systemImage: "trash")
+            }
+            .buttonStyle(.plain)
         }
         .padding(12)
         .frame(width: 280, alignment: .leading)
+    }
+
+    private var searchSyntaxHelp: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(L("Search Syntax Help"), systemImage: "text.magnifyingglass")
+                .font(.headline)
+            Text(L("Search Syntax Help Detail"))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach([
+                "*.pdf briefing",
+                "in:/Users/me ext:pdf",
+                "content:\"Q4 budget\"",
+                "size:>100MB dm:today",
+                "report OR summary !draft"
+            ], id: \.self) { example in
+                Text(example)
+                    .font(.system(.callout, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(14)
+        .frame(width: 330, alignment: .leading)
     }
 }
 

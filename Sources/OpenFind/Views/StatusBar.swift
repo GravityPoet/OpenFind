@@ -171,7 +171,7 @@ struct StatusBar: View {
                 .accessibilityLabel(L("Full Disk Access disabled"))
             }
 
-            if viewModel.hasMoreResults && !viewModel.isRefreshingSearchResults {
+            if viewModel.hasMoreResults && !viewModel.isRefreshingSearchResults && !viewModel.isSearching {
                 Button {
                     viewModel.showMoreResults()
                 } label: {
