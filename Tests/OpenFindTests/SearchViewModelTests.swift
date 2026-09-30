@@ -151,6 +151,16 @@ struct SearchViewModelTests {
     }
 
     @MainActor
+    @Test func emptyResultsWhileSearchIsRunningExposeLoadingState() {
+        let viewModel = makeViewModel()
+        viewModel.options.query = "content:needle"
+        viewModel.startSearch(recordRecent: false)
+        #expect(viewModel.isSearching)
+        #expect(viewModel.shouldShowSearchInProgressState)
+        viewModel.cancel()
+    }
+
+    @MainActor
     @Test func eventFilteringRunsOnlyWhileEventViewIsVisible() {
         let viewModel = makeViewModel()
         viewModel.eventEntries = [

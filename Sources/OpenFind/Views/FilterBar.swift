@@ -67,7 +67,7 @@ struct FilterBar: View {
 
     private func optionsMenu(compact: Bool) -> some View {
         Menu {
-            Picker(L("Default Match Mode"), selection: $viewModel.options.matchMode) {
+            Picker(L("Match Mode"), selection: $viewModel.options.matchMode) {
                 Text(L("Contains")).tag(MatchMode.substring)
                 Text(L("Whole Word")).tag(MatchMode.wholeWord)
                 Text(L("Wildcard")).tag(MatchMode.wildcard)
@@ -106,6 +106,7 @@ struct FilterBar: View {
         )
         .help(L("Options"))
         .accessibilityLabel(L("Options"))
+        .accessibilityIdentifier("OpenFind.fullSearch.options")
     }
 
     private func scopeMenu(compact: Bool) -> some View {
@@ -170,6 +171,7 @@ struct FilterBar: View {
         )
         .help(scopeButtonLabel)
         .accessibilityLabel(scopeButtonLabel)
+        .accessibilityIdentifier("OpenFind.fullSearch.scope")
     }
 
     private var isWholeMacOnly: Bool {
@@ -236,6 +238,7 @@ private struct SearchTargetSelector: View {
         .animation(.easeOut(duration: 0.1), value: hoveredTarget)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L("Target"))
+        .accessibilityIdentifier("OpenFind.fullSearch.target")
     }
 
     private var divider: some View {
