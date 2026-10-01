@@ -105,6 +105,22 @@ struct TerminalCommandRunnerTests {
     }
 
     @MainActor
+    @Test func hungExecutorIsBoundedByDeliveryTimeout() async throws {
+        let runner = TerminalCommandRunner(
+            target: .ghostty,
+            findApplication: { _ in URL(fileURLWithPath: "/Applications/Ghostty.app") },
+            runScript: { _ in Thread.sleep(forTimeInterval: 0.2) },
+            validateApplication: { _, _ in }
+        )
+        await #expect(throws: TerminalCommandError.timedOut) {
+            try await runner.send(
+                TerminalCommand(input: "printf ok")!,
+                timeout: .milliseconds(20)
+            )
+        }
+    }
+
+    @MainActor
     @Test func ghosttySendDistinguishesInstallAutomationAndScriptStates() async {
         let missing = TerminalCommandRunner(target: .ghostty,
             findApplication: { _ in nil },

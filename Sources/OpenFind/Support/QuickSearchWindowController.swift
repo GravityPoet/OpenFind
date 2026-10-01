@@ -59,9 +59,12 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
 
     func close() {
         guard isVisible else { return }
+        let isSending = viewModel.isSendingCommand
         panel?.orderOut(nil)
-        if !viewModel.isSendingCommand { viewModel.releaseTransientResults() }
-        onDismiss()
+        if !isSending {
+            viewModel.releaseTransientResults()
+            onDismiss()
+        }
     }
 
     private func focusSearch(atEnd: Bool = false) {
@@ -220,9 +223,14 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
                         guard let terminal = TerminalCommand(input: commandText) else {
                             throw TerminalCommandError.invalidCommand
                         }
+                        close()
                         try await sendTerminalCommand(terminal)
                         viewModel.isSendingCommand = false
-                        close()
+                        if isVisible { close() }
+                        else {
+                            viewModel.releaseTransientResults()
+                            onDismiss()
+                        }
                     } catch {
                         viewModel.isSendingCommand = false
                         viewModel.errorMessage = (error as? TerminalCommandError)?.userMessage
@@ -295,7 +303,7 @@ final class QuickSearchWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        if !requestingContactsAccess, !presentingQuickLook, !viewModel.isSendingCommand,
+        if !requestingContactsAccess, !presentingQuickLook,
            !isQuickLookVisible() { close() }
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { close(); return false }
