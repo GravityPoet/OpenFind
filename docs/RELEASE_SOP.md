@@ -20,8 +20,8 @@ compatibility entry point and must not contain an independent procedure.
   `identifier "com.openfind.app" and certificate leaf = H"3e146b469f41deb31e45c28d0e9c512b3e5a41c1"`
 
 The customer certificate is intentionally self-signed. OpenFind is not Apple
-notarized, so every public Release body must lead with a direct recommended ZIP
-download and contain complete English and Chinese sections for:
+notarized, so every public Release body must lead with a direct recommended DMG
+download, retain the ZIP alternative, and contain complete English and Chinese sections for:
 
 1. **Downloads / 下载资源**
 2. **What's New / 更新亮点**
@@ -79,17 +79,31 @@ Run every command from the repository root.
    NODES=250000 bash Scripts/benchmark_name_index.sh
    ```
 
-3. Build the exact customer artifact. For the current `v1.1.4` target, use:
+3. Build the exact customer artifact. For the current `v1.1.5` target, use:
 
    ```bash
    APP_VERSION=1.1.5 BUILD_NUMBER=1001010 \
      bash Scripts/build_customer_app.sh
    ```
 
+   Create the customer drag-and-drop DMG from the verified app:
+
+   ```bash
+   DMG_STAGE="$(mktemp -d)"
+   ditto -x -k dist/OpenFind.zip "$DMG_STAGE"
+   ln -s /Applications "$DMG_STAGE/Applications"
+   hdiutil create -volname "OpenFind 1.1.5" \
+     -srcfolder "$DMG_STAGE" -ov -format UDZO \
+     -imagekey zlib-level=9 dist/OpenFind.dmg
+   shasum -a 256 dist/OpenFind.dmg > dist/OpenFind.dmg.sha256
+   hdiutil verify dist/OpenFind.dmg
+   ```
+
 4. Verify the local artifact before commit/tag:
 
    ```bash
    (cd dist && shasum -a 256 -c OpenFind.zip.sha256)
+   (cd dist && shasum -a 256 -c OpenFind.dmg.sha256)
    RELEASE_VERIFY_DIR="$(mktemp -d)"
    ditto -x -k dist/OpenFind.zip "$RELEASE_VERIFY_DIR"
    codesign --verify --deep --strict --verbose=2 \
@@ -111,7 +125,9 @@ Run every command from the repository root.
    bash Scripts/install_local_app.sh dist/OpenFind.zip
    ```
 
-   Confirm one physical `/Applications/OpenFind.app`, one LaunchServices entry,
+   Attach `dist/OpenFind.dmg` read-only and verify its inner app has the same
+   version, build, signature, and `arm64 x86_64` slices as the ZIP app. Confirm
+   one physical `/Applications/OpenFind.app`, one LaunchServices entry,
    one Dock bundle/path, the expected signature, both architectures, and a
    successful packaged CLI smoke search.
 
@@ -176,13 +192,13 @@ The release is complete only when all of these checks pass:
 
 - `main`, the annotated tag, the CI run, and the release workflow all resolve to
   the intended release commit.
-- `dist/OpenFind.zip.sha256` verifies.
+- `dist/OpenFind.zip.sha256` and `dist/OpenFind.dmg.sha256` verify.
 - The archive contains exactly one app, and the app has the expected identifier,
   version, build number, customer signature, and `arm64 x86_64` executable.
 - Tests, visual regression, all three performance gates, packaged CLI smoke,
   local installation, and launch pass.
-- The public release is not a draft or prerelease and exposes the ZIP,
-  checksum, signed appcast, optional demo video, and generated notes without
+- The public release is not a draft or prerelease and exposes the DMG, ZIP,
+  both checksums, signed appcast, optional demo video, and generated notes without
   downloadable screenshot assets.
 - The public Release body contains the direct ZIP link plus complete English
   and Chinese download, customer-value, and first-launch instructions,
@@ -292,3 +308,4 @@ cause, correction, and prevention.
 | 2026-10-01 | `gh api repos/GravityPoet/OpenFind/contents/docs/RELEASE_SOP.md?ref=main` | zsh reported `no matches found` because the query string was unquoted | Quoted the complete API endpoint and retried through the authenticated Contents API | Quote GitHub API URLs containing `?`/`&` in zsh release commands |
 | 2026-10-01 | `git push origin main` for post-release SOP maintenance | `git@ssh.github.com: Permission denied (publickey)` after the v1.1.5 Release was already public | Verified `gh auth` but kept the published tag/release untouched and updated the SOP through the authenticated Contents API instead | For docs-only post-release maintenance, use the Contents API when Git SSH transport is unavailable; never move or rebuild the published tag |
 | 2026-10-01 | CI run `36809295922`, `bash Scripts/test.sh` | Hosted Swift toolchain rejected `TerminalDeliveryCompletion.install` with `closure captures 'result' before it is declared`, while the local compiler accepted the shadowed name | Renamed the local value to `existingResult` and explicitly referenced `self.result`; rerun the exact SHA gate before tagging | Avoid local/property shadowing inside escaping Swift closures; require a hosted exact-SHA CI pass in addition to local release tests |
+| 2026-10-01 | First local DMG creation/checksum probe | Cleanup treated a temporary attach plist file as a directory (`NotADirectoryError`), and the first checksum manifest contained the `dist/` prefix so verification from `dist/` failed | Detached the image, removed the temp file with file-aware cleanup, and regenerated `OpenFind.dmg.sha256` from inside `dist/`; DMG verify and checksum then passed | Keep DMG staging cleanup type-aware and write relocatable checksum manifests from the artifact directory |

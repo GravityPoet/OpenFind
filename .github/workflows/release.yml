@@ -145,6 +145,24 @@ jobs:
       - name: Verify persisted name-index budgets
         run: NODES=250000 bash Scripts/benchmark_name_index.sh
 
+      - name: Build drag-and-drop DMG installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          DMG_STAGE="$RUNNER_TEMP/openfind-dmg"
+          mkdir -p "$DMG_STAGE"
+          ditto -x -k dist/OpenFind.zip "$DMG_STAGE"
+          ln -s /Applications "$DMG_STAGE/Applications"
+          hdiutil create \
+            -volname "OpenFind ${APP_VERSION}" \
+            -srcfolder "$DMG_STAGE" \
+            -ov \
+            -format UDZO \
+            -imagekey zlib-level=9 \
+            dist/OpenFind.dmg
+          shasum -a 256 dist/OpenFind.dmg > dist/OpenFind.dmg.sha256
+          hdiutil verify dist/OpenFind.dmg
+
       - name: Generate EdDSA-signed phased appcast
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
@@ -180,6 +198,8 @@ jobs:
           gh release create "$RELEASE_TAG" \
             dist/OpenFind.zip \
             dist/OpenFind.zip.sha256 \
+            dist/OpenFind.dmg \
+            dist/OpenFind.dmg.sha256 \
             dist/appcast.xml \
             dist/appcast.xml.sha256 \
             --verify-tag \
