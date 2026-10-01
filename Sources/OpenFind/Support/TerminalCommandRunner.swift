@@ -338,12 +338,12 @@ private final class TerminalDeliveryCompletion: @unchecked Sendable {
     private var result: Result<Void, Error>?
 
     func install(_ continuation: CheckedContinuation<Void, Error>) {
-        let result: Result<Void, Error>? = lock.withLock {
-            if let result { return result }
+        let existingResult: Result<Void, Error>? = lock.withLock {
+            if let currentResult = self.result { return currentResult }
             self.continuation = continuation
             return nil
         }
-        if let result { continuation.resume(with: result) }
+        if let existingResult { continuation.resume(with: existingResult) }
     }
 
     func setTimeoutTask(_ task: Task<Void, Never>) {
