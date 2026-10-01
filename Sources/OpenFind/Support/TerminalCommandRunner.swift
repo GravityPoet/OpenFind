@@ -39,6 +39,7 @@ enum TerminalCommandError: Error, Equatable {
     case updateRequired(String, String)
     case scriptingUnavailable(String)
     case testNotConfirmed
+    case deliveryInProgress
 }
 
 extension TerminalCommandError {
@@ -57,6 +58,7 @@ extension TerminalCommandError {
         case .scriptingUnavailable(let app):
             return String(format: L("Terminal Scripting Unavailable"), app)
         case .testNotConfirmed: return L("Terminal Test Not Confirmed")
+        case .deliveryInProgress: return L("Terminal Delivery In Progress")
         }
     }
 
@@ -81,8 +83,14 @@ extension TerminalCommandError {
 /// AppleScript permission. Direct targets use their native scripting interfaces.
 struct TerminalCommandRunner: Sendable {
     static let appleEventsDeniedNumber = -1743
+    static let appleEventsConsentNumber = -1744
     static let eventTimeoutSeconds = 15
-    private static let queue = DispatchQueue(label: "com.openfind.terminal", qos: .userInitiated)
+    private static let queue = DispatchQueue(
+        label: "com.openfind.terminal",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
+    private static let deliveryLanes = TerminalDeliveryLanes()
 
     let target: TerminalCommandTarget
     var findApplication: @Sendable (String) -> URL?
@@ -206,7 +214,9 @@ struct TerminalCommandRunner: Sendable {
         if error.message.contains("AppleScript is disabled by the macos-applescript configuration.") {
             return .appleScriptDisabled
         }
-        if error.number == appleEventsDeniedNumber { return .automationDenied }
+        if [appleEventsDeniedNumber, appleEventsConsentNumber].contains(error.number) {
+            return .automationDenied
+        }
         if error.number == -1712 { return .timedOut }
         if [-600, -609].contains(error.number) { return .launchFailed }
         return .sendFailed(error.message)
@@ -217,9 +227,13 @@ struct TerminalCommandRunner: Sendable {
         timeout: Duration = .seconds(TerminalCommandRunner.eventTimeoutSeconds)
     ) async throws {
         try Task.checkCancellation()
+        let laneKey = target.rawValue
         if target == .systemDefault {
+            guard Self.deliveryLanes.acquire(laneKey) else {
+                throw TerminalCommandError.deliveryInProgress
+            }
             let open = openDefaultCommand
-            try await Self.runOffMain(timeout: timeout) { try open(command) }
+            try await Self.runOffMain(timeout: timeout, laneKey: laneKey) { try open(command) }
             return
         }
         guard let bundleIdentifier = target.bundleIdentifier,
@@ -227,10 +241,13 @@ struct TerminalCommandRunner: Sendable {
             throw TerminalCommandError.terminalUnavailable
         }
         try validateApplication(target, applicationURL)
+        guard Self.deliveryLanes.acquire(laneKey) else {
+            throw TerminalCommandError.deliveryInProgress
+        }
         let source = source(for: command)
         let execute = runScript
         do {
-            try await Self.runOffMain(timeout: timeout) { try execute(source) }
+            try await Self.runOffMain(timeout: timeout, laneKey: laneKey) { try execute(source) }
         } catch let error as TerminalAppleScriptError {
             // Raw error messages can contain user commands; log only target and code.
             Logger(subsystem: "com.openfind.app", category: "Terminal")
@@ -263,6 +280,7 @@ struct TerminalCommandRunner: Sendable {
 
     private static func runOffMain(
         timeout: Duration,
+        laneKey: String,
         operation: @escaping @Sendable () throws -> Void
     ) async throws {
         let completion = TerminalDeliveryCompletion()
@@ -270,7 +288,11 @@ struct TerminalCommandRunner: Sendable {
             try await withCheckedThrowingContinuation { continuation in
                 completion.install(continuation)
                 queue.async {
-                    guard completion.begin() else { return }
+                    guard completion.begin() else {
+                        deliveryLanes.release(laneKey)
+                        return
+                    }
+                    defer { deliveryLanes.release(laneKey) }
                     do { try operation(); completion.finish(.success(())) }
                     catch { completion.finish(.failure(error)) }
                 }
@@ -284,6 +306,26 @@ struct TerminalCommandRunner: Sendable {
         } onCancel: {
             completion.finish(.failure(CancellationError()))
         }
+    }
+}
+
+/// Keeps one request per terminal target in flight. A timed-out AppleScript
+/// may still be unwinding below the timeout boundary; rejecting a second
+/// request prevents duplicate commands while the underlying call finishes.
+private final class TerminalDeliveryLanes: @unchecked Sendable {
+    private let lock = NSLock()
+    private var active: Set<String> = []
+
+    func acquire(_ key: String) -> Bool {
+        lock.withLock {
+            guard !active.contains(key) else { return false }
+            active.insert(key)
+            return true
+        }
+    }
+
+    func release(_ key: String) {
+        _ = lock.withLock { active.remove(key) }
     }
 }
 
