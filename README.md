@@ -117,16 +117,20 @@ brew install --cask GravityPoet/tap/openfind
 
 ### Install the signed GUI release
 
-1. Download `OpenFind.zip` and `OpenFind.zip.sha256` from the
+1. Download `OpenFind.dmg` and `OpenFind.dmg.sha256` (recommended for drag-and-drop
+   installation), or `OpenFind.zip` and `OpenFind.zip.sha256`, from the
    [latest GitHub Release](https://github.com/GravityPoet/OpenFind/releases/latest).
-2. Put both files in the same folder and verify the download:
+2. Put the selected package and checksum file in the same folder and verify it:
 
 ```bash
-shasum -a 256 -c OpenFind.zip.sha256
+shasum -a 256 -c OpenFind.dmg.sha256
+# For the ZIP alternative, use:
+# shasum -a 256 -c OpenFind.zip.sha256
 ```
 
-3. Double-click the ZIP, move `OpenFind.app` to **Applications**, then open it
-   from **Finder → Applications**.
+3. Double-click the DMG and move `OpenFind.app` to **Applications**. If using the
+   ZIP, double-click it first, then move `OpenFind.app`. Open it from
+   **Finder → Applications**.
 4. If macOS blocks that first launch, close the alert and open
    **System Settings → Privacy & Security**. In the **Security** section, click
    **Open Anyway** next to OpenFind, then confirm **Open**.

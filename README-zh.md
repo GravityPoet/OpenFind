@@ -118,15 +118,18 @@ brew install --cask GravityPoet/tap/openfind
 ### 安装已签名的 GUI 正式版
 
 1. 从 [最新 GitHub Release](https://github.com/GravityPoet/OpenFind/releases/latest)
-   下载 `OpenFind.zip` 与 `OpenFind.zip.sha256`。
-2. 将两个文件放在同一目录并校验下载：
+   下载 `OpenFind.dmg` 与 `OpenFind.dmg.sha256`（推荐拖拽安装），或下载
+   `OpenFind.zip` 与 `OpenFind.zip.sha256`。
+2. 将对应的安装包和 checksum 文件放在同一目录并校验下载：
 
 ```bash
-shasum -a 256 -c OpenFind.zip.sha256
+shasum -a 256 -c OpenFind.dmg.sha256
+# 如果选择 ZIP，则改为：
+# shasum -a 256 -c OpenFind.zip.sha256
 ```
 
-3. 双击 ZIP 解压，把 `OpenFind.app` 移入 **“应用程序”**，然后从
-   **Finder → 应用程序** 打开 OpenFind。
+3. 双击 DMG，把 `OpenFind.app` 拖入 **“应用程序”**；如果使用 ZIP，则双击
+   ZIP 解压后移动 `OpenFind.app`。然后从 **Finder → 应用程序** 打开 OpenFind。
 4. 如果 macOS 拦截首次启动，请关闭提示并打开
    **“系统设置 → 隐私与安全性”**，在 **“安全性”** 区域点击 OpenFind
    旁边的 **“仍要打开”**，最后确认 **“打开”**。
