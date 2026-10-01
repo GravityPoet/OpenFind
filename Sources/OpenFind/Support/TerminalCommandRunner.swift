@@ -212,11 +212,14 @@ struct TerminalCommandRunner: Sendable {
         return .sendFailed(error.message)
     }
 
-    func send(_ command: TerminalCommand) async throws {
+    func send(
+        _ command: TerminalCommand,
+        timeout: Duration = .seconds(TerminalCommandRunner.eventTimeoutSeconds)
+    ) async throws {
         try Task.checkCancellation()
         if target == .systemDefault {
             let open = openDefaultCommand
-            try await Self.runOffMain { try open(command) }
+            try await Self.runOffMain(timeout: timeout) { try open(command) }
             return
         }
         guard let bundleIdentifier = target.bundleIdentifier,
@@ -227,7 +230,7 @@ struct TerminalCommandRunner: Sendable {
         let source = source(for: command)
         let execute = runScript
         do {
-            try await Self.runOffMain { try execute(source) }
+            try await Self.runOffMain(timeout: timeout) { try execute(source) }
         } catch let error as TerminalAppleScriptError {
             // Raw error messages can contain user commands; log only target and code.
             Logger(subsystem: "com.openfind.app", category: "Terminal")
@@ -258,12 +261,73 @@ struct TerminalCommandRunner: Sendable {
         throw TerminalCommandError.testNotConfirmed
     }
 
-    private static func runOffMain(_ operation: @escaping @Sendable () throws -> Void) async throws {
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                do { try operation(); continuation.resume() }
-                catch { continuation.resume(throwing: error) }
+    private static func runOffMain(
+        timeout: Duration,
+        operation: @escaping @Sendable () throws -> Void
+    ) async throws {
+        let completion = TerminalDeliveryCompletion()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                completion.install(continuation)
+                queue.async {
+                    guard completion.begin() else { return }
+                    do { try operation(); completion.finish(.success(())) }
+                    catch { completion.finish(.failure(error)) }
+                }
+                let timeoutTask = Task.detached {
+                    do { try await Task.sleep(for: timeout) }
+                    catch { return }
+                    completion.finish(.failure(TerminalCommandError.timedOut))
+                }
+                completion.setTimeoutTask(timeoutTask)
             }
+        } onCancel: {
+            completion.finish(.failure(CancellationError()))
         }
+    }
+}
+
+/// Resumes a delivery continuation exactly once, even when an Apple event
+/// finishes after the watchdog has already released the UI.
+private final class TerminalDeliveryCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var timeoutTask: Task<Void, Never>?
+    private var result: Result<Void, Error>?
+
+    func install(_ continuation: CheckedContinuation<Void, Error>) {
+        let result: Result<Void, Error>? = lock.withLock {
+            if let result { return result }
+            self.continuation = continuation
+            return nil
+        }
+        if let result { continuation.resume(with: result) }
+    }
+
+    func setTimeoutTask(_ task: Task<Void, Never>) {
+        let finished = lock.withLock {
+            guard result == nil else { return true }
+            timeoutTask = task
+            return false
+        }
+        if finished { task.cancel() }
+    }
+
+    func begin() -> Bool {
+        lock.withLock { result == nil }
+    }
+
+    func finish(_ result: Result<Void, Error>) {
+        let pending = lock.withLock { () -> (CheckedContinuation<Void, Error>?, Task<Void, Never>?)? in
+            guard self.result == nil else { return nil }
+            self.result = result
+            let pending = (continuation, timeoutTask)
+            continuation = nil
+            timeoutTask = nil
+            return pending
+        }
+        guard let pending else { return }
+        pending.1?.cancel()
+        pending.0?.resume(with: result)
     }
 }

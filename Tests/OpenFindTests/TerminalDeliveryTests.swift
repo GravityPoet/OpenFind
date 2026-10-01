@@ -63,8 +63,10 @@ struct TerminalDeliveryTests {
         #expect(controller.isVisible)
         controller.open(try #require(controller.viewModel.selectedResult))
         try await waitUntil { controller.viewModel.isSendingCommand }
+        #expect(!controller.isVisible)
+        controller.show()
         controller.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification))
-        #expect(controller.isVisible)
+        #expect(!controller.isVisible)
         controller.close()
         await delivery.finishWithFailure()
         try await waitUntil { controller.viewModel.errorMessage != nil }
@@ -74,6 +76,65 @@ struct TerminalDeliveryTests {
         controller.open(try #require(controller.viewModel.selectedResult))
         try await waitUntil { !controller.isVisible }
         #expect(await delivery.calls == 2)
+    }
+
+    @Test func timeoutRestoresAnInteractivePanelAndLateCompletionDoesNotCloseIt() async throws {
+        _ = NSApplication.shared
+        let probe = TerminalBlockingProbe()
+        let runner = TerminalCommandRunner(
+            target: .ghostty,
+            findApplication: { _ in URL(fileURLWithPath: "/Applications/Ghostty.app") },
+            runScript: { _ in probe.run() },
+            validateApplication: { _, _ in }
+        )
+        let controller = QuickSearchWindowController(
+            onShowFullSearch: { _ in },
+            sendTerminalCommand: { try await runner.send($0, timeout: .milliseconds(100)) }
+        )
+        defer { probe.release(); controller.close() }
+        controller.show()
+        controller.viewModel.query = "g printf ok"
+        try await waitUntil { controller.viewModel.selectedResult != nil }
+        controller.panel?.onOpen?()
+        try await waitUntil { probe.calls == 1 }
+        #expect(!controller.isVisible)
+        try await waitUntil { controller.viewModel.errorMessage != nil }
+        #expect(controller.isVisible)
+        #expect(!controller.viewModel.isSendingCommand)
+        #expect(controller.viewModel.statusMessage == L("Terminal Timed Out"))
+        #expect(controller.viewModel.query == "g printf ok")
+        probe.release()
+        // A subsequent delivery also proves the late callback has drained.
+        try await runner.send(TerminalCommand(input: "printf next")!)
+        #expect(controller.isVisible)
+        controller.panel?.onClose?()
+        #expect(!controller.isVisible)
+    }
+
+    @Test func expiredAndCancelledQueuedCommandsNeverReachTheExecutor() async throws {
+        let probe = TerminalBlockingProbe()
+        let runner = TerminalCommandRunner(
+            target: .ghostty,
+            findApplication: { _ in URL(fileURLWithPath: "/Applications/Ghostty.app") },
+            runScript: { _ in probe.run() },
+            validateApplication: { _, _ in }
+        )
+        let command = try #require(TerminalCommand(input: "printf ok"))
+        let first = Task { try await runner.send(command, timeout: .milliseconds(100)) }
+        defer { probe.release() }
+        try await waitUntil { probe.calls == 1 }
+        await #expect(throws: TerminalCommandError.timedOut) { try await first.value }
+        await #expect(throws: TerminalCommandError.timedOut) {
+            try await runner.send(command, timeout: .milliseconds(20))
+        }
+        let cancelled = Task { try await runner.send(command) }
+        // Cancellation works even if it arrives before the continuation is installed.
+        cancelled.cancel()
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        #expect(probe.calls == 1)
+        probe.release()
+        try await runner.send(command)
+        #expect(probe.calls == 2)
     }
 
     @Test func invalidCommandShowsAnErrorWithoutProducingAnAction() async throws {
@@ -136,4 +197,21 @@ private final class TerminalExecutionProbe: @unchecked Sendable {
         Thread.sleep(forTimeInterval: 0.05)
         lock.withLock { active -= 1 }
     }
+}
+
+private final class TerminalBlockingProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private let semaphore = DispatchSemaphore(value: 0)
+    private var callCount = 0
+    var calls: Int { lock.withLock { callCount } }
+
+    func run() {
+        let shouldWait = lock.withLock {
+            callCount += 1
+            return callCount == 1
+        }
+        if shouldWait { semaphore.wait() }
+    }
+
+    func release() { semaphore.signal() }
 }
