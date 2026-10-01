@@ -160,7 +160,7 @@ jobs:
             -format UDZO \
             -imagekey zlib-level=9 \
             dist/OpenFind.dmg
-          shasum -a 256 dist/OpenFind.dmg > dist/OpenFind.dmg.sha256
+          (cd dist && shasum -a 256 OpenFind.dmg > OpenFind.dmg.sha256)
           hdiutil verify dist/OpenFind.dmg
 
       - name: Generate EdDSA-signed phased appcast
