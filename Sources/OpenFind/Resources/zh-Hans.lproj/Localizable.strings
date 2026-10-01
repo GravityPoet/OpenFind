@@ -967,6 +967,7 @@
 "Terminal Script Disabled" = "所选终端的脚本支持已关闭，请打开终端脚本功能。";
 "Terminal Unsupported" = "当前默认终端不支持自动接收命令，请在设置中选择终端.app 或 Ghostty。";
 "Terminal Send Failed" = "无法将命令发送到所选终端。";
+"Terminal Delivery In Progress" = "所选终端仍在处理上一条请求，请稍后重试。";
 "Terminal Target Legacy" = "已保留你原来的系统文件关联。选择上方终端.app、Ghostty 或 iTerm2，即可直接连接。";
 "Test Terminal Connection" = "测试运行";
 "Terminal Test Passed" = "测试命令已在所选终端中成功运行。";

@@ -967,6 +967,7 @@
 "Terminal Script Disabled" = "Terminal scripting is turned off. Enable scripting in the selected terminal.";
 "Terminal Unsupported" = "The selected default terminal cannot receive commands automatically. Choose Terminal or Ghostty in Settings.";
 "Terminal Send Failed" = "Could not send the command to the selected terminal.";
+"Terminal Delivery In Progress" = "The selected terminal is still finishing the previous request. Try again in a moment.";
 "Terminal Target Legacy" = "Your previous system file association is preserved. Choose Terminal, Ghostty, or iTerm2 above to connect directly.";
 "Test Terminal Connection" = "Test Run";
 "Terminal Test Passed" = "Test command ran successfully in the selected terminal.";

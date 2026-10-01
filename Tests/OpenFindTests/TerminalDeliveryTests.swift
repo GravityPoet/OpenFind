@@ -33,7 +33,7 @@ struct TerminalDeliveryTests {
         #expect(editor.selectedRange() == NSRange(location: 2, length: 0))
     }
 
-    @Test func concurrentDeliveriesAreSerializedOffMainThread() async throws {
+    @Test func concurrentDeliveriesRejectTheSecondRequestOffMainThread() async throws {
         let probe = TerminalExecutionProbe()
         let runner = TerminalCommandRunner(target: .ghostty,
             findApplication: { _ in URL(fileURLWithPath: "/Applications/Ghostty.app") },
@@ -41,10 +41,13 @@ struct TerminalDeliveryTests {
             validateApplication: { _, _ in }
         )
         let command = try #require(TerminalCommand(input: "printf ok"))
-        async let first: Void = runner.send(command)
-        async let second: Void = runner.send(command)
-        try await first
-        try await second
+        let first = Task { try await runner.send(command) }
+        try await waitUntil { probe.snapshot[0] == 1 }
+        await #expect(throws: TerminalCommandError.deliveryInProgress) {
+            try await runner.send(command)
+        }
+        try await first.value
+        try await runner.send(command)
         #expect(probe.snapshot == [2, 1, 0])
     }
 
@@ -124,7 +127,7 @@ struct TerminalDeliveryTests {
         defer { probe.release() }
         try await waitUntil { probe.calls == 1 }
         await #expect(throws: TerminalCommandError.timedOut) { try await first.value }
-        await #expect(throws: TerminalCommandError.timedOut) {
+        await #expect(throws: TerminalCommandError.deliveryInProgress) {
             try await runner.send(command, timeout: .milliseconds(20))
         }
         let cancelled = Task { try await runner.send(command) }
@@ -133,6 +136,7 @@ struct TerminalDeliveryTests {
         await #expect(throws: CancellationError.self) { try await cancelled.value }
         #expect(probe.calls == 1)
         probe.release()
+        try await waitUntil { probe.completed == 1 }
         try await runner.send(command)
         #expect(probe.calls == 2)
     }
@@ -203,7 +207,9 @@ private final class TerminalBlockingProbe: @unchecked Sendable {
     private let lock = NSLock()
     private let semaphore = DispatchSemaphore(value: 0)
     private var callCount = 0
+    private var completedCount = 0
     var calls: Int { lock.withLock { callCount } }
+    var completed: Int { lock.withLock { completedCount } }
 
     func run() {
         let shouldWait = lock.withLock {
@@ -211,6 +217,7 @@ private final class TerminalBlockingProbe: @unchecked Sendable {
             return callCount == 1
         }
         if shouldWait { semaphore.wait() }
+        lock.withLock { completedCount += 1 }
     }
 
     func release() { semaphore.signal() }

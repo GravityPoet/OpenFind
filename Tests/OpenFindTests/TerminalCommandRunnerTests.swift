@@ -118,6 +118,9 @@ struct TerminalCommandRunnerTests {
                 timeout: .milliseconds(20)
             )
         }
+        // The watchdog releases the caller before the injected executor
+        // returns; let the lane drain before the next target-scoped test.
+        try await Task.sleep(for: .milliseconds(250))
     }
 
     @MainActor
@@ -160,6 +163,7 @@ struct TerminalCommandRunnerTests {
             try await sendFailed.send(TerminalCommand(input: "git status")!)
         }
         #expect(TerminalCommandRunner.classify(.init(number: -1712, message: "timeout")) == .timedOut)
+        #expect(TerminalCommandRunner.classify(.init(number: -1744, message: "consent")) == .automationDenied)
         #expect(TerminalCommandRunner.classify(.init(number: -600, message: "not running")) == .launchFailed)
         #expect(TerminalCommandRunner.classify(.init(number: -609, message: "invalid connection")) == .launchFailed)
     }
