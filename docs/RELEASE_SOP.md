@@ -9,7 +9,7 @@ compatibility entry point and must not contain an independent procedure.
 - Default and release branch: `main`
 - Public version format: semantic tags such as `v1.1.3`
 - Product version source: the tag without the leading `v`
-- Build number: `major * 1_000_000 + minor * 1_000 + patch`
+- Build number: for releases after the v1.1.4 repair builds, `major * 1_000_000 + minor * 1_000 + patch + 5`; v1.1.5 therefore uses `1001010` and remains higher than local repair build `1001009`
 - Supported platform: macOS 14 or later, Apple silicon and Intel
 - Bundle identifier: `com.openfind.app`
 - Distribution: GitHub Release with Sparkle appcast
@@ -82,7 +82,7 @@ Run every command from the repository root.
 3. Build the exact customer artifact. For the current `v1.1.4` target, use:
 
    ```bash
-   APP_VERSION=1.1.4 BUILD_NUMBER=1001004 \
+   APP_VERSION=1.1.5 BUILD_NUMBER=1001010 \
      bash Scripts/build_customer_app.sh
    ```
 
@@ -284,3 +284,6 @@ cause, correction, and prevention.
 | 2026-09-24 | Watch exact-SHA CI through a long `gh run watch` session during `v1.1.4` | The tool session was interrupted while the workflow was still `in_progress`, losing the watcher without a CI result | Polled `gh run view <run-id> --json status,conclusion,headSha` once per minute until `completed/success`, then verified every job and the exact SHA directly | Treat an interrupted watcher as an observation-channel failure; fall back to bounded direct `gh run view` polling and require exact-SHA plus per-job evidence |
 | 2026-09-24 | Install the post-release local repair while a temporary public-package audit bundle remained named `OpenFind.app` | The installer correctly found `/private/tmp/openfind-release-audit.f2QLYw/unpacked/OpenFind.app` in addition to `/Applications/OpenFind.app` and stopped the replacement | Renamed only the disposable audit bundle to `.app.disabled.audit`, kept its evidence, and reran the unchanged installer successfully | Keep extracted audit bundles outside the `.app` namespace before invoking the canonical uniqueness-gated installer |
 | 2026-09-24 | Push the keyboard-cleaning copy fix with `git push origin main` | The first attempt returned `git@ssh.github.com: Permission denied (publickey)` while `gh auth status` and `ssh -T git@github.com` were valid | Retried the identical push after the transient SSH failure; it advanced `main` successfully | Treat a single SSH publickey rejection as a transport/auth handshake failure; verify `gh auth status` and `ssh -T`, then retry once before changing remotes or credentials |
+| 2026-10-01 | Derive the next public build from the old semantic formula | Public `v1.1.4` is build `1001004`, but local post-release repair builds occupy `1001008` and `1001009`; the old formula would make `v1.1.5` build `1001005`, which Sparkle would reject as lower | Use the monotonic post-repair formula `major * 1000000 + minor * 1000 + patch + 5`; `v1.1.5` is build `1001010`, and keep the workflow and source defaults aligned | Compare the candidate build against both the latest public asset and the installed repair build before tagging; never publish a lower or equal Sparkle build |
+| 2026-10-01 | Windows preflight before the macOS fallback | UTM was installed but no Windows VM artifact or required external volume was mounted, so Windows Setup/Portable acceptance could not run | Proceed with the verified macOS target only and leave Windows unpublished; resume Windows first when the VM/disk is available | Publish only platforms whose installer/portable runtime gates passed; record unavailable platform evidence instead of treating static source checks as acceptance |
+| 2026-10-01 | `gh api repos/GravityPoet/OpenFind/releases/latest --jq ...` | `net/http: TLS handshake timeout` during a read-only GitHub API probe | Retried the same read-only endpoint; the second attempt returned `v1.1.4` successfully | Treat a single GitHub TLS failure as a transport observation gap; retry before concluding that the latest release or asset is missing |

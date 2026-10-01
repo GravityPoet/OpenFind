@@ -37,7 +37,11 @@ jobs:
           test "$TAG_SHA" = "$CHECKOUT_SHA"
           VERSION="${RELEASE_TAG#v}"
           IFS=. read -r MAJOR MINOR PATCH <<<"$VERSION"
-          BUILD_NUMBER=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))
+          # v1.1.4 received two post-release local repair builds (1001008 and
+          # 1001009). Keep every subsequent public Sparkle build strictly
+          # higher than those repair builds while preserving monotonic patch
+          # ordering for later releases.
+          BUILD_NUMBER=$((MAJOR * 1000000 + MINOR * 1000 + PATCH + 5))
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
           echo "RELEASE_SHA=$CHECKOUT_SHA" >> "$GITHUB_ENV"
