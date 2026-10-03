@@ -243,9 +243,15 @@ if [ "$physical_paths" != "$INSTALL_APP" ]; then
 fi
 
 spotlight_paths=""
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+# Atomic replacement can temporarily remove the old metadata row before the
+# new one is searchable. Re-import only this app during the bounded wait;
+# an empty result never counts as successful installation.
+for ((spotlight_attempt = 0; spotlight_attempt < 30; spotlight_attempt++)); do
     spotlight_paths="$(mdfind 'kMDItemCFBundleIdentifier == "com.openfind.app"c' | sort -u)"
     [ "$spotlight_paths" = "$INSTALL_APP" ] && break
+    if [ "$spotlight_attempt" -eq 5 ] || [ "$spotlight_attempt" -eq 15 ]; then
+        /usr/bin/mdimport -i "$INSTALL_APP" >/dev/null 2>&1 || true
+    fi
     sleep 1
 done
 if [ "$spotlight_paths" != "$INSTALL_APP" ]; then
