@@ -3,7 +3,12 @@ import AppKit
 import Dispatch
 
 let args = CommandLine.arguments
-if args.contains("--help") || args.contains("-h") {
+if args.contains(TerminalBridge.argument) {
+    // A one-shot helper uses the installed executable's signing identity, but
+    // never starts SwiftUI, clipboard capture, indexes, or menu-bar services.
+    guard args.count == 2 else { exit(64) }
+    exit(TerminalBridge.runHelper())
+} else if args.contains("--help") || args.contains("-h") {
     // Without this branch, unrecognized CLI flags fall through to the GUI
     // path and the process silently starts a menu-bar instance instead of
     // printing usage and exiting.

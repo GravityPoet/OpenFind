@@ -4,6 +4,28 @@ import Testing
 
 @Suite("Bounded Process Runner Tests")
 struct BoundedProcessRunnerTests {
+    @Test func streamsInputLargerThanAPipeAndClosesIt() async throws {
+        let input = Data(repeating: 65, count: 256 * 1_024)
+        let result = try await BoundedProcessRunner.run(
+            executableURL: URL(fileURLWithPath: "/bin/cat"),
+            arguments: [], timeout: 3, outputLimit: input.count + 1,
+            input: input, discardStandardError: true
+        )
+        #expect(result.terminationStatus == 0)
+        #expect(!result.timedOut)
+        #expect(result.output == input)
+    }
+
+    @Test func earlyExitWhileWritingInputDoesNotSignalTheCaller() async throws {
+        await #expect(throws: BoundedProcessError.inputWriteFailed) {
+            try await BoundedProcessRunner.run(
+                executableURL: URL(fileURLWithPath: "/usr/bin/true"),
+                arguments: [], timeout: 2, outputLimit: 1_024,
+                input: Data(repeating: 65, count: 256 * 1_024)
+            )
+        }
+    }
+
     @Test func capturesBoundedOutputFromASuccessfulProcess() async throws {
         let result = try await BoundedProcessRunner.run(
             executableURL: URL(fileURLWithPath: "/bin/echo"),
