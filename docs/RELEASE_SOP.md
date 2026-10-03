@@ -79,24 +79,18 @@ Run every command from the repository root.
    NODES=250000 bash Scripts/benchmark_name_index.sh
    ```
 
-3. Build the exact customer artifact. For the current `v1.1.5` target, use:
+3. Build the exact customer artifacts. For the `v1.1.6` candidate, use:
 
    ```bash
-   APP_VERSION=1.1.5 BUILD_NUMBER=1001010 \
+   APP_VERSION=1.1.6 BUILD_NUMBER=1001011 \
      bash Scripts/build_customer_app.sh
    ```
 
-   Create the customer drag-and-drop DMG from the verified app:
+   The customer builder creates both ZIP and DMG. To regenerate only the
+   drag-and-drop DMG from the verified ZIP, run:
 
    ```bash
-   DMG_STAGE="$(mktemp -d)"
-   ditto -x -k dist/OpenFind.zip "$DMG_STAGE"
-   ln -s /Applications "$DMG_STAGE/Applications"
-   hdiutil create -volname "OpenFind 1.1.5" \
-     -srcfolder "$DMG_STAGE" -ov -format UDZO \
-     -imagekey zlib-level=9 dist/OpenFind.dmg
-   (cd dist && shasum -a 256 OpenFind.dmg > OpenFind.dmg.sha256)
-   hdiutil verify dist/OpenFind.dmg
+   bash Scripts/build_dmg.sh
    ```
 
 4. Verify the local artifact before commit/tag:
@@ -188,6 +182,32 @@ Run every command from the repository root.
 
 ## [B] Acceptance
 
+Direct terminal automation uses the installed `OpenFind` executable in one-shot
+`--terminal-bridge` mode, with no second app identity or persistent service.
+Only a bounded, versioned request containing a fixed terminal target and a
+validated command crosses stdin; stdout contains typed delivery results and
+numeric errors, never commands or raw AppleScript error messages. The helper
+checks its parent's kernel executable path against its own before execution;
+external scripts cannot borrow OpenFind's Automation consent. The parent
+terminates and reaps the child on timeout/cancellation before releasing the
+target lane. AppleScript replies prove delivery; a timeout can still mean the
+terminal received the command, so never automatically resend it.
+
+For changes to this path, run:
+
+```bash
+bash Scripts/test.sh --filter 'TerminalBridgeTests|BoundedProcessRunnerTests|TerminalDeliveryTests'
+```
+
+This
+must prove forced termination, immediate next-request acceptance, cancellation,
+crash/malformed replies, parent-death cleanup, and executable dispatch. Then
+verify the final `/Applications` app using Quick Search with a unique local
+receipt for each installed direct terminal. Test Automation consent through
+the installed app; shell-launched helpers are not proof of the app's TCC
+identity. Keep the production designated requirement and existing selections.
+Do not reset the user's TCC database for testing.
+
 The release is complete only when all of these checks pass:
 
 - `main`, the annotated tag, the CI run, and the release workflow all resolve to
@@ -246,6 +266,9 @@ cause, correction, and prevention.
 
 | Date | Failed step | Cause | Correction | Prevention |
 | --- | --- | --- | --- | --- |
+| 2026-10-04 | Compile the helper's parent executable-path check | Swift reported `PROC_PIDPATHINFO_MAXSIZE` unavailable because the SDK defines it as a structured C macro | Used the SDK's equivalent `4 * Int(MAXPATHLEN)` buffer and retained the `proc_pidpath` result check | Check Swift-import availability against the actual SDK headers before using C macros in cross-toolchain release code |
+| 2026-10-04 | Locate the built helper using XCTest's `argv[0]` | The test process can name Xcode's system runner rather than the SwiftPM executable directory | Resolve `OpenFind` beside the test resources bundle for debug and release | Exercise the real `--terminal-bridge` entry point in the suite and the packaged smoke gate; do not use a mock as executable-dispatch evidence |
+| 2026-10-04 | Mounted-DMG `lipo <binary> -verify_arch arm64 x86_64` probe | The combined invocation was rejected with `-verify_arch requires exactly one input file` | Reused the builder's separate per-architecture invocation and verified both slices; the image was detached in `finally` on both attempts | Use the repository's proven architecture-check command and retain guaranteed detach cleanup for read-only image verification |
 | 2026-07-24 | Add the canonical SOP and demote `RELEASING.md` in one patch | The patch used stale `RELEASING.md` text instead of re-reading the current worktree | Re-read the file and apply the canonical SOP and compatibility pointer against current content | Refresh mutable release files immediately before context-sensitive patches |
 | 2026-07-24 | Compile the first visual regression test | `NSColor` channel values are `CGFloat`, but the snapshot accumulator was `Double` | Convert each channel difference explicitly to `Double` before reduction | Compile new AppKit image-comparison helpers with a focused test before generating baselines |
 | 2026-07-24 | Run the full `swift test` gate after adding visual regression | The visual suite performed slow per-pixel `NSColor` conversion while the entire suite was main-actor isolated, starving unrelated timer and async UI tests and producing secondary failures | Convert snapshots to RGBA buffers and keep only SwiftUI rendering on the main actor; run byte comparison off actor, then repeat failed tests and the complete gate | Snapshot rendering may use the main actor, but image comparison must not; validate new visual gates concurrently with timer tests |
@@ -303,7 +326,7 @@ cause, correction, and prevention.
 | 2026-10-01 | Derive the next public build from the old semantic formula | Public `v1.1.4` is build `1001004`, but local post-release repair builds occupy `1001008` and `1001009`; the old formula would make `v1.1.5` build `1001005`, which Sparkle would reject as lower | Use the monotonic post-repair formula `major * 1000000 + minor * 1000 + patch + 5`; `v1.1.5` is build `1001010`, and keep the workflow and source defaults aligned | Compare the candidate build against both the latest public asset and the installed repair build before tagging; never publish a lower or equal Sparkle build |
 | 2026-10-01 | Windows preflight before the macOS fallback | UTM was installed but no Windows VM artifact or required external volume was mounted, so Windows Setup/Portable acceptance could not run | Proceed with the verified macOS target only and leave Windows unpublished; resume Windows first when the VM/disk is available | Publish only platforms whose installer/portable runtime gates passed; record unavailable platform evidence instead of treating static source checks as acceptance |
 | 2026-10-01 | `gh api repos/GravityPoet/OpenFind/releases/latest --jq ...` | `net/http: TLS handshake timeout` during a read-only GitHub API probe | Retried the same read-only endpoint; the second attempt returned `v1.1.4` successfully | Treat a single GitHub TLS failure as a transport observation gap; retry before concluding that the latest release or asset is missing |
-| 2026-10-01 | `bash Scripts/install_local_app.sh dist/OpenFind.zip` | `Spotlight still reports duplicate OpenFind apps: /Applications/.openfind-displaced-37402` after the previous bundle had already been removed | Confirmed the displaced path was gone and `mdfind` returned only `/Applications/OpenFind.app`, then reran the unchanged installer successfully | Treat a stale Spotlight/LaunchServices entry as a bounded retry condition only after filesystem state proves the displaced bundle is gone; never delete an unrelated bundle to satisfy uniqueness |
+| 2026-10-01 / 2026-10-04 | `bash Scripts/install_local_app.sh dist/OpenFind.zip` | Spotlight briefly returned a displaced path or `<none>` after atomic replacement, triggering rollback although the signed package was valid | Confirmed the rollback, filesystem, `mdls` bundle identity and `mdfind` unique canonical entry; retried the same verified ZIP successfully without rebuilding it | Separate indexing latency from an invalid package; preserve the blocking uniqueness gate and retry only after fresh metadata evidence; never delete an unrelated bundle to satisfy uniqueness |
 | 2026-10-01 | `gh run watch 36809642308` during the v1.1.5 exact-SHA CI gate | `failed to get run: ... TLS handshake timeout` while the workflow was still running | Switched to bounded `gh run view 36809642308 --json status,conclusion,jobs` polling and waited for the exact SHA to complete successfully | Treat a watcher/API transport failure as an observation-channel issue; never restart a workflow or infer failure without direct run state |
 | 2026-10-01 | `gh api repos/GravityPoet/OpenFind/contents/docs/RELEASE_SOP.md?ref=main` | zsh reported `no matches found` because the query string was unquoted | Quoted the complete API endpoint and retried through the authenticated Contents API | Quote GitHub API URLs containing `?`/`&` in zsh release commands |
 | 2026-10-01 | `git push origin main` for post-release SOP maintenance | `git@ssh.github.com: Permission denied (publickey)` after the v1.1.5 Release was already public | Verified `gh auth` but kept the published tag/release untouched and updated the SOP through the authenticated Contents API instead | For docs-only post-release maintenance, use the Contents API when Git SSH transport is unavailable; never move or rebuild the published tag |

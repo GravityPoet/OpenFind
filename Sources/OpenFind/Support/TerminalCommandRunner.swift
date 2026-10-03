@@ -94,7 +94,10 @@ struct TerminalCommandRunner: Sendable {
 
     let target: TerminalCommandTarget
     var findApplication: @Sendable (String) -> URL?
-    var runScript: @Sendable (String) throws -> Void
+    // Synchronous injection is retained for existing script/template tests.
+    // Production AppleScript runs only in the supervised helper process.
+    var runScript: (@Sendable (String) throws -> Void)?
+    var runBridge: @Sendable (TerminalCommand, TerminalCommandTarget, Duration) async throws -> Void
     var openDefaultCommand: @Sendable (TerminalCommand) throws -> Void
     var validateApplication: @Sendable (TerminalCommandTarget, URL) throws -> Void
 
@@ -103,7 +106,10 @@ struct TerminalCommandRunner: Sendable {
         findApplication: @Sendable @escaping (String) -> URL? = { id in
             NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
         },
-        runScript: @Sendable @escaping (String) throws -> Void = TerminalCommandRunner.defaultRunScript,
+        runScript: (@Sendable (String) throws -> Void)? = nil,
+        runBridge: @Sendable @escaping (TerminalCommand, TerminalCommandTarget, Duration) async throws -> Void = {
+            try await TerminalBridge.send($0, target: $1, timeout: $2)
+        },
         openDefaultCommand: @Sendable @escaping (TerminalCommand) throws -> Void = TerminalCommandRunner.defaultOpenCommand,
         validateApplication: @Sendable @escaping (TerminalCommandTarget, URL) throws -> Void = { target, url in
             if let error = TerminalInstallation(target: target, url: url).error { throw error }
@@ -112,6 +118,7 @@ struct TerminalCommandRunner: Sendable {
         self.target = target
         self.findApplication = findApplication
         self.runScript = runScript
+        self.runBridge = runBridge
         self.openDefaultCommand = openDefaultCommand
         self.validateApplication = validateApplication
     }
@@ -244,8 +251,14 @@ struct TerminalCommandRunner: Sendable {
         guard Self.deliveryLanes.acquire(laneKey) else {
             throw TerminalCommandError.deliveryInProgress
         }
+        guard let execute = runScript else {
+            // The bridge returns only after its child has exited, including
+            // forced termination. A timed-out request cannot retain this lane.
+            defer { Self.deliveryLanes.release(laneKey) }
+            try await runBridge(command, target, timeout)
+            return
+        }
         let source = source(for: command)
-        let execute = runScript
         do {
             try await Self.runOffMain(timeout: timeout, laneKey: laneKey) { try execute(source) }
         } catch let error as TerminalAppleScriptError {
@@ -309,9 +322,9 @@ struct TerminalCommandRunner: Sendable {
     }
 }
 
-/// Keeps one request per terminal target in flight. A timed-out AppleScript
-/// may still be unwinding below the timeout boundary; rejecting a second
-/// request prevents duplicate commands while the underlying call finishes.
+/// Rejects overlapping deliveries to the same target. Bridge deliveries reap
+/// their child before releasing ownership; legacy synchronous deliveries hold
+/// their lane until the underlying call returns.
 private final class TerminalDeliveryLanes: @unchecked Sendable {
     private let lock = NSLock()
     private var active: Set<String> = []

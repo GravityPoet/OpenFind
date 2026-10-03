@@ -23,8 +23,8 @@ NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 NOTARY_KEYCHAIN="${NOTARY_KEYCHAIN:-}"
 STORE_NOTARY_CREDENTIALS="${STORE_NOTARY_CREDENTIALS:-0}"
 MINIMUM_MACOS_VERSION="${MINIMUM_MACOS_VERSION:-14.0}"
-APP_VERSION="${APP_VERSION:-1.1.5}"
-BUILD_NUMBER="${BUILD_NUMBER:-1001010}"
+APP_VERSION="${APP_VERSION:-1.1.6}"
+BUILD_NUMBER="${BUILD_NUMBER:-1001011}"
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-}"
 SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-}"
 EXPECTED_SIGNING_CERT_SHA1="${EXPECTED_SIGNING_CERT_SHA1:-}"
@@ -349,6 +349,11 @@ for arch in $ARCHS; do
 done
 
 echo "Running packaged executable smoke test..."
+BRIDGE_REPLY="$(printf '%s' '{}' | "$MACOS_DIR/OpenFind" --terminal-bridge)"
+if [ "$BRIDGE_REPLY" != '{"status":"invalidCommand"}' ]; then
+    echo "Error: packaged terminal bridge did not reject an invalid request." >&2
+    exit 1
+fi
 OPENFIND_CACHE_PATH="$BUILD_TMP/smoke-index.bin" \
     "$MACOS_DIR/OpenFind" \
     --search OpenFindPackagedSmokeNeedleZ7Q9 "$BUILD_TMP" --refresh \
