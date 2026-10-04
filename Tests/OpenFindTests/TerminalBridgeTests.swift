@@ -118,16 +118,27 @@ struct TerminalBridgeTests {
         defer { fixture.remove() }
         let runner = makeRunner(fixture)
         let started = ContinuousClock.now
-        await #expect(throws: TerminalCommandError.timedOut) {
-            try await runner.send(TerminalCommand(input: "blocked")!, timeout: .milliseconds(500))
+        let delivery = Task {
+            // Keep enough startup margin for the full suite's process load;
+            // the assertion is about bounded cleanup, not a sub-second SLA.
+            try await runner.send(TerminalCommand(input: "blocked")!, timeout: .seconds(2))
         }
-        #expect(ContinuousClock.now - started < .seconds(2))
+        try await waitUntil("blocked helper did not publish its PID") {
+            (try? fixture.blockedPID()) != nil
+        }
+        await #expect(throws: TerminalCommandError.timedOut) { try await delivery.value }
+        #expect(ContinuousClock.now - started < .seconds(5))
         let pid = try fixture.blockedPID()
         #expect(kill(pid, 0) == -1 && errno == ESRCH)
         // This target must accept another request without waiting for the old
         // AppleScript or restarting OpenFind; success also proves no retry.
         try await runner.send(TerminalCommand(input: "next")!)
-        #expect(try String(contentsOf: fixture.calls, encoding: .utf8) == "blocked\nnext\n")
+        try await waitUntil("delivery log did not contain blocked followed by next") {
+            guard let data = try? Data(contentsOf: fixture.calls) else { return false }
+            return String(decoding: data, as: UTF8.self) == "blocked\nnext\n"
+        }
+        let calls = try Data(contentsOf: fixture.calls)
+        #expect(String(decoding: calls, as: UTF8.self) == "blocked\nnext\n")
     }
 
     @Test func cancellationKillsTheChildBeforeASecondDelivery() async throws {
@@ -152,7 +163,8 @@ struct TerminalBridgeTests {
             }
             try await runner.send(TerminalCommand(input: "next")!)
         }
-        #expect(try String(contentsOf: fixture.calls, encoding: .utf8) == "crash\nnext\nmalformed\nnext\n")
+        let calls = try Data(contentsOf: fixture.calls)
+        #expect(String(decoding: calls, as: UTF8.self) == "crash\nnext\nmalformed\nnext\n")
     }
 
     @Test func panelClosesDuringTimeoutAndCanSendAgainWithoutRestart() async throws {
@@ -181,8 +193,11 @@ struct TerminalBridgeTests {
     }
 
     private func makeRunner(_ fixture: BridgeFixture) -> TerminalCommandRunner {
-        TerminalCommandRunner(target: .ghostty,
-            findApplication: { _ in URL(fileURLWithPath: "/Applications/Ghostty.app") },
+        // Use the least-contended direct target so this process-lifecycle
+        // fixture cannot race the UI delivery suites, which share the global
+        // per-target delivery lane while Swift Testing discovers suites.
+        TerminalCommandRunner(target: .iterm2,
+            findApplication: { _ in URL(fileURLWithPath: "/Applications/iTerm.app") },
             runBridge: { command, target, timeout in
                 let marker = command.text
                 try (marker + "\n").append(to: fixture.calls)
@@ -206,12 +221,16 @@ struct TerminalBridgeTests {
         throw CocoaError(.fileNoSuchFile)
     }
 
-    private func waitUntil(_ predicate: () -> Bool) async throws {
+    private func waitUntil(
+        _ description: String = "condition did not become true",
+        _ predicate: () -> Bool
+    ) async throws {
         for _ in 0..<300 {
             if predicate() { return }
             try await Task.sleep(for: .milliseconds(10))
         }
-        throw CocoaError(.coderInvalidValue)
+        throw NSError(domain: "TerminalBridgeTests", code: 1,
+                      userInfo: [NSLocalizedDescriptionKey: description])
     }
 }
 
@@ -234,7 +253,11 @@ private struct BridgeFixture: Sendable {
         crash = directory.appendingPathComponent("crash.sh")
         malformed = directory.appendingPathComponent("malformed.sh")
         let quotedPID = "'" + pid.path.replacingOccurrences(of: "'", with: "'\\''") + "'"
-        let bodies = [blocked: "printf '%s' \"$$\" > " + quotedPID + "\ntrap '' TERM\nexec /bin/sleep 30\n",
+        let quotedPIDTemporary = "'" + (pid.path + ".tmp").replacingOccurrences(of: "'", with: "'\\''") + "'"
+        // Publish the PID with an atomic rename. A direct redirection creates
+        // an empty file first; a concurrent Data(contentsOf:) can observe
+        // that transient state under a loaded full-suite run.
+        let bodies = [blocked: "printf '%s' \"$$\" > " + quotedPIDTemporary + " && mv " + quotedPIDTemporary + " " + quotedPID + "\ntrap '' TERM\nexec /bin/sleep 30\n",
                       success: "/bin/cat >/dev/null\nprintf '%s' '{\"status\":\"delivered\"}'\n",
                       crash: "/bin/cat >/dev/null\nkill -KILL $$\n",
                       malformed: "/bin/cat >/dev/null\nprintf '%s' '{}'\n"]
@@ -245,7 +268,7 @@ private struct BridgeFixture: Sendable {
     }
 
     func blockedPID() throws -> pid_t {
-        let text = try String(contentsOf: pid, encoding: .utf8)
+        let text = String(decoding: try Data(contentsOf: pid), as: UTF8.self)
         return try #require(pid_t(text))
     }
 
@@ -254,13 +277,18 @@ private struct BridgeFixture: Sendable {
 
 private extension String {
     func append(to url: URL) throws {
-        if !FileManager.default.fileExists(atPath: url.path) {
-            try write(to: url, atomically: true, encoding: .utf8)
-            return
+        let descriptor = open(url.path, O_WRONLY | O_CREAT | O_APPEND, 0o600)
+        guard descriptor >= 0 else { throw CocoaError(.fileWriteUnknown) }
+        defer { _ = close(descriptor) }
+        let data = Data(utf8)
+        try data.withUnsafeBytes { bytes in
+            guard let base = bytes.baseAddress else { return }
+            var offset = 0
+            while offset < data.count {
+                let written = Darwin.write(descriptor, base.advanced(by: offset), data.count - offset)
+                guard written > 0 else { throw CocoaError(.fileWriteUnknown) }
+                offset += written
+            }
         }
-        let handle = try FileHandle(forWritingTo: url)
-        defer { try? handle.close() }
-        try handle.seekToEnd()
-        try handle.write(contentsOf: Data(utf8))
     }
 }

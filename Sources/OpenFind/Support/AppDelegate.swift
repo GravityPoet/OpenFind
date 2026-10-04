@@ -50,6 +50,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var activationPolicySetter: (NSApplication.ActivationPolicy) -> Bool = {
         NSApp.activationPolicy() == $0 || NSApp.setActivationPolicy($0)
     }
+    /// The quick-search palette is a nonactivating panel. Keep activation
+    /// injectable so lifecycle tests can prove the menu-bar entry promotes
+    /// OpenFind before the first keystroke reaches the field editor.
+    var applicationActivator: () -> Void = {
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     override convenience init() {
         let defaults = UserDefaults.standard
@@ -309,12 +315,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func showQuickSearch(_ sender: Any? = nil) {
-        if NSApp.isHidden { NSApp.unhideWithoutActivation() }
         quickLook.close()
         mainWindow?.orderOut(nil)
         settingsWindow?.orderOut(nil)
         enterForegroundMode(resumesSearch: false)
+        NSApp.unhide(nil)
+        applicationActivator()
         quickSearchWindow?.show()
+        // MenuBarExtra dismisses its menu after the action returns and may
+        // deactivate an accessory app after the panel was shown. Re-activate
+        // on the next main-loop turn so the nonactivating panel keeps its
+        // field editor as first responder for the first typed character.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.quickSearchWindow?.isVisible == true else { return }
+            self.applicationActivator()
+        }
     }
 
     private func toggleQuickSearch() {

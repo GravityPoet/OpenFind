@@ -79,10 +79,10 @@ Run every command from the repository root.
    NODES=250000 bash Scripts/benchmark_name_index.sh
    ```
 
-3. Build the exact customer artifacts. For the `v1.1.6` candidate, use:
+3. Build the exact customer artifacts. For the `v1.1.7` candidate, use:
 
    ```bash
-   APP_VERSION=1.1.6 BUILD_NUMBER=1001011 \
+   APP_VERSION=1.1.7 BUILD_NUMBER=1001012 \
      bash Scripts/build_customer_app.sh
    ```
 
@@ -331,4 +331,5 @@ cause, correction, and prevention.
 | 2026-10-01 | `gh api repos/GravityPoet/OpenFind/contents/docs/RELEASE_SOP.md?ref=main` | zsh reported `no matches found` because the query string was unquoted | Quoted the complete API endpoint and retried through the authenticated Contents API | Quote GitHub API URLs containing `?`/`&` in zsh release commands |
 | 2026-10-01 | `git push origin main` for post-release SOP maintenance | `git@ssh.github.com: Permission denied (publickey)` after the v1.1.5 Release was already public | Verified `gh auth` but kept the published tag/release untouched and updated the SOP through the authenticated Contents API instead | For docs-only post-release maintenance, use the Contents API when Git SSH transport is unavailable; never move or rebuild the published tag |
 | 2026-10-01 | CI run `36809295922`, `bash Scripts/test.sh` | Hosted Swift toolchain rejected `TerminalDeliveryCompletion.install` with `closure captures 'result' before it is declared`, while the local compiler accepted the shadowed name | Renamed the local value to `existingResult` and explicitly referenced `self.result`; rerun the exact SHA gate before tagging | Avoid local/property shadowing inside escaping Swift closures; require a hosted exact-SHA CI pass in addition to local release tests |
+| 2026-10-04 | Launch the Drive Alive, visual, and benchmark SwiftPM gates concurrently | SwiftPM shared `.build` state is not safe for concurrent builds; one benchmark saw `build.db: database is locked` and its test bundle was temporarily incomplete | Let the active build finish, then rerun the affected gate serially; all release gates passed on the serial rerun | Run SwiftPM-backed release gates one at a time unless each command has an isolated `--scratch-path` and build directory |
 | 2026-10-01 | First local DMG creation/checksum probe | Cleanup treated a temporary attach plist file as a directory (`NotADirectoryError`), and the first checksum manifest contained the `dist/` prefix so verification from `dist/` failed | Detached the image, removed the temp file with file-aware cleanup, and regenerated `OpenFind.dmg.sha256` from inside `dist/`; DMG verify and checksum then passed | Keep DMG staging cleanup type-aware and write relocatable checksum manifests from the artifact directory |
