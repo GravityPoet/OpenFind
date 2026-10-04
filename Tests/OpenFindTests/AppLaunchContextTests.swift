@@ -208,6 +208,27 @@ struct AppLaunchContextTests {
         #expect(!context.delegate.viewModel.isIndexLifecycleStarted)
     }
 
+    @Test func quickSearchActivatesTheMenuBarAppBeforeShowingItsPalette() async throws {
+        let application = NSApplication.shared
+        let existing = Set(application.windows.map(ObjectIdentifier.init))
+        let context = makeContext(shouldPresentFirstRunGuide: false)
+        defer { closeTestWindows(application, excluding: existing) }
+        var activationCount = 0
+        context.delegate.applicationActivator = { activationCount += 1 }
+
+        context.delegate.showQuickSearch(nil)
+
+        for _ in 0..<20 where activationCount < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(activationCount == 2)
+        #expect(application.windows.contains {
+            !existing.contains(ObjectIdentifier($0))
+                && $0.identifier?.rawValue == "OpenFind.quickSearch"
+                && $0.isVisible
+        })
+    }
+
     @Test func quickSearchHidesExistingFullWindowAndOnlyExplicitFullSearchRestoresIt() throws {
         let application = NSApplication.shared
         let existing = Set(application.windows.map(ObjectIdentifier.init))
