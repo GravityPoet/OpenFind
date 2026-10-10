@@ -10,7 +10,7 @@ enum QuickFileSearch {
         var options = preferences
         options.query = trimmed
         options.target = .name
-        options.matchMode = .substring
+        options.matchMode = .fuzzy
         options.caseSensitive = false
         options.includePackages = false
         guard let compiled = try? SearchQueryPlan.parse(trimmed).compile(options: options),

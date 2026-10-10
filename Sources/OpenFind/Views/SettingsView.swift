@@ -86,6 +86,7 @@ struct SettingsView: View {
 
                 Picker(L("Default Match Mode"), selection: $viewModel.options.matchMode) {
                     Text(L("Contains")).tag(MatchMode.substring)
+                    Text(L("Fuzzy Names")).tag(MatchMode.fuzzy)
                     Text(L("Whole Word")).tag(MatchMode.wholeWord)
                     Text(L("Wildcard")).tag(MatchMode.wildcard)
                     Text(L("Regular Expression")).tag(MatchMode.regex)

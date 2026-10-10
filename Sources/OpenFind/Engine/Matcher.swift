@@ -29,7 +29,7 @@ struct Matcher: @unchecked Sendable {
         let insensitive: NSRegularExpression.Options = options.caseSensitive ? [] : [.caseInsensitive]
 
         switch options.matchMode {
-        case .substring:
+        case .fuzzy, .substring:
             kind = .substring(needle: query, caseSensitive: options.caseSensitive)
 
         case .wholeWord:

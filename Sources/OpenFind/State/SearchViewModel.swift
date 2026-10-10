@@ -185,9 +185,12 @@ final class SearchViewModel {
         !hasFullDiskAccess || indexStats.isIndexing
     }
 
-    /// Debounced trigger for query/option changes: search only fires after
-    /// 350 ms without further changes. Durable options are persisted here.
-    func scheduleSearch(delay: Duration = .milliseconds(350)) {
+    /// Debounced trigger for query/option changes. Name-only search uses a
+    /// short Finder-like delay; content and advanced expressions stay quieter.
+    func scheduleSearch(delay: Duration? = nil) {
+        let effectiveDelay = delay ?? (options.target == .name
+            && !options.query.localizedCaseInsensitiveContains("content:")
+            ? .milliseconds(50) : .milliseconds(350))
         Preferences.saveOptions(options)
         if displayMode == .events {
             debounceTask?.cancel()
@@ -207,7 +210,7 @@ final class SearchViewModel {
             return
         }
         debounceTask = Task { [weak self] in
-            try? await Task.sleep(for: delay)
+            try? await Task.sleep(for: effectiveDelay)
             guard !Task.isCancelled else { return }
             self?.startSearch()
         }

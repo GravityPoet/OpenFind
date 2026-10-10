@@ -13,11 +13,20 @@ let package = Package(
         .executableTarget(
             name: "OpenFind",
             dependencies: [
+                "OpenFindBrowser",
                 .product(name: "MenuBarExtraAccess", package: "MenuBarExtraAccess"),
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/OpenFind",
             resources: [.process("Resources")]
+        ),
+        .target(
+            name: "OpenFindBrowser",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "OpenFindBrowserTests", dependencies: ["OpenFindBrowser"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenFindTests",

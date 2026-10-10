@@ -115,6 +115,7 @@ enum CLIRunner {
         if flags.contains("--regex") { options.matchMode = .regex }
         if flags.contains("--wildcard") { options.matchMode = .wildcard }
         if flags.contains("--word") { options.matchMode = .wholeWord }
+        if flags.contains("--fuzzy") { options.matchMode = .fuzzy }
         options.caseSensitive = flags.contains("--case")
         if flags.contains("--hidden") { options.includeHidden = true }
         if flags.contains("--no-hidden") { options.includeHidden = false }

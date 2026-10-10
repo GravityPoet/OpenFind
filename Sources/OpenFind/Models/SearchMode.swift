@@ -21,6 +21,7 @@ enum SearchTarget: String, CaseIterable, Sendable, Identifiable, Codable {
 /// How the query text is interpreted.
 enum MatchMode: String, CaseIterable, Sendable, Identifiable, Codable {
     case substring
+    case fuzzy
     case wholeWord
     case wildcard
     case regex
@@ -30,6 +31,7 @@ enum MatchMode: String, CaseIterable, Sendable, Identifiable, Codable {
     var label: String {
         switch self {
         case .substring: return "Contains"
+        case .fuzzy: return "Fuzzy Names"
         case .wholeWord: return "Whole Word"
         case .wildcard: return "Wildcard"
         case .regex: return "Regular Expression"
