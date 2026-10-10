@@ -6,12 +6,12 @@ extension SearchModel {
     func reveal() { NSWorkspace.shared.activateFileViewerSelecting(selectedItems.map(\.url)) }
     func chooseFolder() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false;
-        panel.prompt = "Open"
+        panel.prompt = BL("Open")
         if panel.runModal() == .OK, let url = panel.url { navigate(url) }
     }
     func goToFolder() {
-        let alert = NSAlert(); alert.messageText = "Go to Folder"; alert.addButton(withTitle: "Go");
-        alert.addButton(withTitle: "Cancel")
+        let alert = NSAlert(); alert.messageText = BL("Go to Folder"); alert.addButton(withTitle: BL("Go"));
+        alert.addButton(withTitle: BL("Cancel"))
         let field = NSTextField(string: location.path);
         field.frame = NSRect(x: 0, y: 0, width: 420, height: 24); alert.accessoryView = field
         alert.window.initialFirstResponder = field
@@ -84,8 +84,8 @@ extension SearchModel {
                 let item = details.0
                 let alert = NSAlert(); alert.messageText = item.name
                 alert.informativeText =
-                    "Kind: \(item.typeName)\nSize: \(ByteCountFormatter.string(fromByteCount: Int64(clamping: item.size), countStyle: .file))\nModified: \(item.modified.formatted())\nWhere: \(item.parent)\nTags: \(details.1.joined(separator: ", "))"
-                alert.addButton(withTitle: "OK"); alert.runModal()
+                    "\(BL("Kind:")) \(item.typeName)\n\(BL("Size:")) \(ByteCountFormatter.string(fromByteCount: Int64(clamping: item.size), countStyle: .file))\n\(BL("Modified:")) \(item.modified.formatted())\n\(BL("Where:")) \(item.parent)\n\(BL("Tags:")) \(details.1.joined(separator: ", "))"
+                alert.addButton(withTitle: BL("OK")); alert.runModal()
             } catch {
                 if location == folder { self.error = error.localizedDescription }
             }

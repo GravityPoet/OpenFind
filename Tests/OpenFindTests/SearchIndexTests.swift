@@ -2188,6 +2188,8 @@ struct SearchIndexTests {
         defer { try? FileManager.default.removeItem(at: cacheURL) }
         let nameIndexURL = SearchIndexPersistence.nameIndexURL(for: cacheURL)
         defer { try? FileManager.default.removeItem(at: nameIndexURL) }
+        let nodeIndexURL = SearchIndexPersistence.nodeIndexURL(for: cacheURL)
+        defer { try? FileManager.default.removeItem(at: nodeIndexURL) }
         let signature = SearchIndexSignature(scopes: [URL(fileURLWithPath: "/tmp")])
         var nodes = [IndexedFileNode(
             name: "/tmp",
@@ -2216,12 +2218,15 @@ struct SearchIndexTests {
         SearchIndexPersistence.save(index: index, to: cacheURL)
 
         let stored = try Data(contentsOf: cacheURL)
+        #expect(FileManager.default.fileExists(atPath: nodeIndexURL.path))
         #expect(String(bytes: stored.prefix(4), encoding: .utf8) == "OFZ1")
         #expect(FileManager.default.fileExists(atPath: nameIndexURL.path))
         let loaded = try #require(SearchIndexPersistence.load(signature: signature, from: cacheURL))
         #expect(loaded.nodes.count == nodes.count)
         #expect(loaded.nodes.last?.name == nodes.last?.name)
         #expect(loaded.usesPersistedMappedNameIndex)
+        #expect(loaded.usesMappedBaseNodeStorage)
+        #expect(FileManager.default.fileExists(atPath: nodeIndexURL.path))
 
         var options = SearchOptions(query: "repeated-name-1999")
         options.target = .name
@@ -2234,6 +2239,13 @@ struct SearchIndexTests {
         let fallback = try #require(SearchIndexPersistence.load(signature: signature, from: cacheURL))
         #expect(!fallback.usesPersistedMappedNameIndex)
         #expect(fallback.nameMatches(query: query, options: options).count == 10)
+
+        var corruptNodeIndex = try Data(contentsOf: nodeIndexURL)
+        corruptNodeIndex[corruptNodeIndex.count - 1] ^= 0xFF
+        try corruptNodeIndex.write(to: nodeIndexURL, options: .atomic)
+        let nodeFallback = try #require(SearchIndexPersistence.load(signature: signature, from: cacheURL))
+        #expect(!nodeFallback.usesMappedBaseNodeStorage)
+        #expect(nodeFallback.nameMatches(query: query, options: options).count == 10)
 
         try stored.prefix(stored.count / 2).write(to: cacheURL, options: .atomic)
         #expect(SearchIndexPersistence.load(signature: signature, from: cacheURL) == nil)

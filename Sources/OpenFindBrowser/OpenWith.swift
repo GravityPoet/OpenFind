@@ -12,21 +12,21 @@ import UniformTypeIdentifiers
     static func title(_ application: URL, for hit: Hit) -> String {
         let name = application.deletingPathExtension().lastPathComponent
         return NSWorkspace.shared.urlForApplication(toOpen: hit.url) == application
-            ? name + " (default)" : name
+            ? BL(name + " (default)") : name
     }
 }
 struct OpenWithMenu: View {
     @ObservedObject var model: SearchModel
     let hit: Hit
     var body: some View {
-        Menu("Open With") {
+        Menu(BL("Open With")) {
             ForEach(OpenWithApps.applications(for: hit), id: \.path) { application in
                 Button(OpenWithApps.title(application, for: hit)) {
                     model.openWith(application, hit: hit)
                 }
             }
             Divider()
-            Button("Other…") { model.chooseApplication(for: hit) }
+            Button(BL("Other…")) { model.chooseApplication(for: hit) }
         }.disabled(hit.isFolder)
     }
 }
@@ -40,7 +40,7 @@ extension SearchModel {
     }
     func chooseApplication(for hit: Hit) {
         let panel = NSOpenPanel()
-        panel.title = "Choose Application"; panel.prompt = "Open"
+        panel.title = BL("Choose Application"); panel.prompt = BL("Open")
         panel.allowedContentTypes = [.applicationBundle]
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
         if panel.runModal() == .OK, let application = panel.url { openWith(application, hit: hit) }

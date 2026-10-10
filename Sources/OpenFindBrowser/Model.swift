@@ -14,11 +14,12 @@ enum FileViewMode: String, CaseIterable {
         case .gallery: return "rectangle.bottomthird.inset.filled"
         }
     }
-    var title: String { rawValue.capitalized }
+    var title: String { BL(rawValue.capitalized) }
 }
 enum FileSort: String, CaseIterable {
     case name = "Name", modified = "Date Modified", size = "Size", kind = "Kind", relevance =
         "Relevance"
+    var title: String { BL(rawValue) }
 }
 struct FileJournal { let name: String; let operations: [FileMutation] }
 
@@ -224,10 +225,10 @@ struct FileJournal { let name: String; let operations: [FileMutation] }
     var isSearch: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     var title: String {
         route == "recents"
-            ? "Recents"
+            ? BL("Recents")
             : route.hasPrefix("tag:")
-                ? String(route.dropFirst(4))
-                : location.lastPathComponent.isEmpty ? "Macintosh HD" : location.lastPathComponent
+                ? BL(String(route.dropFirst(4)))
+                : location.lastPathComponent.isEmpty ? BL("Macintosh HD") : location.lastPathComponent
     }
     var selected: Hit? { selectedItems.first }
     var selectedItems: [Hit] {

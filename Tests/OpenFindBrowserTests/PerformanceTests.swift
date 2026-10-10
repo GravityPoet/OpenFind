@@ -14,18 +14,18 @@ final class PerformanceTests: XCTestCase {
         XCTAssertNotNil(scroll.documentView)
         coordinator.update()
         let background = coordinator.menu(for: -1)
-        XCTAssertTrue(try XCTUnwrap(background.item(withTitle: "New Folder")).isEnabled)
-        XCTAssertTrue(try XCTUnwrap(background.item(withTitle: "New Text File")).isEnabled)
-        XCTAssertNotNil(background.item(withTitle: "Paste Items"))
-        XCTAssertNotNil(background.item(withTitle: "View")?.submenu)
+        XCTAssertTrue(try XCTUnwrap(background.item(withTitle: BL("New Folder"))).isEnabled)
+        XCTAssertTrue(try XCTUnwrap(background.item(withTitle: BL("New Text File"))).isEnabled)
+        XCTAssertNotNil(background.item(withTitle: BL("Paste Items")))
+        XCTAssertNotNil(background.item(withTitle: BL("View"))?.submenu)
         let file = coordinator.menu(for: 0)
-        XCTAssertNotNil(file.item(withTitle: "Rename…"))
-        XCTAssertNil(file.item(withTitle: "New Folder"))
+        XCTAssertNotNil(file.item(withTitle: BL("Rename…")))
+        XCTAssertNil(file.item(withTitle: BL("New Folder")))
         model.busy = true
-        XCTAssertFalse(try XCTUnwrap(coordinator.menu(for: -1).item(withTitle: "New Folder")).isEnabled)
-        XCTAssertFalse(try XCTUnwrap(coordinator.menu(for: -1).item(withTitle: "New Text File")).isEnabled)
+        XCTAssertFalse(try XCTUnwrap(coordinator.menu(for: -1).item(withTitle: BL("New Folder"))).isEnabled)
+        XCTAssertFalse(try XCTUnwrap(coordinator.menu(for: -1).item(withTitle: BL("New Text File"))).isEnabled)
         model.busy = false; model.query = "search"
-        XCTAssertFalse(try XCTUnwrap(coordinator.menu(for: -1).item(withTitle: "Paste Items")).isEnabled)
+        XCTAssertFalse(try XCTUnwrap(coordinator.menu(for: -1).item(withTitle: BL("Paste Items"))).isEnabled)
     }
     @MainActor func testToolbarViewPickerKeepsGeometryAndImagesAcrossUpdates() {
         var mode: FileViewMode = .icons

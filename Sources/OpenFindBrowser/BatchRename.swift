@@ -145,17 +145,18 @@ struct BatchRenameSheet: View {
     @State private var checking = true
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Rename \(request.hits.count) Items").font(.headline)
-            Picker("Format", selection: $spec.mode) {
-                ForEach(BatchRenameSpec.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            Text(BL("Rename \(request.hits.count) Items")).font(.headline)
+            Picker(BL("Format"), selection: $spec.mode) {
+                ForEach(BatchRenameSpec.Mode.allCases, id: \.self) { Text(BL($0.rawValue)).tag($0) }
             }
-            if spec.mode == .replace { TextField("Find", text: $spec.find) }
+            if spec.mode == .replace { TextField(BL("Find"), text: $spec.find) }
             TextField(
-                spec.mode == .number
-                    ? "Name" : spec.mode == .add ? "Add after name" : "Replace with",
+                BL(
+                    spec.mode == .number
+                        ? "Name" : spec.mode == .add ? "Add after name" : "Replace with"),
                 text: $spec.text)
             if spec.mode == .number {
-                Stepper("Start at \(spec.start)", value: $spec.start, in: 1...999_999)
+                Stepper(BL("Start at \(spec.start)"), value: $spec.start, in: 1...999_999)
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
@@ -175,18 +176,18 @@ struct BatchRenameSheet: View {
             }.frame(height: 230).background(
                 .quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
             if let message {
-                Text(message).foregroundStyle(.red).font(.callout)
+                Text(BL(message)).foregroundStyle(.red).font(.callout)
             } else {
                 Text(
                     checking
-                        ? "Checking names…"
-                        : "\(moves.count) names will change. File extensions are preserved."
+                        ? BL("Checking names…")
+                        : BL("\(moves.count) names will change. File extensions are preserved.")
                 ).foregroundStyle(.secondary).font(.callout)
             }
             HStack {
-                Button("Cancel") { model.batchRename = nil }.keyboardShortcut(.cancelAction)
+                Button(BL("Cancel")) { model.batchRename = nil }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Rename") {
+                Button(BL("Rename")) {
                     model.batchRename = nil
                     model.perform([.renameBatch(moves)], name: "Rename Items")
                 }.keyboardShortcut(.defaultAction).disabled(

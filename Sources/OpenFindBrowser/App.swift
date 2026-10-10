@@ -55,7 +55,7 @@ struct BrowserView: View {
                 if let error = model.error {
                     HStack {
                         Image(systemName: "exclamationmark.triangle");
-                        Text(error).font(.callout).textSelection(.enabled); Spacer();
+                        Text(BL(error)).font(.callout).textSelection(.enabled); Spacer();
                         Button {
                             model.error = nil
                         } label: {
@@ -73,7 +73,7 @@ struct BrowserView: View {
                 pathBar
                 statusBar
             }
-            .navigationTitle(model.isSearch ? "Searching “\(model.query)”" : model.title)
+            .navigationTitle(model.isSearch ? BL("Searching “\(model.query)”") : model.title)
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     ControlGroup {
@@ -81,12 +81,12 @@ struct BrowserView: View {
                             model.goBack()
                         } label: {
                             Image(systemName: "chevron.left")
-                        }.disabled(model.backStack.isEmpty).help("Back")
+                        }.disabled(model.backStack.isEmpty).help(BL("Back"))
                         Button {
                             model.goForward()
                         } label: {
                             Image(systemName: "chevron.right")
-                        }.disabled(model.forwardStack.isEmpty).help("Forward")
+                        }.disabled(model.forwardStack.isEmpty).help(BL("Forward"))
                     }
                 }
                 ToolbarItem {
@@ -94,38 +94,38 @@ struct BrowserView: View {
                 }
                 ToolbarItem {
                     Menu {
-                        Picker("Sort By", selection: $model.sort) {
+                        Picker(BL("Sort By"), selection: $model.sort) {
                             ForEach(FileSort.allCases, id: \.self) { sort in
-                                Text(sort.rawValue).tag(sort)
+                                Text(sort.title).tag(sort)
                             }
                         }
-                        Toggle("Ascending", isOn: $model.ascending)
-                        Toggle("Show Hidden Files", isOn: $model.showHidden)
+                        Toggle(BL("Ascending"), isOn: $model.ascending)
+                        Toggle(BL("Show Hidden Files"), isOn: $model.showHidden)
                     } label: {
                         Image(systemName: "arrow.up.arrow.down")
-                    }.help("Sort")
+                    }.help(BL("Sort"))
                 }
                 ToolbarItem {
                     ShareLink(items: model.selectedItems.map(\.url)) {
                         Image(systemName: "square.and.arrow.up")
-                    }.disabled(model.selection.isEmpty).help("Share")
+                    }.disabled(model.selection.isEmpty).help(BL("Share"))
                 }
                 ToolbarItem {
                     Menu {
-                        ForEach(tags, id: \.0) { name, _ in Button(name) { model.tag(name) } }
+                        ForEach(tags, id: \.0) { name, _ in Button(BL(name)) { model.tag(name) } }
                     } label: {
                         Image(systemName: "tag")
-                    }.disabled(model.selection.isEmpty).help("Tags")
+                    }.disabled(model.selection.isEmpty).help(BL("Tags"))
                 }
                 ToolbarItem {
                     Menu {
                         actions
                     } label: {
                         Image(systemName: "ellipsis")
-                    }.help("Actions")
+                    }.help(BL("Actions"))
                 }
             }
-            .searchable(text: $model.query, placement: .toolbar, prompt: "Search")
+            .searchable(text: $model.query, placement: .toolbar, prompt: BL("Search"))
             .onSubmit(of: .search) { model.submitSearch() }
         }
         .background(BrowserWindowCapture { browserWindow = $0 }.frame(width: 0, height: 0))
@@ -224,15 +224,15 @@ struct BrowserView: View {
     }
     private var searchScopeBar: some View {
         HStack(spacing: 10) {
-            Text("Search:").foregroundStyle(.secondary)
-            Button("This Mac") { model.scope = "" }.buttonStyle(.bordered).tint(
+            Text(BL("Search:")).foregroundStyle(.secondary)
+            Button(BL("This Mac")) { model.scope = "" }.buttonStyle(.bordered).tint(
                 model.scope.isEmpty ? .accentColor : .secondary)
             Button(model.location.lastPathComponent) { model.scope = model.location.path }
                 .buttonStyle(.bordered).tint(model.scope.isEmpty ? .secondary : .accentColor)
             Spacer()
-            Picker("Kind", selection: $model.fileType) {
-                Text("Any Kind").tag(""); Text("Folder").tag("dir"); Text("Document").tag("doc");
-                Text("Image").tag("image"); Text("Movie").tag("video"); Text("Audio").tag("audio")
+            Picker(BL("Kind"), selection: $model.fileType) {
+                Text(BL("Any Kind")).tag(""); Text(BL("Folder")).tag("dir"); Text(BL("Document")).tag("doc");
+                Text(BL("Image")).tag("image"); Text(BL("Movie")).tag("video"); Text(BL("Audio")).tag("audio")
             }.labelsHidden().frame(width: 130)
         }.font(.system(size: 12)).padding(.horizontal, 16).padding(.vertical, 7).background(
             Color(nsColor: .controlBackgroundColor))
@@ -246,12 +246,13 @@ struct BrowserView: View {
         } else if model.sortedHits.isEmpty {
             ContentUnavailableView {
                 Label(
-                    model.isSearch ? "No Results" : "No Items",
+                    BL(model.isSearch ? "No Results" : "No Items"),
                     systemImage: model.isSearch ? "magnifyingglass" : "folder")
             } description: {
                 Text(
-                    model.isSearch
-                        ? "Try a different name or search location." : "This folder is empty.")
+                    BL(
+                        model.isSearch
+                            ? "Try a different name or search location." : "This folder is empty."))
             }
         } else {
             switch model.viewMode {
@@ -339,7 +340,7 @@ struct BrowserView: View {
                                         systemName: url.path == "/"
                                             ? "internaldrive" : "folder.fill"
                                     ).font(.system(size: 11));
-                                    Text(url.path == "/" ? "Macintosh HD" : url.lastPathComponent)
+                                    Text(url.path == "/" ? BL("Macintosh HD") : url.lastPathComponent)
                                 }
                             }.buttonStyle(.plain)
                             if url != model.ancestors.last {
@@ -361,27 +362,27 @@ struct BrowserView: View {
                 if let fraction = progress.fraction {
                     ProgressView(value: fraction).frame(width: 100)
                 }
-                Text("\(model.operationName) · \(progress.item)").lineLimit(1)
+                Text(BL("\(model.operationName) · \(progress.item)")).lineLimit(1)
                 if progress.bytes > 0 {
                     Text(
                         ByteCountFormatter.string(fromByteCount: progress.bytes, countStyle: .file)
                     )
                     .monospacedDigit()
                 }
-                Button("Cancel") { model.cancelOperation() }.controlSize(.small)
+                Button(BL("Cancel")) { model.cancelOperation() }.controlSize(.small)
             } else {
                 Text(
                     model.selection.isEmpty
                         ? (model.isSearch && model.hits.count == 500
-                            ? "First 500 matches" : "\(model.sortedHits.count) items")
-                        : "\(model.selection.count) selected")
+                            ? BL("First 500 matches") : BL("\(model.sortedHits.count) items"))
+                        : BL("\(model.selection.count) selected"))
             }
             if model.isSearch { Text(String(format: "· %.1f ms", model.elapsed)).monospacedDigit() }
             Spacer()
             if model.viewMode == .icons {
                 Image(systemName: "square").font(.system(size: 8));
                 Slider(value: $iconSize, in: 40...96).frame(width: 100).accessibilityLabel(
-                    "Icon Size");
+                    BL("Icon Size"));
                 Image(systemName: "square").font(.system(size: 13))
             }
         }.font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 14).frame(
@@ -389,87 +390,87 @@ struct BrowserView: View {
         ).background(Color(nsColor: .windowBackgroundColor))
     }
     @ViewBuilder private var backgroundActions: some View {
-        Button("New Folder") { model.newFolder() }.disabled(model.busy || !model.canWriteHere)
-        Button("New Text File") { model.newTextFile() }.disabled(model.busy || !model.canWriteHere)
-        Button("Paste Items") { model.paste() }.disabled(model.busy || !model.canWriteHere)
-        Button("Move Items Here") { model.paste(move: true) }.disabled(
+        Button(BL("New Folder")) { model.newFolder() }.disabled(model.busy || !model.canWriteHere)
+        Button(BL("New Text File")) { model.newTextFile() }.disabled(model.busy || !model.canWriteHere)
+        Button(BL("Paste Items")) { model.paste() }.disabled(model.busy || !model.canWriteHere)
+        Button(BL("Move Items Here")) { model.paste(move: true) }.disabled(
             model.busy || !model.canWriteHere)
         Divider()
-        Button("Open in New Tab") { workspace.newTab(model.location) }.disabled(!model.canWriteHere)
-        Button("Add Folder to Sidebar") { workspace.addFavorite(model.location) }.disabled(
+        Button(BL("Open in New Tab")) { workspace.newTab(model.location) }.disabled(!model.canWriteHere)
+        Button(BL("Add Folder to Sidebar")) { workspace.addFavorite(model.location) }.disabled(
             !model.canWriteHere)
         Divider()
-        Menu("View") {
+        Menu(BL("View")) {
             ForEach(FileViewMode.allCases, id: \.self) { mode in
                 Button(mode.title) { model.viewMode = mode }
             }
         }
-        Toggle("Show Hidden Files", isOn: $model.showHidden)
-        Button("Refresh") { model.schedule() }.disabled(model.busy)
+        Toggle(BL("Show Hidden Files"), isOn: $model.showHidden)
+        Button(BL("Refresh")) { model.schedule() }.disabled(model.busy)
     }
     @ViewBuilder private var actions: some View {
-        Button("Open") { model.open() }.disabled(model.selection.isEmpty)
-        Button("Open in New Tab") {
+        Button(BL("Open")) { model.open() }.disabled(model.selection.isEmpty)
+        Button(BL("Open in New Tab")) {
             if let hit = model.selected, hit.isFolder { workspace.newTab(hit.url) }
         }.disabled(model.selected?.isFolder != true)
         Divider()
-        Button("Get Info") { model.info() }.disabled(model.selection.isEmpty)
-        Button("Quick Look") { model.preview = model.selected }.disabled(model.selection.isEmpty)
-        Button("Rename…") { model.renameItems() }.disabled(model.selection.isEmpty || model.busy)
-        Button("Duplicate") { model.duplicate() }.disabled(model.selection.isEmpty || model.busy)
-        Button("Copy") { model.copy() }.disabled(model.selection.isEmpty)
-        Button("Copy Path") { model.copyPath() }.disabled(model.selection.isEmpty)
-        Button("Paste Items") { model.paste() }.disabled(model.busy || !model.canWriteHere)
-        Button("Move Items Here") { model.paste(move: true) }.disabled(
+        Button(BL("Get Info")) { model.info() }.disabled(model.selection.isEmpty)
+        Button(BL("Quick Look")) { model.preview = model.selected }.disabled(model.selection.isEmpty)
+        Button(BL("Rename…")) { model.renameItems() }.disabled(model.selection.isEmpty || model.busy)
+        Button(BL("Duplicate")) { model.duplicate() }.disabled(model.selection.isEmpty || model.busy)
+        Button(BL("Copy")) { model.copy() }.disabled(model.selection.isEmpty)
+        Button(BL("Copy Path")) { model.copyPath() }.disabled(model.selection.isEmpty)
+        Button(BL("Paste Items")) { model.paste() }.disabled(model.busy || !model.canWriteHere)
+        Button(BL("Move Items Here")) { model.paste(move: true) }.disabled(
             model.busy || !model.canWriteHere)
         Divider()
-        Button("New Folder") { model.newFolder() }.disabled(model.busy || !model.canWriteHere)
-        Button("New Text File") { model.newTextFile() }.disabled(model.busy || !model.canWriteHere)
-        Button("Add Folder to Sidebar") {
+        Button(BL("New Folder")) { model.newFolder() }.disabled(model.busy || !model.canWriteHere)
+        Button(BL("New Text File")) { model.newTextFile() }.disabled(model.busy || !model.canWriteHere)
+        Button(BL("Add Folder to Sidebar")) {
             workspace.addFavorite(
                 model.selected?.isFolder == true ? model.selected!.url : model.location)
         }
-        Button("Show in Finder") { model.reveal() }.disabled(model.selection.isEmpty)
+        Button(BL("Show in Finder")) { model.reveal() }.disabled(model.selection.isEmpty)
         Divider()
-        Button("Move to Trash") { model.trash() }.disabled(model.selection.isEmpty || model.busy)
+        Button(BL("Move to Trash")) { model.trash() }.disabled(model.selection.isEmpty || model.busy)
     }
     @ViewBuilder private func rowActions(_ hit: Hit) -> some View {
-        Button("Open") { model.open(hit) }
+        Button(BL("Open")) { model.open(hit) }
         OpenWithMenu(model: model, hit: hit)
-        Button("Open in New Tab") { workspace.newTab(hit.url) }.disabled(!hit.isFolder)
-        Button("Quick Look") { model.preview = hit }
-        Button("Open Enclosing Folder") { model.navigate(hit.url.deletingLastPathComponent()) }
+        Button(BL("Open in New Tab")) { workspace.newTab(hit.url) }.disabled(!hit.isFolder)
+        Button(BL("Quick Look")) { model.preview = hit }
+        Button(BL("Open Enclosing Folder")) { model.navigate(hit.url.deletingLastPathComponent()) }
         Divider()
-        Button("Get Info") {
+        Button(BL("Get Info")) {
             contextual(hit); model.info()
         }
-        Button("Rename…") {
+        Button(BL("Rename…")) {
             contextual(hit); model.renameItems()
         }
-        Button("Compress") {
+        Button(BL("Compress")) {
             contextual(hit); model.compress()
         }.disabled(model.busy || !model.canWriteHere)
-        Button("Extract ZIP") {
+        Button(BL("Extract ZIP")) {
             contextual(hit); model.extract()
         }.disabled(model.busy || hit.url.pathExtension.lowercased() != "zip")
-        Button("Duplicate") {
+        Button(BL("Duplicate")) {
             contextual(hit); model.duplicate()
         }
-        Button("Copy") {
+        Button(BL("Copy")) {
             contextual(hit); model.copy()
         }
-        Button("Copy Path") {
+        Button(BL("Copy Path")) {
             contextual(hit); model.copyPath()
         }
-        Menu("Tags") {
+        Menu(BL("Tags")) {
             ForEach(tags, id: \.0) { name, _ in
-                Button(name) {
+                Button(BL(name)) {
                     contextual(hit); model.tag(name)
                 }
             }
         }
         Divider()
-        Button("Move to Trash") {
+        Button(BL("Move to Trash")) {
             contextual(hit); model.trash()
         }
     }

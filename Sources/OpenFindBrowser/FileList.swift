@@ -25,7 +25,7 @@ import AppKit
             ("where", "Where", 200.0, 130.0),
         ] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
-            column.title = title; column.width = width; column.minWidth = minimum
+            column.title = BL(title); column.width = width; column.minWidth = minimum
             if key != "where" {
                 column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true)
             }
@@ -289,7 +289,7 @@ import AppKit
                 _ action: @escaping @MainActor () -> Void
             ) -> NSMenuItem {
                 let item = NSMenuItem(
-                    title: title, action: #selector(runMenuAction(_:)), keyEquivalent: "")
+                    title: BL(title), action: #selector(runMenuAction(_:)), keyEquivalent: "")
                 item.target = self; item.tag = actions.count; item.isEnabled = enabled
                 actions[item.tag] = action; (submenu ?? menu).addItem(item)
                 return item
@@ -314,7 +314,7 @@ import AppKit
                     let item = add(mode.title, to: views) { model.viewMode = mode }
                     item.state = model.viewMode == mode ? .on : .off
                 }
-                let viewItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
+                let viewItem = NSMenuItem(title: BL("View"), action: nil, keyEquivalent: "")
                 viewItem.submenu = views; menu.addItem(viewItem)
                 let hidden = add("Show Hidden Files") { model.showHidden.toggle() }
                 hidden.state = model.showHidden ? .on : .off
@@ -335,7 +335,7 @@ import AppKit
                 }
                 applications.addItem(.separator())
                 add("Other…", to: applications) { model.chooseApplication(for: hit) }
-                let item = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
+                let item = NSMenuItem(title: BL("Open With"), action: nil, keyEquivalent: "")
                 item.submenu = applications; menu.addItem(item)
             }
             add("Open in New Tab", enabled: hit.isFolder) { [weak self] in
@@ -355,11 +355,11 @@ import AppKit
             let tags = NSMenu(); tags.autoenablesItems = false
             for name in ["Red", "Orange", "Yellow", "Green", "Blue", "Purple", "Gray"] {
                 let item = NSMenuItem(
-                    title: name, action: #selector(runMenuAction(_:)), keyEquivalent: "")
+                    title: BL(name), action: #selector(runMenuAction(_:)), keyEquivalent: "")
                 item.target = self; item.tag = actions.count; item.isEnabled = !model.busy;
                 actions[item.tag] = { model.tag(name) }; tags.addItem(item)
             }
-            let tagItem = NSMenuItem(title: "Tags", action: nil, keyEquivalent: "");
+            let tagItem = NSMenuItem(title: BL("Tags"), action: nil, keyEquivalent: "");
             tagItem.submenu = tags; menu.addItem(tagItem)
             menu.addItem(.separator()); add("Move to Trash", enabled: !model.busy) { model.trash() }
             return menu
