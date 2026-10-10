@@ -34,6 +34,9 @@ struct AppCommands: Commands {
         }
 
         CommandMenu(L("Search")) {
+            Button(L("File Browser")) { AppDelegate.shared?.showFileBrowser(nil) }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+            Divider()
             Button(L("Quick Search")) {
                 AppDelegate.shared?.showQuickSearch(nil)
             }

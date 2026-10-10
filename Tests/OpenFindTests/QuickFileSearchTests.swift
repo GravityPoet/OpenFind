@@ -40,7 +40,7 @@ struct QuickFileSearchTests {
         preferences.includePackages = true
         let quick = try #require(QuickFileSearch.options(for: "Sample", using: preferences))
         #expect(quick.target == .name)
-        #expect(quick.matchMode == .substring)
+        #expect(quick.matchMode == .fuzzy)
         #expect(!quick.includePackages)
         #expect(quick.deepIndex == preferences.deepIndex)
         #expect(QuickFileSearch.options(for: "content:budget", using: preferences) == nil)

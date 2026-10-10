@@ -2688,6 +2688,9 @@ enum SearchRanking {
         options: SearchOptions,
         usageSnapshot: SearchUsageSnapshot? = nil
     ) -> [ResolvedNode] {
+        if options.matchMode == .fuzzy, let term = query.rankingTerm(options: options) {
+            return FuzzySearchRanking.sorted(matches, term: term, options: options, usage: usageSnapshot)
+        }
         guard let term = query.rankingTerm(options: options) else {
             guard let usageSnapshot, !usageSnapshot.isEmpty else {
                 return matches.count > broadResultThreshold

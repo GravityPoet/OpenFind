@@ -20,6 +20,12 @@ struct OpenFindApp: App {
                 Label(L("Full Search"), systemImage: "doc.text.magnifyingglass")
             }
 
+            Button {
+                appDelegate.showFileBrowser(nil)
+            } label: {
+                Label(L("File Browser"), systemImage: "folder")
+            }
+
             Divider()
 
             ClipboardMenuSection(

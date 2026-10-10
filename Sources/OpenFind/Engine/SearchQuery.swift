@@ -680,6 +680,7 @@ fileprivate enum CompiledQueryPredicate: Sendable {
 fileprivate struct CompiledTextPredicate: Sendable {
     private enum Kind: Sendable {
         case matcher(Matcher)
+        case fuzzyName(FuzzyNameMatcher)
         case nameSubstring(
             needle: String,
             asciiFoldedNeedle: [UInt8]?,
@@ -692,11 +693,13 @@ fileprivate struct CompiledTextPredicate: Sendable {
     private let kind: Kind
 
     init(term: String, literal: Bool = false, options: SearchOptions) throws {
-        if options.matchMode == .substring {
+        if literal || options.matchMode == .substring || options.matchMode == .fuzzy {
             if term.contains("/") {
                 kind = .pathSegments(CompiledPathSegment.parse(term), caseSensitive: options.caseSensitive)
             } else if Self.hasWildcard(term) && !literal {
                 kind = .nameWildcard(term, caseSensitive: options.caseSensitive)
+            } else if options.matchMode == .fuzzy && !literal {
+                kind = .fuzzyName(FuzzyNameMatcher(term, caseSensitive: options.caseSensitive))
             } else {
                 kind = .nameSubstring(
                     needle: term,
@@ -724,6 +727,10 @@ fileprivate struct CompiledTextPredicate: Sendable {
 
     func matches(context: QueryMatchContext) -> Bool {
         switch kind {
+        case .fuzzyName(let matcher):
+            return matcher.rank(context.name) != nil
+                || (context.matchesPinyin && SearchPath.containsHan(context.name)
+                    && matcher.rank(SearchPath.pinyinFirstLetters(from: context.name)) != nil)
         case .matcher(let matcher):
             if matcher.matches(context.name) { return true }
             if context.matchesPinyin, SearchPath.containsHan(context.name) {
@@ -755,6 +762,10 @@ fileprivate struct CompiledTextPredicate: Sendable {
 
     func evaluateNameOnly(name: String, matchesPinyin: Bool) -> QueryMatchState {
         switch kind {
+        case .fuzzyName(let matcher):
+            return matcher.rank(name) != nil
+                || (matchesPinyin && SearchPath.containsHan(name)
+                    && matcher.rank(SearchPath.pinyinFirstLetters(from: name)) != nil) ? .match : .noMatch
         case .matcher(let matcher):
             if matcher.matches(name) { return .match }
             if matchesPinyin, SearchPath.containsHan(name),
@@ -1065,7 +1076,7 @@ struct CompiledSearchQuery: Sendable {
     /// The literal term used for relevance ranking. Only substring mode has
     /// literal semantics; the longest plain term is the most selective.
     func rankingTerm(options: SearchOptions) -> String? {
-        guard options.matchMode == .substring else { return nil }
+        guard options.matchMode == .substring || options.matchMode == .fuzzy else { return nil }
         return plan.plainTerms.max { $0.count < $1.count }
     }
 

@@ -1,0 +1,447 @@
+// Adapted from FinderSearch (MIT), commit 021ad61679fbb1c1f18f9dc57a7d1bbc6883863e.
+import SwiftUI
+import AppKit
+import QuickLookThumbnailing
+import UniformTypeIdentifiers
+
+/// Independent recognizers select on the first click without waiting for the
+/// system double-click interval. Double-clicking still opens the item.
+struct FileClickActions: ViewModifier {
+    let select: () -> Void
+    let open: () -> Void
+    func body(content: Content) -> some View {
+        content.onTapGesture(perform: select)
+            .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
+    }
+}
+
+struct FileIcon: View {
+    let hit: Hit
+    @State private var image: NSImage?
+    var body: some View {
+        Image(nsImage: image ?? FileIcons.shared.placeholder(hit, size: .row)).resizable()
+            .task(id: hit.imageKey) {
+                image = nil
+                guard hit.metadataPending != true else { return }
+                guard let loaded = await FileIcons.shared.load(hit, size: .row) else { return }
+                guard !Task.isCancelled else { return }
+                image = loaded
+            }
+            .onDisappear { image = nil }
+    }
+}
+
+@MainActor final class ThumbnailCache {
+    static let shared = ThumbnailCache()
+    private let images = NSCache<NSString, NSImage>()
+    private init() { images.countLimit = 768; images.totalCostLimit = 48 * 1024 * 1024 }
+    func key(_ hit: Hit, pixels: Int) -> String {
+        hit.imageKey + ":" + String(hit.size) + ":" + String(pixels)
+    }
+    func image(_ hit: Hit, pixels: Int) -> NSImage? {
+        images.object(forKey: key(hit, pixels: pixels) as NSString)
+    }
+    func store(_ image: NSImage, for hit: Hit, pixels: Int) {
+        images.setObject(
+            image, forKey: key(hit, pixels: pixels) as NSString,
+            cost: ImageRasterizer.cost(image))
+    }
+}
+
+enum ThumbnailSizing {
+    // Preserve the existing maximum resolution while avoiding oversized filmstrip images.
+    static func pixels(points: Double, scale: Double) -> Int {
+        Int(min(256, max(1, ceil(points * scale))))
+    }
+}
+
+struct FileThumbnail: View {
+    let hit: Hit
+    let size: Double
+    @Environment(\.displayScale) private var displayScale
+    @State private var image: NSImage?
+    private var pixels: Int { ThumbnailSizing.pixels(points: size, scale: displayScale) }
+    private var iconSize: FileIconSize { pixels <= 128 ? .compact : .preview }
+    var body: some View {
+        Image(
+            nsImage: image ?? FileIcons.shared.placeholder(hit, size: iconSize)
+        ).resizable().scaledToFit().frame(width: size, height: size)
+            .task(id: ThumbnailCache.shared.key(hit, pixels: pixels)) {
+                image = nil
+                guard hit.metadataPending != true else { return }
+                let pixels = pixels
+                if let cached = ThumbnailCache.shared.image(hit, pixels: pixels) {
+                    image = cached; return
+                }
+                guard let icon = await FileIcons.shared.load(hit, size: iconSize) else { return }
+                guard !Task.isCancelled else { return }; image = icon
+                guard hit.kind != "dir" else { return }
+                // Cells flung past during fast scrolling disappear before this
+                // settles, so they never start a Quick Look render.
+                try? await Task.sleep(for: .milliseconds(90))
+                guard !Task.isCancelled else { return }
+                let unavailableCloudFile = await Task.detached(priority: .utility) {
+                    let values = try? hit.url.resourceValues(forKeys: [
+                        .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
+                    ])
+                    return values?.isUbiquitousItem == true
+                        && values?.ubiquitousItemDownloadingStatus != .current
+                }.value
+                guard !Task.isCancelled, !unavailableCloudFile else { return }
+                let request = QLThumbnailGenerator.Request(
+                    fileAt: hit.url, size: CGSize(width: pixels, height: pixels), scale: 1,
+                    representationTypes: .thumbnail)
+                let completion = ThumbnailCompletion(request: request)
+                let thumbnail: NSImage? = await withTaskCancellationHandler {
+                    await withCheckedContinuation { continuation in
+                        guard completion.start(continuation) else { return }
+                        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) {
+                            result, _ in
+                            // Decode on Quick Look's queue rather than at first draw.
+                            completion.finish(
+                                result.flatMap {
+                                    ImageRasterizer.decode($0.cgImage, maxPixels: pixels)
+                                }
+                                .map {
+                                    NSImage(
+                                        cgImage: $0,
+                                        size: ImageRasterizer.aspectSize($0, points: size))
+                                })
+                        }
+                        // Cancellation can race the call that starts generation.
+                        if completion.isCancelled { QLThumbnailGenerator.shared.cancel(request) }
+                    }
+                } onCancel: {
+                    completion.cancel()
+                    Task { @MainActor in completion.cancelGeneration() }
+                }
+                if let thumbnail {
+                    guard !Task.isCancelled else { return }
+                    ThumbnailCache.shared.store(thumbnail, for: hit, pixels: pixels)
+                    image = thumbnail
+                }
+            }
+            .onDisappear { image = nil }
+    }
+}
+
+/// Quick Look may finish after cancellation. Resume the waiting view exactly once.
+private final class ThumbnailCompletion: @unchecked Sendable {
+    private let request: QLThumbnailGenerator.Request
+    private let lock = NSLock()
+    private var cancelled = false
+    private var continuation: CheckedContinuation<NSImage?, Never>?
+    init(request: QLThumbnailGenerator.Request) { self.request = request }
+    @MainActor func cancelGeneration() { QLThumbnailGenerator.shared.cancel(request) }
+    var isCancelled: Bool { lock.withLock { cancelled } }
+    func start(_ continuation: CheckedContinuation<NSImage?, Never>) -> Bool {
+        let accepted = lock.withLock {
+            guard !cancelled else { return false }
+            self.continuation = continuation
+            return true
+        }
+        if !accepted { continuation.resume(returning: nil) }
+        return accepted
+    }
+    func finish(_ image: NSImage?) {
+        let pending = lock.withLock {
+            let pending = continuation
+            continuation = nil
+            return pending
+        }
+        pending?.resume(returning: image)
+    }
+    func cancel() {
+        lock.withLock { cancelled = true }
+        finish(nil)
+    }
+}
+
+struct GalleryBrowser<RowMenu: View>: View {
+    @ObservedObject var model: SearchModel
+    let select: (Hit) -> Void
+    let rowMenu: (Hit) -> RowMenu
+    var body: some View {
+        VStack(spacing: 0) {
+            if let hit = model.selected ?? model.sortedHits.first {
+                QuickLook(url: hit.url).frame(maxWidth: .infinity, maxHeight: .infinity)
+                HStack {
+                    Text(hit.name).fontWeight(.medium); Spacer();
+                    Text(hit.typeName).foregroundStyle(.secondary)
+                }.font(.system(size: 12)).padding(.horizontal, 20).padding(.vertical, 8)
+            }
+            Divider()
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 12) {
+                        ForEach(model.sortedHits) { hit in
+                            VStack(spacing: 5) {
+                                FileThumbnail(hit: hit, size: 64);
+                                FileNameLabel(model: model, hit: hit, centered: true).frame(
+                                    width: 100)
+                            }.padding(7)
+                                .background(
+                                    model.selection.contains(hit.path)
+                                        ? Color.accentColor.opacity(0.22) : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 5)
+                                ).contentShape(Rectangle())
+                                .contextMenu { rowMenu(hit) }
+                                .modifier(
+                                    FileClickActions(
+                                        select: { select(hit) }, open: { model.open(hit) }
+                                    )
+                                ).draggable(hit.url).modifier(
+                                    FolderDropTarget(hit: hit, model: model)
+                                )
+                                .marqueeItem(hit.path, in: model.id)
+                                .id(hit.path)
+                        }
+                    }.scrollTargetLayout().padding(12)
+                        .marqueeSelection(model: model, focusFiles: {})
+                }.frame(height: 115)
+                    .scrollPosition(id: $model.scrollAnchor)
+                    .onChange(of: model.focusedPath) { _, path in
+                        if !model.marqueeSelecting, let path { proxy.scrollTo(path) }
+                    }
+            }
+        }
+    }
+}
+struct FileColumn: Identifiable {
+    let id = UUID(); let url: URL; var items: [Hit]; var selected: String?
+    var scrollAnchor: String?
+}
+struct ColumnBrowser<RowMenu: View>: View {
+    @ObservedObject var model: SearchModel
+    let focusFiles: () -> Void
+    let rowMenu: (Hit) -> RowMenu
+    @State private var columns: [FileColumn] = []
+    @State private var lastNavigation: URL?
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(Array(columns.enumerated()), id: \.element.id) { index, column in
+                        VStack(spacing: 0) {
+                            if model.loading && column.url == model.location && column.items.isEmpty
+                            {
+                                FolderLoadingSkeleton(mode: .columns)
+                            } else {
+                                ScrollView(.vertical) {
+                                    LazyVStack(spacing: 0) {
+                                        ForEach(column.items) { hit in
+                                            HStack(spacing: 6) {
+                                                FileIcon(hit: hit).frame(width: 16, height: 16);
+                                                FileNameLabel(model: model, hit: hit);
+                                                Spacer(minLength: 2);
+                                                if hit.isFolder {
+                                                    Image(systemName: "chevron.right").font(
+                                                        .system(size: 9)
+                                                    ).foregroundStyle(.secondary)
+                                                }
+                                            }.frame(maxWidth: .infinity).contentShape(Rectangle())
+                                                .tag(
+                                                    hit.path
+                                                ).contextMenu { rowMenu(hit) }.draggable(hit.url)
+                                                .modifier(
+                                                    FolderDropTarget(hit: hit, model: model)
+                                                ).modifier(
+                                                    ColumnOpenGesture(hit: hit, model: model)
+                                                )
+                                                .frame(height: 24).padding(.horizontal, 8)
+                                                .background(
+                                                    columns.indices.contains(index)
+                                                        && columns[index].selected == hit.path
+                                                        ? Color.accentColor.opacity(0.22)
+                                                        : Color.clear
+                                                )
+                                                .onTapGesture { pick(hit, at: index) }
+                                                .id(hit.path)
+                                        }
+                                    }.scrollTargetLayout()
+                                }.scrollPosition(
+                                    id: Binding(
+                                        get: {
+                                            column.url.path == model.location.path
+                                                ? model.scrollAnchor
+                                                : columns.indices.contains(index)
+                                                    ? columns[index].scrollAnchor : nil
+                                        },
+                                        set: { anchor in
+                                            guard columns.indices.contains(index) else { return }
+                                            columns[index].scrollAnchor = anchor
+                                            if column.url.path == model.location.path {
+                                                model.scrollAnchor = anchor
+                                            }
+                                        }))
+                            }
+                        }.frame(width: 235).id(column.id)
+                        Divider()
+                    }
+                    if let hit = model.selected, !hit.isFolder {
+                        VStack {
+                            FileThumbnail(hit: hit, size: 120);
+                            Text(hit.name).font(.headline).multilineTextAlignment(.center);
+                            Text(hit.typeName).font(.caption).foregroundStyle(.secondary)
+                        }.padding(20).frame(width: 240)
+                    }
+                }
+            }.onChange(of: columns.count) { _, _ in
+                if let last = columns.last {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(last.id, anchor: .trailing)
+                    }
+                }
+            }
+        }
+        .onChange(of: model.sortedHits) { _, _ in
+            if let index = columns.firstIndex(where: { $0.url.path == model.location.path }) {
+                columns[index].items = model.sortedHits
+                if let selected = columns[index].items.first(where: {
+                    model.selection.contains($0.path)
+                }) {
+                    columns[index].selected = selected.path
+                } else if let selected = columns[index].selected,
+                    !columns[index].items.contains(where: { $0.path == selected })
+                {
+                    columns[index].selected = nil
+                }
+                model.extraHits = columns.flatMap(\.items)
+            }
+        }
+        .onChange(of: model.focusedPath) { _, path in
+            guard let path,
+                let index = columns.lastIndex(where: { $0.url.path == model.location.path }),
+                let hit = columns[index].items.first(where: { $0.path == path })
+            else { return }
+            pick(hit, at: index)
+        }
+        .task(id: model.location) {
+            guard lastNavigation?.path != model.location.path else { return }
+            lastNavigation = model.location
+            columns = [FileColumn(url: model.location, items: model.sortedHits)]
+        }
+    }
+    private func pick(_ hit: Hit, at index: Int) {
+        guard !model.busy else { return }
+        guard model.renaming?.path != hit.path else { return }
+        guard columns.indices.contains(index), columns[index].selected != hit.path else { return }
+        if columns[index].url.path == model.location.path {
+            guard model.hits.contains(where: { $0.path == hit.path }) else { return }
+        }
+        focusFiles()
+        columns[index].selected = hit.path; columns = Array(columns.prefix(index + 1))
+        model.extraHits = columns.flatMap(\.items); model.selection = [hit.path]
+        guard hit.isFolder else { return }
+        model.navigate(hit.url);
+        lastNavigation = model.location
+        model.extraHits = columns.flatMap(\.items); model.selection = [hit.path]
+        columns.append(FileColumn(url: model.location, items: model.sortedHits))
+        model.extraHits = columns.flatMap(\.items); model.selection = [hit.path]
+    }
+}
+
+/// Column folders navigate on the first click. A
+/// double-tap recognizer on those rows delays selection while it waits.
+private struct ColumnOpenGesture: ViewModifier {
+    let hit: Hit
+    let model: SearchModel
+    @ViewBuilder func body(content: Content) -> some View {
+        if hit.isFolder {
+            content.onHover { hovering in if hovering { model.prefetchFolder(hit.url) } }
+        } else {
+            content.simultaneousGesture(TapGesture(count: 2).onEnded { model.open(hit) })
+        }
+    }
+}
+
+/// Only explicitly identified folders accept drops. Other rows reject rather than
+/// silently falling through to the parent directory.
+struct FolderDropTarget: ViewModifier {
+    let hit: Hit
+    @ObservedObject var model: SearchModel
+    @State private var targeted = false
+    func body(content: Content) -> some View {
+        content
+            .modifier(DropRowBounds(id: model.id))
+            .background(targeted && hit.isFolder ? Color.accentColor.opacity(0.22) : Color.clear)
+            .overlay {
+                if targeted && hit.isFolder {
+                    RoundedRectangle(cornerRadius: 4).stroke(Color.accentColor, lineWidth: 2)
+                }
+            }
+            .onDrop(of: [UTType.fileURL], isTargeted: $targeted) { providers in
+                model.springLoader.cancel()
+                guard hit.isFolder else { return false }
+                return FileDrops.accept(providers, into: hit.url, model: model)
+            }
+            .onChange(of: targeted) { _, active in
+                if active && hit.isFolder {
+                    model.hoverFolder(hit.url)
+                } else {
+                    model.springLoader.leave(hit.url)
+                }
+            }
+            .onDisappear { if targeted { model.springLoader.leave(hit.url) } }
+    }
+}
+@MainActor enum FileDrops {
+    static func accept(_ providers: [NSItemProvider], into folder: URL, model: SearchModel) -> Bool
+    {
+        guard !model.busy, !providers.isEmpty else { return false }
+        let move = !NSEvent.modifierFlags.contains(.option)
+        Task { @MainActor in
+            var urls: [URL] = []
+            for provider in providers {
+                let url: URL? = await withCheckedContinuation { continuation in
+                    _ = provider.loadObject(ofClass: URL.self) { value, _ in
+                        continuation.resume(returning: value)
+                    }
+                }
+                if let url { urls.append(url) }
+            }
+            model.transfer(urls, to: folder, move: move)
+        }
+        return true
+    }
+}
+
+private struct DropBoundsKey: PreferenceKey {
+    static var defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+private struct DropRowBounds: ViewModifier {
+    let id: UUID
+    func body(content: Content) -> some View {
+        content.background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: DropBoundsKey.self, value: [proxy.frame(in: .named(id))])
+            }
+        }
+    }
+}
+struct SafeBackgroundDropTarget: ViewModifier {
+    @ObservedObject var model: SearchModel
+    @State private var bounds: [CGRect] = []
+    func body(content: Content) -> some View {
+        content.coordinateSpace(name: model.id)
+            .onPreferenceChange(DropBoundsKey.self) { bounds = $0 }
+            .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers, point in
+                guard model.canWriteHere, model.viewMode == .icons,
+                    Self.isBackground(point, bounds: bounds, mode: model.viewMode)
+                else { return false }
+                return FileDrops.accept(providers, into: model.location, model: model)
+            }
+    }
+    static func isBackground(_ point: CGPoint, bounds: [CGRect], mode: FileViewMode) -> Bool {
+        switch mode {
+        case .icons: return !bounds.contains { $0.contains(point) }
+        case .list:
+            return point.y > 24 && !bounds.contains { point.y >= $0.minY && point.y <= $0.maxY }
+        case .columns, .gallery: return false
+        }
+    }
+}

@@ -93,6 +93,10 @@ struct ResultsTable: View {
                 Button(L("Quick Look")) { onQuickLook(urls) }
                     .keyboardShortcut(.space, modifiers: [])
                 Divider()
+                Button(L("Manage in File Browser")) {
+                    if let first = urls.first { FileBrowserController.shared.show(location: first.deletingLastPathComponent(), selected: urls) }
+                }
+                Divider()
                 Button(L("Move to Trash"), role: .destructive) { onMoveToTrash(urls) }
                     .keyboardShortcut(.delete, modifiers: .command)
             }

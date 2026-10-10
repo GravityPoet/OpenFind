@@ -314,10 +314,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         showMainWindow()
     }
 
+    @objc func showFileBrowser(_ sender: Any?) {
+        quickSearchWindow?.close()
+        enterForegroundMode(resumesSearch: false)
+        FileBrowserController.shared.show()
+    }
+
     @objc func showQuickSearch(_ sender: Any? = nil) {
         quickLook.close()
         mainWindow?.orderOut(nil)
         settingsWindow?.orderOut(nil)
+        FileBrowserController.shared.hide()
         enterForegroundMode(resumesSearch: false)
         NSApp.unhide(nil)
         applicationActivator()
@@ -441,6 +448,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private var hasVisiblePrimaryWindow: Bool {
         quickSearchWindow?.isVisible == true
+            || FileBrowserController.shared.isVisible
             || [mainWindow, settingsWindow].compactMap { $0 }.contains { $0.isVisible }
     }
 

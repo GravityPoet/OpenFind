@@ -1074,3 +1074,21 @@
 "Terminal Setup Help" = "Setup Help";
 
 "Run in Selected Terminal Format" = "Run in %@: %@";
+
+"Fuzzy Names" = "Fuzzy Names";
+"Rename" = "Rename";
+"Rename Failed" = "Rename Failed";
+"A file with that name already exists." = "A file with that name already exists.";
+"Add Tag" = "Add Tag";
+"Tag Failed" = "Tag Failed";
+"Duplicate" = "Duplicate";
+"Compress" = "Compress";
+"Compress Failed" = "Compress Failed";
+"Archive.zip already exists." = "Archive.zip already exists.";
+"Extract ZIP" = "Extract ZIP";
+"Extract Failed" = "Extract Failed";
+"The destination folder already exists." = "The destination folder already exists.";
+
+"File Browser" = "File Browser";
+
+"Manage in File Browser" = "Manage in File Browser";
