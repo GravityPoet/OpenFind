@@ -6,7 +6,7 @@ struct MountedVolume: Equatable, Identifiable, Sendable {
     let url: URL
     let canEject: Bool
     var id: String { url.path }
-    var name: String { id == "/" ? "Macintosh HD" : url.lastPathComponent }
+    var name: String { id == "/" ? BL("Macintosh HD") : url.lastPathComponent }
 
     init(url: URL, canEject: Bool) {
         self.url = url

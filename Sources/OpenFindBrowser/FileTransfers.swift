@@ -52,19 +52,21 @@ struct ConflictSheet: View {
     @State private var applyToAll = false
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("“\(conflict.destination.lastPathComponent)” already exists").font(.headline)
+            Text(BL("“\(conflict.destination.lastPathComponent)” already exists")).font(.headline)
             Text(
-                "Choose what to do in \(conflict.destination.deletingLastPathComponent().path). Replace moves the existing item to Trash so Undo can restore it."
+                BL(
+                    "Choose what to do in \(conflict.destination.deletingLastPathComponent().path). Replace moves the existing item to Trash so Undo can restore it."
+                )
             )
             .fixedSize(horizontal: false, vertical: true)
-            Toggle("Apply to all conflicts in this operation", isOn: $applyToAll)
+            Toggle(BL("Apply to all conflicts in this operation"), isOn: $applyToAll)
             HStack {
-                Button("Cancel") { choose(.cancel, false) }.keyboardShortcut(.cancelAction)
+                Button(BL("Cancel")) { choose(.cancel, false) }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Skip") { choose(.skip, applyToAll) }
-                Button("Keep Both") { choose(.keepBoth, applyToAll) }.keyboardShortcut(
+                Button(BL("Skip")) { choose(.skip, applyToAll) }
+                Button(BL("Keep Both")) { choose(.keepBoth, applyToAll) }.keyboardShortcut(
                     .defaultAction)
-                Button("Replace") { choose(.replace, applyToAll) }
+                Button(BL("Replace")) { choose(.replace, applyToAll) }
             }
         }.padding(24).frame(width: 510)
     }

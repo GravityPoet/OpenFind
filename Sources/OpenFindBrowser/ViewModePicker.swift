@@ -24,7 +24,7 @@ struct ViewModePicker: NSViewRepresentable {
         control.segmentStyle = .automatic
         control.target = coordinator
         control.action = #selector(Coordinator.selectMode(_:))
-        control.setAccessibilityLabel("View")
+        control.setAccessibilityLabel(BL("View"))
         control.setContentHuggingPriority(.required, for: .horizontal)
         control.setContentCompressionResistancePriority(.required, for: .horizontal)
         for (index, mode) in FileViewMode.allCases.enumerated() {

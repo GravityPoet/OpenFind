@@ -61,8 +61,8 @@ struct BrowserSidebar: View, Equatable {
                 set: { if let route = $0 { select(route) } }
             )
         ) {
-            Label("Recents", systemImage: "clock").tag("recents")
-            Section("Favorites") {
+            Label(BL("Recents"), systemImage: "clock").tag("recents")
+            Section(BL("Favorites")) {
                 row("Applications", "a.square", "/Applications")
                 row("Documents", "doc", home + "/Documents")
                 row("Downloads", "arrow.down.circle", home + "/Downloads")
@@ -73,11 +73,11 @@ struct BrowserSidebar: View, Equatable {
                 ForEach(state.favorites, id: \.self) { path in
                     row((path as NSString).lastPathComponent, "folder", path)
                         .contextMenu {
-                            Button("Remove from Sidebar") { removeFavorite(path) }
+                            Button(BL("Remove from Sidebar")) { removeFavorite(path) }
                         }
                 }
             }
-            Section("Locations") {
+            Section(BL("Locations")) {
                 row(
                     "iCloud Drive", "icloud", home + "/Library/Mobile Documents/com~apple~CloudDocs"
                 )
@@ -96,16 +96,16 @@ struct BrowserSidebar: View, Equatable {
                             }
                             .buttonStyle(.borderless)
                             .disabled(state.ejectingVolumes.contains(volume.id))
-                            .help("Eject \(volume.name)")
-                            .accessibilityLabel("Eject \(volume.name)")
+                            .help(BL("Eject \(volume.name)"))
+                            .accessibilityLabel(BL("Eject \(volume.name)"))
                         }
                     }.tag(volume.id)
                 }
             }
-            Section("Tags") {
+            Section(BL("Tags")) {
                 ForEach(SidebarTags.values, id: \.0) { name, color in
                     Label {
-                        Text(name)
+                        Text(BL(name))
                     } icon: {
                         Image(systemName: "circle.fill").font(.system(size: 10))
                             .foregroundStyle(color)
@@ -117,7 +117,7 @@ struct BrowserSidebar: View, Equatable {
         .navigationSplitViewColumnWidth(min: 170, ideal: 208, max: 280)
         .safeAreaInset(edge: .bottom) {
             if state.showDiskAccessHint {
-                Button("Enable Full Disk Access…") {
+                Button(BL("Enable Full Disk Access…")) {
                     NSWorkspace.shared.open(
                         URL(
                             string:
@@ -129,6 +129,6 @@ struct BrowserSidebar: View, Equatable {
     }
 
     private func row(_ name: String, _ symbol: String, _ path: String) -> some View {
-        Label(name, systemImage: symbol).tag(path)
+        Label(BL(name), systemImage: symbol).tag(path)
     }
 }

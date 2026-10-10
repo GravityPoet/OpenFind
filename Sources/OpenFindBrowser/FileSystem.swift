@@ -21,8 +21,8 @@ extension Hit {
             && !(UTType(filenameExtension: url.pathExtension)?.conforms(to: .package) ?? false)
     }
     var typeName: String {
-        if kind == "dir" { return isFolder ? "Folder" : "Application / Package" }
-        return UTType(filenameExtension: url.pathExtension)?.localizedDescription ?? "Document"
+        if kind == "dir" { return isFolder ? BL("Folder") : BL("Application / Package") }
+        return BL(UTType(filenameExtension: url.pathExtension)?.localizedDescription ?? "Document")
     }
     var modified: Date { Date(timeIntervalSince1970: Double(mtime)) }
     static func read(_ url: URL, parent: URL? = nil) throws -> Hit {

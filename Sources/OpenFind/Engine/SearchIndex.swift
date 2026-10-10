@@ -104,6 +104,175 @@ struct IndexedFileNode: Hashable, Sendable {
     let isPackageDescendant: Bool
 }
 
+/// Read-only base-node storage. Fresh builds and event overlays use heap nodes;
+/// durable snapshots use the memory-mapped representation below. Keeping this
+/// boundary at the collection level lets all query code retain indexed integer
+/// references without materializing a second copy of the persisted base.
+struct IndexedFileNodeStore: RandomAccessCollection, Sendable {
+    typealias Index = Int
+
+    private enum Storage: Sendable {
+        case heap([IndexedFileNode])
+        case mapped(MappedIndexedFileNodeFile)
+    }
+
+    private let storage: Storage
+
+    init(_ nodes: [IndexedFileNode]) {
+        storage = .heap(nodes)
+    }
+
+    fileprivate init(mapped: MappedIndexedFileNodeFile) {
+        storage = .mapped(mapped)
+    }
+
+    var startIndex: Int { 0 }
+    var endIndex: Int {
+        switch storage {
+        case .heap(let nodes): return nodes.count
+        case .mapped(let file): return file.nodeCount
+        }
+    }
+
+    var isMapped: Bool {
+        if case .mapped = storage { return true }
+        return false
+    }
+
+    subscript(index: Int) -> IndexedFileNode {
+        switch storage {
+        case .heap(let nodes): return nodes[index]
+        case .mapped(let file): return file.node(at: index)
+        }
+    }
+
+    func materialized() -> [IndexedFileNode] {
+        if case .heap(let nodes) = storage { return nodes }
+        return Array(self)
+    }
+}
+
+/// Maps the uncompressed node/string-pool section of a durable index. The
+/// compressed legacy envelope remains the recovery/metadata source; this
+/// sidecar is the searchable base and is never copied into `[IndexedFileNode]`.
+final class MappedIndexedFileNodeFile: @unchecked Sendable {
+    static let magic = Array("OFND".utf8)
+    static let version: UInt32 = 1
+    static let headerBytes = 40
+    static let checksumBytes = SHA256.Digest.byteCount
+    static let maximumBytes: Int64 = 2 * 1_024 * 1_024 * 1_024
+    private let data: Data
+    private let nodeOffset: Int
+    private let stringOffsets: [Int]
+    let nodeCount: Int
+
+    private init(data: Data, nodeOffset: Int, nodeCount: Int, stringOffsets: [Int]) {
+        self.data = data
+        self.nodeOffset = nodeOffset
+        self.nodeCount = nodeCount
+        self.stringOffsets = stringOffsets
+    }
+
+    static func load(url: URL, expectedDigest: Data) -> MappedIndexedFileNodeFile? {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+              Int64(data.count) <= maximumBytes,
+              data.count > headerBytes + checksumBytes,
+              Array(data.prefix(4)) == magic,
+              data.withUnsafeBytes({ $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self).littleEndian }) == version,
+              Data(data[8..<40]) == expectedDigest else { return nil }
+
+        let rawOffset = headerBytes
+        let payloadEnd = data.count - checksumBytes
+        let expectedChecksum = Data(data[payloadEnd..<data.count])
+        let actualChecksum = Data(SHA256.hash(data: data[rawOffset..<payloadEnd]))
+        guard actualChecksum == expectedChecksum else { return nil }
+        guard data.count >= rawOffset + 34,
+              String(bytes: data[rawOffset..<(rawOffset + 4)], encoding: .utf8) == "OFIX" else {
+            return nil
+        }
+        func u32(_ offset: Int) -> UInt32 {
+            data.withUnsafeBytes {
+                $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self).littleEndian
+            }
+        }
+        let scopes = Int(u32(rawOffset + 10))
+        let authorized = Int(u32(rawOffset + 14))
+        let unresolved = Int(u32(rawOffset + 18))
+        let nodeCount = Int(u32(rawOffset + 22))
+        guard nodeCount >= 0 else { return nil }
+        let nodeOffset = rawOffset + 34 + (scopes + authorized + unresolved) * 4
+        let poolCountOffset = nodeOffset + nodeCount * 33
+        guard poolCountOffset + 4 <= payloadEnd else { return nil }
+        let poolCount = Int(u32(poolCountOffset))
+        guard poolCount <= (payloadEnd - (poolCountOffset + 4)) / 2 else { return nil }
+        var stringOffsets: [Int] = []
+        stringOffsets.reserveCapacity(poolCount)
+        var cursor = poolCountOffset + 4
+        for _ in 0..<poolCount {
+            guard cursor + 2 <= data.count else { return nil }
+            stringOffsets.append(cursor)
+            let length = Int(UInt16(data[cursor]) | UInt16(data[cursor + 1]) << 8)
+            cursor += 2 + length
+            guard cursor <= payloadEnd else { return nil }
+        }
+        guard cursor == payloadEnd else { return nil }
+        let file = MappedIndexedFileNodeFile(
+            data: data,
+            nodeOffset: nodeOffset,
+            nodeCount: nodeCount,
+            stringOffsets: stringOffsets
+        )
+        guard file.hasValidParentReferences() else { return nil }
+        return file
+    }
+
+    private func hasValidParentReferences() -> Bool {
+        for index in 0..<nodeCount {
+            let offset = nodeOffset + index * 33
+            let parent = Int32(bitPattern: data.withUnsafeBytes {
+                $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self).littleEndian
+            })
+            guard parent == -1 || (parent >= 0 && Int(parent) < nodeCount && Int(parent) != index)
+            else { return false }
+        }
+        return true
+    }
+
+    func node(at index: Int) -> IndexedFileNode {
+        guard index >= 0, index < nodeCount else {
+            return IndexedFileNode(name: "", parentIndex: -1, isDirectory: false, size: 0,
+                modifiedTime: 0, creationTime: 0, isHiddenScope: false, isPackageDescendant: false)
+        }
+        let offset = nodeOffset + index * 33
+        func u32(_ relative: Int) -> UInt32 {
+            data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: offset + relative, as: UInt32.self).littleEndian }
+        }
+        func i64(_ relative: Int) -> Int64 {
+            Int64(bitPattern: data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: offset + relative, as: UInt64.self).littleEndian })
+        }
+        let flags = data[offset + 8]
+        let nameIndex = Int(u32(4))
+        let name = stringIndex(nameIndex)
+        return IndexedFileNode(
+            name: name,
+            parentIndex: Int32(bitPattern: u32(0)),
+            isDirectory: flags & 1 != 0,
+            size: i64(9),
+            modifiedTime: Double(bitPattern: UInt64(bitPattern: i64(17))),
+            creationTime: Double(bitPattern: UInt64(bitPattern: i64(25))),
+            isHiddenScope: flags & 2 != 0,
+            isPackageDescendant: flags & 4 != 0
+        )
+    }
+
+    private func stringIndex(_ index: Int) -> String {
+        guard index >= 0, index < stringOffsets.count else { return "" }
+        let offset = stringOffsets[index]
+        let length = Int(UInt16(data[offset]) | UInt16(data[offset + 1]) << 8)
+        return String(decoding: data[(offset + 2)..<(offset + 2 + length)], as: UTF8.self)
+    }
+}
+
 /// Lazily reconstructs absolute paths for immutable base-index nodes.
 ///
 /// A broad name-only query can match millions of nodes, while the UI initially
@@ -114,14 +283,18 @@ struct IndexedFileNode: Hashable, Sendable {
 final class SearchIndexPathProvider: @unchecked Sendable {
     let identity = UUID()
 
-    private let nodes: [IndexedFileNode]
+    private let nodes: IndexedFileNodeStore
     private let lock = NSLock()
     private var cachedPaths: [Int32: String] = [:]
     private let maximumCachedPaths = 50_000
 
-    init(nodes: [IndexedFileNode]) {
+    init(nodes: IndexedFileNodeStore) {
         self.nodes = nodes
         cachedPaths.reserveCapacity(min(nodes.count, maximumCachedPaths))
+    }
+
+    convenience init(nodes: [IndexedFileNode]) {
+        self.init(nodes: IndexedFileNodeStore(nodes))
     }
 
     func node(for index: Int32) -> IndexedFileNode {
@@ -537,7 +710,7 @@ final class SearchNameIndex: Sendable {
     private static let maximumSidecarBytes: Int64 = 2 * 1_024 * 1_024 * 1_024
 
     private let heapNames: [String]?
-    private let baseNodes: [IndexedFileNode]?
+    private let baseNodes: IndexedFileNodeStore?
     private let representativeNodeIndices: [Int32]
     private let postingOffsets: [Int32]
     private let postingNodeIndices: SearchNameIndexInt32Storage
@@ -561,16 +734,24 @@ final class SearchNameIndex: Sendable {
     }
 
     convenience init?(
+        nodes: IndexedFileNodeStore,
+        yieldsToForegroundSearches: Bool = false
+    ) {
+        let store = nodes
+        self.init(
+            nameCount: store.count,
+            yieldsToForegroundSearches: yieldsToForegroundSearches
+        ) { index in
+            let name = store[index].name
+            return name.hasPrefix("/") ? (name as NSString).lastPathComponent : name
+        }
+    }
+
+    convenience init?(
         nodes: [IndexedFileNode],
         yieldsToForegroundSearches: Bool = false
     ) {
-        self.init(
-            nameCount: nodes.count,
-            yieldsToForegroundSearches: yieldsToForegroundSearches
-        ) { index in
-            let name = nodes[index].name
-            return name.hasPrefix("/") ? (name as NSString).lastPathComponent : name
-        }
+        self.init(nodes: IndexedFileNodeStore(nodes), yieldsToForegroundSearches: yieldsToForegroundSearches)
     }
 
     convenience init?(tempNodes: [TempNode]) {
@@ -696,7 +877,7 @@ final class SearchNameIndex: Sendable {
     }
 
     private init(
-        baseNodes: [IndexedFileNode],
+        baseNodes: IndexedFileNodeStore,
         representativeNodeIndices: [Int32],
         postingOffsets: [Int32],
         postingNodeIndices: SearchNameIndexInt32Storage,
@@ -735,7 +916,7 @@ final class SearchNameIndex: Sendable {
     }
 
     static func loadMapped(
-        nodes: [IndexedFileNode],
+        nodes: IndexedFileNodeStore,
         baseDigest: Data,
         from url: URL
     ) -> SearchNameIndex? {
@@ -1059,7 +1240,7 @@ final class SearchNameIndex: Sendable {
 /// prewarm this structure in the background; an immediate query uses the full
 /// linear node scan until the optional accelerator is ready.
 fileprivate final class SearchNameIndexCache: @unchecked Sendable {
-    private let nodes: [IndexedFileNode]
+    private let nodes: IndexedFileNodeStore
     private var persistBuiltIndex: (@Sendable (SearchNameIndex) -> SearchNameIndex?)?
     private let condition = NSCondition()
     private var index: SearchNameIndex?
@@ -1068,7 +1249,7 @@ fileprivate final class SearchNameIndexCache: @unchecked Sendable {
     private var prewarmTask: Task<Void, Never>?
 
     init(
-        nodes: [IndexedFileNode],
+        nodes: IndexedFileNodeStore,
         buildImmediately: Bool,
         initialIndex: SearchNameIndex? = nil,
         persistBuiltIndex: (@Sendable (SearchNameIndex) -> SearchNameIndex?)? = nil
@@ -1264,7 +1445,7 @@ private struct BaseReplacementCoverageResolver {
 
     mutating func isCovered(
         index: Int,
-        nodes: [IndexedFileNode],
+        nodes: IndexedFileNodeStore,
         pathProvider: SearchIndexPathProvider
     ) -> Bool {
         guard !replacementIDByRoot.isEmpty,
@@ -1318,7 +1499,7 @@ private struct BaseReplacementCoverageResolver {
     }
 
     mutating func materializedCoverage(
-        nodes: [IndexedFileNode],
+        nodes: IndexedFileNodeStore,
         pathProvider: SearchIndexPathProvider
     ) -> [Int32] {
         guard !activeReplacementByNode.isEmpty else { return [] }
@@ -1346,7 +1527,7 @@ fileprivate final class BaseReplacementCoverageCache: @unchecked Sendable {
     }
 
     private let descriptors: [Descriptor]
-    private let nodes: [IndexedFileNode]
+    private let nodes: IndexedFileNodeStore
     private let pathProvider: SearchIndexPathProvider
     private let replacements: [SearchIndexReplacement]
     private let lock = NSLock()
@@ -1354,7 +1535,7 @@ fileprivate final class BaseReplacementCoverageCache: @unchecked Sendable {
 
     init(
         replacements: [SearchIndexReplacement],
-        nodes: [IndexedFileNode],
+        nodes: IndexedFileNodeStore,
         pathProvider: SearchIndexPathProvider
     ) {
         descriptors = Self.descriptors(for: replacements)
@@ -1511,7 +1692,7 @@ struct ExactReplacementLookup: Sendable {
 
 struct SearchIndex: Sendable {
     let signature: SearchIndexSignature
-    let nodes: [IndexedFileNode]
+    let nodes: IndexedFileNodeStore
     let lastEventID: UInt64?
     /// `false` identifies the first, query-ready topology stage. Names, paths,
     /// node kinds, hidden state, and package ancestry are authoritative, while
@@ -1551,9 +1732,11 @@ struct SearchIndex: Sendable {
     private let pathProvider: SearchIndexPathProvider
     fileprivate let replacementCoverageCache: BaseReplacementCoverageCache
 
+    var usesMappedBaseNodeStorage: Bool { nodes.isMapped }
+
     init(
         signature: SearchIndexSignature,
-        nodes: [IndexedFileNode],
+        nodes: IndexedFileNodeStore,
         lastEventID: UInt64? = nil,
         unresolvedPaths: [String] = [],
         replacements: [SearchIndexReplacement] = [],
@@ -1612,6 +1795,40 @@ struct SearchIndex: Sendable {
         }
         self.fileCount = files
         self.directoryCount = directories
+    }
+
+    init(
+        signature: SearchIndexSignature,
+        nodes: [IndexedFileNode],
+        lastEventID: UInt64? = nil,
+        unresolvedPaths: [String] = [],
+        replacements: [SearchIndexReplacement] = [],
+        exactReplacements: [SearchIndexExactReplacement] = [],
+        pathsAreFresh: Bool = false,
+        hasCompleteMetadata: Bool = true,
+        existenceValidationRoots: [String] = [],
+        buildNameIndex: Bool = true,
+        deferNameIndexBuild: Bool = false,
+        initialNameIndex: SearchNameIndex? = nil,
+        persistBuiltNameIndex: (@Sendable (SearchNameIndex) -> SearchNameIndex?)? = nil,
+        basePathsAreCanonicalUnique: Bool? = nil
+    ) {
+        self.init(
+            signature: signature,
+            nodes: IndexedFileNodeStore(nodes),
+            lastEventID: lastEventID,
+            unresolvedPaths: unresolvedPaths,
+            replacements: replacements,
+            exactReplacements: exactReplacements,
+            pathsAreFresh: pathsAreFresh,
+            hasCompleteMetadata: hasCompleteMetadata,
+            existenceValidationRoots: existenceValidationRoots,
+            buildNameIndex: buildNameIndex,
+            deferNameIndexBuild: deferNameIndexBuild,
+            initialNameIndex: initialNameIndex,
+            persistBuiltNameIndex: persistBuiltNameIndex,
+            basePathsAreCanonicalUnique: basePathsAreCanonicalUnique
+        )
     }
 
     private init(
@@ -6298,7 +6515,7 @@ enum SearchIndexBuilder {
             path == "/" ? "/" : (path as NSString).lastPathComponent
         })
 
-        let pathProvider = SearchIndexPathProvider(nodes: nodes)
+        let pathProvider = SearchIndexPathProvider(nodes: IndexedFileNodeStore(nodes))
         var pathToIndex: [String: Int32] = [:]
         pathToIndex.reserveCapacity(relevantPaths.count)
         for (index, node) in nodes.enumerated() {
@@ -6931,18 +7148,23 @@ enum SearchIndexPersistence {
         guard preparePrivateCacheDirectory(for: targetURL),
               enforcePrivateFile(at: targetURL, required: true),
               enforcePrivateFile(at: nameIndexURL(for: targetURL), required: false),
+              enforcePrivateFile(at: nodeIndexURL(for: targetURL), required: false),
               enforcePrivateFile(at: deltaURL(for: targetURL), required: false) else {
             return nil
         }
         guard let storedData = try? Data(contentsOf: targetURL, options: .mappedIfSafe) else { return nil }
         let baseDigest = Data(SHA256.hash(data: storedData))
+        let mappedNodes = MappedIndexedFileNodeFile.load(
+            url: nodeIndexURL(for: targetURL), expectedDigest: baseDigest
+        )
         if storedData.starts(with: compressedMagic.utf8) {
             guard let data = decompress(storedData) else { return nil }
             return decode(
                 data,
                 expectedSignature: signature,
                 baseDigest: baseDigest,
-                baseURL: targetURL
+                baseURL: targetURL,
+                mappedNodes: mappedNodes
             )
         }
         // Raw OFIX v18 remains readable so the first optimized build can reuse
@@ -6951,7 +7173,8 @@ enum SearchIndexPersistence {
             storedData,
             expectedSignature: signature,
             baseDigest: baseDigest,
-            baseURL: targetURL
+            baseURL: targetURL,
+            mappedNodes: mappedNodes
         )
     }
 
@@ -7126,6 +7349,11 @@ enum SearchIndexPersistence {
         return targetURL.deletingPathExtension().appendingPathExtension("names-v1.bin")
     }
 
+    static func nodeIndexURL(for url: URL? = nil) -> URL {
+        let targetURL = url ?? cacheURL
+        return targetURL.deletingPathExtension().appendingPathExtension("nodes-v1.bin")
+    }
+
     /// Cache writes are visible in the event log but must not feed the index
     /// journal back into itself. MarkSelf identifies atomic temporary files;
     /// exact base/delta paths are also filtered during historical replay.
@@ -7137,9 +7365,13 @@ enum SearchIndexPersistence {
         let nameIndexPath = SearchPath.canonicalAliasPath(
             nameIndexURL(for: targetURL).path(percentEncoded: false)
         )
+        let nodeIndexPath = SearchPath.canonicalAliasPath(
+            nodeIndexURL(for: targetURL).path(percentEncoded: false)
+        )
         if canonicalPath == basePath
             || canonicalPath == deltaPath
             || canonicalPath == nameIndexPath
+            || canonicalPath == nodeIndexPath
             || ContentSearchIndex.isDatabaseEvent(path: canonicalPath, indexURL: targetURL) {
             return true
         }
@@ -7161,6 +7393,7 @@ enum SearchIndexPersistence {
         guard preparePrivateCacheDirectory(for: targetURL),
               enforcePrivateFile(at: targetURL, required: false),
               enforcePrivateFile(at: nameIndexURL(for: targetURL), required: false),
+              enforcePrivateFile(at: nodeIndexURL(for: targetURL), required: false),
               enforcePrivateFile(at: deltaURL(for: targetURL), required: false) else {
             return
         }
@@ -7168,6 +7401,13 @@ enum SearchIndexPersistence {
             let rawData = encode(index)
             let data = compress(rawData) ?? rawData
             let baseDigest = Data(SHA256.hash(data: data))
+            var nodeEnvelope = Data()
+            nodeEnvelope.append(contentsOf: MappedIndexedFileNodeFile.magic)
+            var version = MappedIndexedFileNodeFile.version.littleEndian
+            withUnsafeBytes(of: &version) { nodeEnvelope.append(contentsOf: $0) }
+            nodeEnvelope.append(baseDigest)
+            nodeEnvelope.append(rawData)
+            nodeEnvelope.append(contentsOf: SHA256.hash(data: rawData))
             let nameIndexData = index.readyNameIndexForPersistence()?.sidecarData(
                 baseDigest: baseDigest
             )
@@ -7177,6 +7417,13 @@ enum SearchIndexPersistence {
                 try data.write(to: targetURL, options: .atomic)
                 guard enforcePrivateFile(at: targetURL, required: true) else {
                     try? FileManager.default.removeItem(at: targetURL)
+                    throw CocoaError(.fileWriteNoPermission)
+                }
+                let nodeURL = nodeIndexURL(for: targetURL)
+                try nodeEnvelope.write(to: nodeURL, options: .atomic)
+                let wroteNodeIndex = enforcePrivateFile(at: nodeURL, required: true)
+                guard wroteNodeIndex else {
+                    try? FileManager.default.removeItem(at: nodeURL)
                     throw CocoaError(.fileWriteNoPermission)
                 }
                 if let nameIndexData {
@@ -7204,6 +7451,7 @@ enum SearchIndexPersistence {
                         oldURL,
                         oldStem.appendingPathExtension("delta.plist"),
                         oldStem.appendingPathExtension("names-v1.bin"),
+                        oldStem.appendingPathExtension("nodes-v1.bin"),
                         oldStem.appendingPathExtension("content-v1.sqlite3"),
                         URL(fileURLWithPath: oldStem.path + ".content-v1.sqlite3-wal"),
                         URL(fileURLWithPath: oldStem.path + ".content-v1.sqlite3-shm"),
@@ -7236,7 +7484,7 @@ enum SearchIndexPersistence {
 
     fileprivate static func persistBuiltNameIndex(
         _ nameIndex: SearchNameIndex,
-        nodes: [IndexedFileNode],
+        nodes: IndexedFileNodeStore,
         baseDigest: Data,
         baseURL: URL
     ) -> SearchNameIndex? {
@@ -7412,14 +7660,16 @@ enum SearchIndexPersistence {
         _ data: Data,
         expectedSignature: SearchIndexSignature,
         baseDigest: Data,
-        baseURL: URL
+        baseURL: URL,
+        mappedNodes: MappedIndexedFileNodeFile? = nil
     ) -> SearchIndex? {
         data.withUnsafeBytes { bytes in
             decode(
                 bytes,
                 expectedSignature: expectedSignature,
                 baseDigest: baseDigest,
-                baseURL: baseURL
+                baseURL: baseURL,
+                mappedNodes: mappedNodes
             )
         }
     }
@@ -7428,7 +7678,8 @@ enum SearchIndexPersistence {
         _ bytes: UnsafeRawBufferPointer,
         expectedSignature: SearchIndexSignature,
         baseDigest: Data,
-        baseURL: URL
+        baseURL: URL,
+        mappedNodes: MappedIndexedFileNodeFile? = nil
     ) -> SearchIndex? {
         var reader = BinaryReader(bytes: bytes)
 
@@ -7507,6 +7758,32 @@ enum SearchIndexPersistence {
         )
         guard canonicalUnresolvedPaths.sorted() == unresolvedPaths.sorted() else { return nil }
 
+        if let mappedNodes, mappedNodes.nodeCount == Int(nodesCount) {
+            let nodeStore = IndexedFileNodeStore(mapped: mappedNodes)
+            let persistedNameIndex = SearchNameIndex.loadMapped(
+                nodes: nodeStore,
+                baseDigest: baseDigest,
+                from: nameIndexURL(for: baseURL)
+            )
+            return SearchIndex(
+                signature: loadedSignature,
+                nodes: nodeStore,
+                lastEventID: encodedLastEventID == 0 ? nil : encodedLastEventID,
+                unresolvedPaths: canonicalUnresolvedPaths,
+                deferNameIndexBuild: true,
+                initialNameIndex: persistedNameIndex,
+                persistBuiltNameIndex: { nameIndex in
+                    SearchIndexPersistence.persistBuiltNameIndex(
+                        nameIndex,
+                        nodes: nodeStore,
+                        baseDigest: baseDigest,
+                        baseURL: baseURL
+                    )
+                },
+                basePathsAreCanonicalUnique: true
+            )
+        }
+
         var nodes: [IndexedFileNode] = []
         nodes.reserveCapacity(Int(nodesCount))
         reader.offset = nodesOffset
@@ -7542,14 +7819,15 @@ enum SearchIndexPersistence {
         }
 
         let decodedNodes = nodes
+        let decodedNodeStore = IndexedFileNodeStore(decodedNodes)
         let persistedNameIndex = SearchNameIndex.loadMapped(
-            nodes: decodedNodes,
+            nodes: decodedNodeStore,
             baseDigest: baseDigest,
             from: nameIndexURL(for: baseURL)
         )
         return SearchIndex(
             signature: loadedSignature,
-            nodes: decodedNodes,
+            nodes: decodedNodeStore,
             lastEventID: encodedLastEventID == 0 ? nil : encodedLastEventID,
             unresolvedPaths: canonicalUnresolvedPaths,
             deferNameIndexBuild: true,
@@ -7557,7 +7835,7 @@ enum SearchIndexPersistence {
             persistBuiltNameIndex: { nameIndex in
                 SearchIndexPersistence.persistBuiltNameIndex(
                     nameIndex,
-                    nodes: decodedNodes,
+                    nodes: decodedNodeStore,
                     baseDigest: baseDigest,
                     baseURL: baseURL
                 )
