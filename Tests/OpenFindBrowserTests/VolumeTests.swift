@@ -39,7 +39,7 @@ final class VolumeTests: XCTestCase {
         }
         XCTAssertTrue(workspace.ejectingVolumes.isEmpty)
         XCTAssertEqual(workspace.volumes, [volume])
-        XCTAssertEqual(errors, ["Could not eject ‘FinderSearch-test-volume’: Volume is in use."])
+        XCTAssertEqual(errors, [BLF("Could not eject ‘%@’: %@", "FinderSearch-test-volume", "Volume is in use.")])
         let attempts = await fixture.attempts
         XCTAssertEqual(attempts, 1)
     }

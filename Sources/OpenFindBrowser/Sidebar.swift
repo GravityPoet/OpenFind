@@ -63,13 +63,13 @@ struct BrowserSidebar: View, Equatable {
         ) {
             Label(BL("Recents"), systemImage: "clock").tag("recents")
             Section(BL("Favorites")) {
-                row("Applications", "a.square", "/Applications")
-                row("Documents", "doc", home + "/Documents")
-                row("Downloads", "arrow.down.circle", home + "/Downloads")
-                row("Desktop", "menubar.dock.rectangle", home + "/Desktop")
-                row("Pictures", "photo", home + "/Pictures")
-                row("Music", "music.note", home + "/Music")
-                row("Movies", "film", home + "/Movies")
+                row(BL("Applications"), "a.square", "/Applications")
+                row(BL("Documents"), "doc", home + "/Documents")
+                row(BL("Downloads"), "arrow.down.circle", home + "/Downloads")
+                row(BL("Desktop"), "menubar.dock.rectangle", home + "/Desktop")
+                row(BL("Pictures"), "photo", home + "/Pictures")
+                row(BL("Music"), "music.note", home + "/Music")
+                row(BL("Movies"), "film", home + "/Movies")
                 ForEach(state.favorites, id: \.self) { path in
                     row((path as NSString).lastPathComponent, "folder", path)
                         .contextMenu {
@@ -79,7 +79,7 @@ struct BrowserSidebar: View, Equatable {
             }
             Section(BL("Locations")) {
                 row(
-                    "iCloud Drive", "icloud", home + "/Library/Mobile Documents/com~apple~CloudDocs"
+                    BL("iCloud Drive"), "icloud", home + "/Library/Mobile Documents/com~apple~CloudDocs"
                 )
                 row((home as NSString).lastPathComponent, "house", home)
                 ForEach(state.volumes) { volume in
@@ -96,8 +96,8 @@ struct BrowserSidebar: View, Equatable {
                             }
                             .buttonStyle(.borderless)
                             .disabled(state.ejectingVolumes.contains(volume.id))
-                            .help(BL("Eject \(volume.name)"))
-                            .accessibilityLabel(BL("Eject \(volume.name)"))
+                            .help(BLF("Eject %@", volume.name))
+                            .accessibilityLabel(BLF("Eject %@", volume.name))
                         }
                     }.tag(volume.id)
                 }
@@ -129,6 +129,6 @@ struct BrowserSidebar: View, Equatable {
     }
 
     private func row(_ name: String, _ symbol: String, _ path: String) -> some View {
-        Label(BL(name), systemImage: symbol).tag(path)
+        Label(name, systemImage: symbol).tag(path)
     }
 }

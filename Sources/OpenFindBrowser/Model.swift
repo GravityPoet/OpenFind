@@ -601,13 +601,13 @@ struct FileJournal { let name: String; let operations: [FileMutation] }
             if item.isFolder {
                 navigate(item.url)
             } else if !NSWorkspace.shared.open(item.url) {
-                error = "Could not open ‘\(item.name)’."
+                error = BLF("Could not open ‘%@’.", item.name)
             }; return
         }
         for hit in selectedItems {
             guard hit.kind != "pending" else { continue }
             if hit.isFolder && selection.count == 1 { navigate(hit.url); return };
-            if !NSWorkspace.shared.open(hit.url) { error = "Could not open ‘\(hit.name)’." }
+            if !NSWorkspace.shared.open(hit.url) { error = BLF("Could not open ‘%@’.", hit.name) }
         }
     }
     func perform(
@@ -902,7 +902,7 @@ struct FileJournal { let name: String; let operations: [FileMutation] }
                         || tab.location.path.hasPrefix(volume.id + "/"))
             })
         else {
-            reportError("Wait for the file operation to finish before ejecting ‘\(volume.name)’.")
+            reportError(BLF("Wait for the file operation to finish before ejecting ‘%@’.", volume.name))
             return
         }
         ejectingVolumes.insert(volume.id)
@@ -919,7 +919,7 @@ struct FileJournal { let name: String; let operations: [FileMutation] }
                 }
                 refreshVolumes()
             } catch {
-                reportError("Could not eject ‘\(volume.name)’: \(error.localizedDescription)")
+                reportError(BLF("Could not eject ‘%@’: %@", volume.name, error.localizedDescription))
             }
         }
     }

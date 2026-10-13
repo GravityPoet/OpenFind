@@ -93,7 +93,7 @@ remove_known_tree() {
             ;;
     esac
     if [ -e "$target" ] || [ -L "$target" ]; then
-        /bin/rm -R "$target"
+        /usr/bin/swift "$ROOT_DIR/Scripts/recycle_owned_path.swift" "$target"
     fi
 }
 
@@ -171,6 +171,7 @@ cp -R Sources/OpenFind/Resources/en.lproj "$RESOURCES_DIR/"
 cp -R Sources/OpenFind/Resources/zh-Hans.lproj "$RESOURCES_DIR/"
 cp Sources/OpenFind/Resources/OpenFind.sdef "$RESOURCES_DIR/"
 cp Sources/OpenFind/Resources/ThirdPartyNotices.txt "$RESOURCES_DIR/"
+cp -R Sources/OpenFind/Resources/ThirdPartyNotices "$RESOURCES_DIR/"
 MINIMUM_MACOS_VERSION="$MINIMUM_MACOS_VERSION" \
     bash Scripts/extract_app_intents_metadata.sh "$RESOURCES_DIR"
 
@@ -311,6 +312,11 @@ if [ ! -f "$RESOURCES_DIR/ThirdPartyNotices.txt" ]; then
     echo "Error: third-party notices are missing from Contents/Resources." >&2
     exit 1
 fi
+if ! cmp -s Sources/OpenFind/Resources/ThirdPartyNotices/FinderSearch.txt \
+    "$RESOURCES_DIR/ThirdPartyNotices/FinderSearch.txt"; then
+    echo "Error: FinderSearch license is missing or incomplete in the application." >&2
+    exit 1
+fi
 if [ ! -s "$RESOURCES_DIR/Metadata.appintents/version.json" ] \
     || [ ! -s "$RESOURCES_DIR/Metadata.appintents/extract.actionsdata" ]; then
     echo "Error: App Intents metadata is missing from Contents/Resources." >&2
@@ -390,6 +396,11 @@ if [ ! -f "$VERIFY_APP/Contents/Resources/OpenFind.sdef" ]; then
 fi
 if [ ! -f "$VERIFY_APP/Contents/Resources/ThirdPartyNotices.txt" ]; then
     echo "Error: archived app is missing its third-party notices." >&2
+    exit 1
+fi
+if ! cmp -s Sources/OpenFind/Resources/ThirdPartyNotices/FinderSearch.txt \
+    "$VERIFY_APP/Contents/Resources/ThirdPartyNotices/FinderSearch.txt"; then
+    echo "Error: archived app is missing the complete FinderSearch license." >&2
     exit 1
 fi
 if [ ! -s "$VERIFY_APP/Contents/Resources/Metadata.appintents/version.json" ] \

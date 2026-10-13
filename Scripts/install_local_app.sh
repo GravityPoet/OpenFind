@@ -46,7 +46,7 @@ remove_known_tree() {
             ;;
     esac
     if [ -e "$target" ] || [ -L "$target" ]; then
-        /bin/rm -R "$target"
+        /usr/bin/swift "$ROOT_DIR/Scripts/recycle_owned_path.swift" "$target"
     fi
 }
 
@@ -64,7 +64,7 @@ remove_validated_appcast_bundle() {
         return 64
     fi
     if [ -e "$cached_app" ] || [ -L "$cached_app" ]; then
-        /bin/rm -R "$cached_app"
+        /usr/bin/swift "$ROOT_DIR/Scripts/recycle_owned_path.swift" "$cached_app"
     fi
 }
 

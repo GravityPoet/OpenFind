@@ -139,6 +139,13 @@ struct IndexedFileNodeStore: RandomAccessCollection, Sendable {
         return false
     }
 
+    var directoryCount: Int {
+        switch storage {
+        case .heap(let nodes): return nodes.reduce(0) { $0 + ($1.isDirectory ? 1 : 0) }
+        case .mapped(let file): return file.directoryCount
+        }
+    }
+
     subscript(index: Int) -> IndexedFileNode {
         switch storage {
         case .heap(let nodes): return nodes[index]
@@ -165,12 +172,14 @@ final class MappedIndexedFileNodeFile: @unchecked Sendable {
     private let nodeOffset: Int
     private let stringOffsets: [Int]
     let nodeCount: Int
+    let directoryCount: Int
 
-    private init(data: Data, nodeOffset: Int, nodeCount: Int, stringOffsets: [Int]) {
+    private init(data: Data, nodeOffset: Int, nodeCount: Int, stringOffsets: [Int], directoryCount: Int) {
         self.data = data
         self.nodeOffset = nodeOffset
         self.nodeCount = nodeCount
         self.stringOffsets = stringOffsets
+        self.directoryCount = directoryCount
     }
 
     static func load(url: URL, expectedDigest: Data) -> MappedIndexedFileNodeFile? {
@@ -205,37 +214,38 @@ final class MappedIndexedFileNodeFile: @unchecked Sendable {
         guard poolCountOffset + 4 <= payloadEnd else { return nil }
         let poolCount = Int(u32(poolCountOffset))
         guard poolCount <= (payloadEnd - (poolCountOffset + 4)) / 2 else { return nil }
-        var stringOffsets: [Int] = []
-        stringOffsets.reserveCapacity(poolCount)
-        var cursor = poolCountOffset + 4
-        for _ in 0..<poolCount {
-            guard cursor + 2 <= data.count else { return nil }
-            stringOffsets.append(cursor)
-            let length = Int(UInt16(data[cursor]) | UInt16(data[cursor + 1]) << 8)
-            cursor += 2 + length
-            guard cursor <= payloadEnd else { return nil }
+        let layout: (strings: [Int], directories: Int)? = data.withUnsafeBytes { bytes in
+            var stringOffsets: [Int] = []
+            stringOffsets.reserveCapacity(poolCount)
+            var cursor = poolCountOffset + 4
+            for _ in 0..<poolCount {
+                guard cursor + 2 <= payloadEnd else { return nil }
+                stringOffsets.append(cursor)
+                let length = Int(bytes.loadUnaligned(fromByteOffset: cursor, as: UInt16.self).littleEndian)
+                cursor += 2 + length
+                guard cursor <= payloadEnd else { return nil }
+            }
+            guard cursor == payloadEnd else { return nil }
+            var directories = 0
+            for index in 0..<nodeCount {
+                let offset = nodeOffset + index * 33
+                let parent = Int32(bitPattern: bytes.loadUnaligned(fromByteOffset: offset, as: UInt32.self).littleEndian)
+                let name = Int(bytes.loadUnaligned(fromByteOffset: offset + 4, as: UInt32.self).littleEndian)
+                guard name < poolCount,
+                      parent == -1 || (parent >= 0 && Int(parent) < nodeCount && Int(parent) != index)
+                else { return nil }
+                if bytes[offset + 8] & 1 != 0 { directories += 1 }
+            }
+            return (stringOffsets, directories)
         }
-        guard cursor == payloadEnd else { return nil }
-        let file = MappedIndexedFileNodeFile(
+        guard let layout else { return nil }
+        return MappedIndexedFileNodeFile(
             data: data,
             nodeOffset: nodeOffset,
             nodeCount: nodeCount,
-            stringOffsets: stringOffsets
+            stringOffsets: layout.strings,
+            directoryCount: layout.directories
         )
-        guard file.hasValidParentReferences() else { return nil }
-        return file
-    }
-
-    private func hasValidParentReferences() -> Bool {
-        for index in 0..<nodeCount {
-            let offset = nodeOffset + index * 33
-            let parent = Int32(bitPattern: data.withUnsafeBytes {
-                $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self).littleEndian
-            })
-            guard parent == -1 || (parent >= 0 && Int(parent) < nodeCount && Int(parent) != index)
-            else { return false }
-        }
-        return true
     }
 
     func node(at index: Int) -> IndexedFileNode {
@@ -244,32 +254,30 @@ final class MappedIndexedFileNodeFile: @unchecked Sendable {
                 modifiedTime: 0, creationTime: 0, isHiddenScope: false, isPackageDescendant: false)
         }
         let offset = nodeOffset + index * 33
-        func u32(_ relative: Int) -> UInt32 {
-            data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: offset + relative, as: UInt32.self).littleEndian }
+        return data.withUnsafeBytes { bytes in
+            func u32(_ relative: Int) -> UInt32 {
+                bytes.loadUnaligned(fromByteOffset: offset + relative, as: UInt32.self).littleEndian
+            }
+            func u64(_ relative: Int) -> UInt64 {
+                bytes.loadUnaligned(fromByteOffset: offset + relative, as: UInt64.self).littleEndian
+            }
+            let flags = bytes[offset + 8]
+            let stringOffset = stringOffsets[Int(u32(4))]
+            let length = Int(bytes.loadUnaligned(fromByteOffset: stringOffset, as: UInt16.self).littleEndian)
+            // Decode the validated UTF-8 directly. Iterating a Data slice here
+            // invoked Foundation's byte access for every character on every hit.
+            let nameBytes = UnsafeRawBufferPointer(rebasing: bytes[(stringOffset + 2)..<(stringOffset + 2 + length)])
+            return IndexedFileNode(
+                name: String(decoding: nameBytes, as: UTF8.self),
+                parentIndex: Int32(bitPattern: u32(0)),
+                isDirectory: flags & 1 != 0,
+                size: Int64(bitPattern: u64(9)),
+                modifiedTime: Double(bitPattern: u64(17)),
+                creationTime: Double(bitPattern: u64(25)),
+                isHiddenScope: flags & 2 != 0,
+                isPackageDescendant: flags & 4 != 0
+            )
         }
-        func i64(_ relative: Int) -> Int64 {
-            Int64(bitPattern: data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: offset + relative, as: UInt64.self).littleEndian })
-        }
-        let flags = data[offset + 8]
-        let nameIndex = Int(u32(4))
-        let name = stringIndex(nameIndex)
-        return IndexedFileNode(
-            name: name,
-            parentIndex: Int32(bitPattern: u32(0)),
-            isDirectory: flags & 1 != 0,
-            size: i64(9),
-            modifiedTime: Double(bitPattern: UInt64(bitPattern: i64(17))),
-            creationTime: Double(bitPattern: UInt64(bitPattern: i64(25))),
-            isHiddenScope: flags & 2 != 0,
-            isPackageDescendant: flags & 4 != 0
-        )
-    }
-
-    private func stringIndex(_ index: Int) -> String {
-        guard index >= 0, index < stringOffsets.count else { return "" }
-        let offset = stringOffsets[index]
-        let length = Int(UInt16(data[offset]) | UInt16(data[offset + 1]) << 8)
-        return String(decoding: data[(offset + 2)..<(offset + 2 + length)], as: UTF8.self)
     }
 }
 
@@ -1788,13 +1796,8 @@ struct SearchIndex: Sendable {
             pathProvider: pathProvider
         )
 
-        var files = 0
-        var directories = 0
-        for node in nodes {
-            if node.isDirectory { directories += 1 } else { files += 1 }
-        }
-        self.fileCount = files
-        self.directoryCount = directories
+        self.directoryCount = nodes.directoryCount
+        self.fileCount = nodes.count - directoryCount
     }
 
     init(

@@ -29,7 +29,7 @@ import AppKit
         stringValue = hit.name; isEditable = true; isSelectable = true
         isBordered = true; drawsBackground = true; backgroundColor = .textBackgroundColor
         textColor = .textColor; delegate = self
-        setAccessibilityLabel(BL("Rename \(hit.name)"))
+        setAccessibilityLabel(BLF("Rename %@", hit.name))
         requestFocus()
     }
 

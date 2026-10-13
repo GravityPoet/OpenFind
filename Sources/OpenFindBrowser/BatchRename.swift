@@ -74,7 +74,7 @@ enum BatchRenames {
                     && identities.contains(identity(move.destination) ?? ""))
             {
                 throw Engine.Failure.message(
-                    "“\(move.destination.lastPathComponent)” already exists.")
+                    BLF("“%@” already exists.", move.destination.lastPathComponent))
             }
         }
     }
@@ -121,7 +121,7 @@ enum BatchRenames {
                     try NativeFileCopy.move(current, to: entry.move.source, control: recovery)
                 } catch {
                     batch.errors.append(
-                        "Could not restore \(entry.move.source.lastPathComponent). Its file is at \(current.path)."
+                        BLF("Could not restore %@. Its file is at %@.", entry.move.source.lastPathComponent, current.path)
                     )
                     batch.inverse.append(.move(current, entry.move.source))
                 }
@@ -145,7 +145,7 @@ struct BatchRenameSheet: View {
     @State private var checking = true
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(BL("Rename \(request.hits.count) Items")).font(.headline)
+            Text(BLF("Rename %lld Items", request.hits.count)).font(.headline)
             Picker(BL("Format"), selection: $spec.mode) {
                 ForEach(BatchRenameSpec.Mode.allCases, id: \.self) { Text(BL($0.rawValue)).tag($0) }
             }
@@ -156,7 +156,7 @@ struct BatchRenameSheet: View {
                         ? "Name" : spec.mode == .add ? "Add after name" : "Replace with"),
                 text: $spec.text)
             if spec.mode == .number {
-                Stepper(BL("Start at \(spec.start)"), value: $spec.start, in: 1...999_999)
+                Stepper(BLF("Start at %lld", spec.start), value: $spec.start, in: 1...999_999)
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
@@ -181,7 +181,7 @@ struct BatchRenameSheet: View {
                 Text(
                     checking
                         ? BL("Checking names…")
-                        : BL("\(moves.count) names will change. File extensions are preserved.")
+                        : BLF("%lld names will change. File extensions are preserved.", moves.count)
                 ).foregroundStyle(.secondary).font(.callout)
             }
             HStack {

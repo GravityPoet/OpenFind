@@ -7,7 +7,28 @@ import Foundation
 enum BrowserLocalization {
     private static let chinese = [
         "File Browser": "文件浏览器",
-        "Searching “": "正在搜索“",
+        "Searching “%@”": "正在搜索“%@”",
+        "%lld items": "%lld 个项目",
+        "%lld selected": "已选择 %lld 项",
+        "Rename %lld Items": "重新命名 %lld 个项目",
+        "Start at %lld": "起始编号：%lld",
+        "%lld names will change. File extensions are preserved.": "将更改 %lld 个名称。文件扩展名会保留。",
+        "Eject %@": "推出 %@",
+        "Close %@ tab": "关闭 %@ 标签页",
+        "Rename %@": "重新命名 %@",
+        "Undo": "撤销",
+        "Redo": "重做",
+        "Undo %@": "撤销%@",
+        "Redo %@": "重做%@",
+        "%@ (default)": "%@（默认）",
+        "“%@” already exists": "“%@”已存在",
+        "“%@” already exists.": "“%@”已存在。",
+        "Choose what to do in %@. Replace moves the existing item to Trash so Undo can restore it.": "请选择如何处理 %@ 中的同名项目。替换会将现有项目移到废纸篓，以便撤销时恢复。",
+        "Could not open ‘%@’.": "无法打开“%@”。",
+        "Could not restore %@. Its file is at %@.": "无法恢复 %@。文件保存在 %@。",
+        "An item named ‘%@’ already exists.": "名为“%@”的项目已存在。",
+        "Wait for the file operation to finish before ejecting ‘%@’.": "请等待文件操作完成后再推出“%@”。",
+        "Could not eject ‘%@’: %@": "无法推出“%@”：%@",
         "Search": "搜索",
         "Search:": "搜索：",
         "Search failed": "搜索失败",
@@ -128,6 +149,7 @@ enum BrowserLocalization {
         "Where:": "位置：",
         "Tags:": "标签：",
         "A folder cannot be moved or copied inside itself.": "不能将文件夹移到或拷贝到自身内部。",
+        "This archive format is not supported.": "不支持此压缩包格式。",
         "This ZIP archive is incomplete.": "此 ZIP 压缩包不完整。",
         "This archive format is not supported. Use a standard ZIP archive.": "不支持此压缩包格式。请使用标准 ZIP 压缩包。",
         "Encrypted or incomplete ZIP archives cannot be extracted.": "无法解压已加密或不完整的 ZIP 压缩包。",
@@ -146,77 +168,29 @@ enum BrowserLocalization {
         "Replace moves the existing item to Trash so Undo can restore it.": "替换会将现有项目移到废纸篓，以便撤销时恢复。",
     ]
 
-    static let usesChinese = Locale.preferredLanguages.first?.hasPrefix("zh") == true
+    static func preferredIdentifier(for preferredLanguages: [String]) -> String {
+        Bundle.preferredLocalizations(from: ["en", "zh-Hans"], forPreferences: preferredLanguages)
+            .first ?? "en"
+    }
 
-    static func text(_ key: String) -> String {
-        guard usesChinese else { return key }
+    static let identifier = preferredIdentifier(for: Locale.preferredLanguages)
+    static var usesChinese: Bool { identifier == "zh-Hans" }
+
+    static func text(_ key: String, language: String = identifier) -> String {
+        guard language == "zh-Hans" else { return key }
         if let value = chinese[key] { return value }
-        if key.hasSuffix(" items") {
-            let count = key.dropLast(" items".count)
-            if !count.isEmpty, Int(count) != nil { return "\(count) 个项目" }
-        }
-        if key.hasSuffix(" selected") {
-            let count = key.dropLast(" selected".count)
-            if !count.isEmpty, Int(count) != nil { return "已选择 \(count) 项" }
-        }
-        if key.hasSuffix(" names will change. File extensions are preserved.") {
-            let count = key.dropLast(" names will change. File extensions are preserved.".count)
-            if !count.isEmpty, Int(count) != nil {
-                return "将更改 \(count) 个名称。文件扩展名会保留。"
-            }
-        }
-        if let separator = key.range(of: " · ") {
-            let operation = String(key[..<separator.lowerBound])
-            let item = String(key[separator.upperBound...])
-            return text(operation) + " · " + item
-        }
-        if key.hasPrefix("“"), key.hasSuffix("” already exists") {
-            let name = key.dropFirst().dropLast("” already exists".count)
-            return "“\(name)”已存在"
-        }
-        if key.hasPrefix("Choose what to do in "),
-            let separator = key.range(of: ". Replace moves")
-        {
-            let path = key[key.index(key.startIndex, offsetBy: "Choose what to do in ".count)..<separator.lowerBound]
-            return "请选择如何处理 \(path)。替换会将现有项目移到废纸篓，以便撤销时恢复。"
-        }
-        if key.hasPrefix("Eject ") { return "推出 " + String(key.dropFirst("Eject ".count)) }
-        if key.hasPrefix("Close "), key.hasSuffix(" tab") {
-            let title = key.dropFirst("Close ".count).dropLast(" tab".count)
-            return "关闭 \(title) 标签页"
-        }
-        if key.hasPrefix("Rename "), key.hasSuffix(" Items") {
-            let count = key.dropFirst("Rename ".count).dropLast(" Items".count)
-            return "重新命名 \(count) 个项目"
-        }
-        if key.hasPrefix("Searching “") {
-            return "正在搜索“" + String(key.dropFirst("Searching “".count))
-        }
-        if key.hasSuffix(" (default)") {
-            return String(key.dropLast(" (default)".count)) + "（默认）"
-        }
-        if key.hasPrefix("Could not open ‘") {
-            let value = String(key.dropFirst("Could not open ‘".count))
-            return "无法打开“" + value.replacingOccurrences(of: "’.", with: "”。")
-        }
-        if key.hasPrefix("Could not restore ") {
-            return "无法恢复 " + String(key.dropFirst("Could not restore ".count))
-        }
-        if key.hasPrefix("An item named ‘") {
-            let value = String(key.dropFirst("An item named ‘".count))
-            return "名为“" + value.replacingOccurrences(of: "’ already exists.", with: "”已存在。")
-        }
-        if key.hasPrefix("Wait for the file operation") {
-            return "请等待文件操作完成后再推出“" +
-                (key.split(separator: "‘").dropFirst().first.map(String.init) ?? "") + "”。"
-        }
-        if key.hasPrefix("Could not eject ‘") {
-            let value = String(key.dropFirst("Could not eject ‘".count))
-            return "无法推出“" + value.replacingOccurrences(of: "’: ", with: "”：")
-        }
-        return key
+        // File batches may report several independent errors together.
+        return key.components(separatedBy: "\n").map { chinese[$0] ?? $0 }.joined(separator: "\n")
+    }
+
+    static func format(_ key: String, arguments: [CVarArg], language: String = identifier) -> String {
+        String(format: text(key, language: language), locale: Locale(identifier: language), arguments: arguments)
     }
 }
 
 @inline(__always)
 func BL(_ key: String) -> String { BrowserLocalization.text(key) }
+
+func BLF(_ key: String, _ arguments: CVarArg...) -> String {
+    BrowserLocalization.format(key, arguments: arguments)
+}

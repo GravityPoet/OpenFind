@@ -73,7 +73,7 @@ struct BrowserView: View {
                 pathBar
                 statusBar
             }
-            .navigationTitle(model.isSearch ? BL("Searching “\(model.query)”") : model.title)
+            .navigationTitle(model.isSearch ? BLF("Searching “%@”", model.query) : model.title)
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     ControlGroup {
@@ -190,6 +190,18 @@ struct BrowserView: View {
             if let command = TabShortcut.command(for: event), !browserWindow.isSheet {
                 if command == .new { workspace.newTab() } else { workspace.reopenClosedTab() }
                 return nil
+            }
+            if browserWindow.attachedSheet == nil, !browserWindow.isSheet,
+                model.preview == nil, !model.busy, event.modifierFlags.contains(.command),
+                event.modifierFlags.intersection([.control, .option]).isEmpty
+            {
+                if event.keyCode == 5, event.modifierFlags.contains(.shift), model.renaming == nil {
+                    model.goToFolder(); return nil
+                }
+                if event.keyCode == 6, !(browserWindow.firstResponder is NSTextView) {
+                    if event.modifierFlags.contains(.shift) { model.redo() } else { model.undo() }
+                    return nil
+                }
             }
             if searchFocused && event.keyCode == 125 && !model.sortedHits.isEmpty {
                 focusFiles(); model.selection = [model.sortedHits[0].path]; return nil
@@ -362,7 +374,7 @@ struct BrowserView: View {
                 if let fraction = progress.fraction {
                     ProgressView(value: fraction).frame(width: 100)
                 }
-                Text(BL("\(model.operationName) · \(progress.item)")).lineLimit(1)
+                Text("\(BL(model.operationName)) · \(progress.item)").lineLimit(1)
                 if progress.bytes > 0 {
                     Text(
                         ByteCountFormatter.string(fromByteCount: progress.bytes, countStyle: .file)
@@ -374,8 +386,8 @@ struct BrowserView: View {
                 Text(
                     model.selection.isEmpty
                         ? (model.isSearch && model.hits.count == 500
-                            ? BL("First 500 matches") : BL("\(model.sortedHits.count) items"))
-                        : BL("\(model.selection.count) selected"))
+                            ? BL("First 500 matches") : BLF("%lld items", model.sortedHits.count))
+                        : BLF("%lld selected", model.selection.count))
             }
             if model.isSearch { Text(String(format: "· %.1f ms", model.elapsed)).monospacedDigit() }
             Spacer()
@@ -409,6 +421,15 @@ struct BrowserView: View {
         Button(BL("Refresh")) { model.schedule() }.disabled(model.busy)
     }
     @ViewBuilder private var actions: some View {
+        Button(model.undoStack.last.map { BLF("Undo %@", BL($0.name)) } ?? BL("Undo")) {
+            model.undo()
+        }.disabled(model.busy || model.undoStack.isEmpty)
+        Button(model.redoStack.last.map { BLF("Redo %@", BL($0.name)) } ?? BL("Redo")) {
+            model.redo()
+        }.disabled(model.busy || model.redoStack.isEmpty)
+        Divider()
+        Button(BL("Go to Folder")) { model.goToFolder() }.disabled(model.busy)
+        Divider()
         Button(BL("Open")) { model.open() }.disabled(model.selection.isEmpty)
         Button(BL("Open in New Tab")) {
             if let hit = model.selected, hit.isFolder { workspace.newTab(hit.url) }

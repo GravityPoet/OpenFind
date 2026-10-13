@@ -333,7 +333,7 @@ enum LocalFiles {
                 try? $0.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
             }
             control?.start(
-                item: source?.lastPathComponent ?? "Creating item…", completed: index,
+                item: source?.lastPathComponent ?? BL("Creating item…"), completed: index,
                 total: operations.count,
                 expectedBytes: size?.isRegularFile == true ? Int64(size?.fileSize ?? 0) : 0)
             do {
@@ -390,7 +390,7 @@ enum LocalFiles {
                             domain: "FinderSearch", code: 1,
                             userInfo: [
                                 NSLocalizedDescriptionKey:
-                                    "An item named ‘\(destination.lastPathComponent)’ already exists."
+                                    BLF("An item named ‘%@’ already exists.", destination.lastPathComponent)
                             ])
                     }
                     if let control {

@@ -63,7 +63,7 @@ private struct BrowserTab: View {
                     .foregroundStyle(.secondary).frame(width: 28, height: 30)
                     .contentShape(Rectangle())
             }.buttonStyle(.plain).disabled(model.busy).help(BL("Close Tab"))
-                .accessibilityLabel(BL("Close \(model.title) tab"))
+                .accessibilityLabel(BLF("Close %@ tab", model.title))
         }.frame(width: width, height: 30)
             .background(
                 selected

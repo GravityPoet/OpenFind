@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
     static func title(_ application: URL, for hit: Hit) -> String {
         let name = application.deletingPathExtension().lastPathComponent
         return NSWorkspace.shared.urlForApplication(toOpen: hit.url) == application
-            ? BL(name + " (default)") : name
+            ? BLF("%@ (default)", name) : name
     }
 }
 struct OpenWithMenu: View {

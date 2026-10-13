@@ -5,7 +5,7 @@ import Darwin
 struct FileOperationProgress: Sendable {
     var completed = 0
     var total = 0
-    var item = "Preparing…"
+    var item = BL("Preparing…")
     var bytes: Int64 = 0
     var expectedBytes: Int64 = 0
     var fraction: Double? {

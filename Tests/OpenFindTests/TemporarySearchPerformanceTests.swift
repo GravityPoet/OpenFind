@@ -1,10 +1,67 @@
 import Foundation
 import Darwin
+import CryptoKit
 import Testing
 @testable import OpenFind
 
 @Suite("Temporary Search Performance")
 struct TemporarySearchPerformanceTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["OPENFIND_NODE_AUDIT_ROOT"] != nil))
+    func measureFrozenBaseNodeStorage() throws {
+        let environment = ProcessInfo.processInfo.environment
+        let root = URL(fileURLWithPath: try #require(environment["OPENFIND_NODE_AUDIT_ROOT"]))
+            .resolvingSymlinksInPath()
+        let mode = try #require(environment["OPENFIND_NODE_AUDIT_MODE"])
+        // The caller supplies copies, never the live cache or a user-data root.
+        let isTemporaryFixture = ["/private/tmp/openfind-node-audit-", "/tmp/openfind-node-audit-"]
+            .contains(where: root.path.hasPrefix)
+        #expect(isTemporaryFixture)
+        guard isTemporaryFixture, ["heap", "mapped"].contains(mode) else {
+            throw CocoaError(.fileReadInvalidFileName)
+        }
+        struct Manifest: Decodable {
+            let scopes: [String]
+            let authorizedScopePaths: [String]
+            let deepIndex: Bool
+            let hasFullDiskAccess: Bool
+            let nodeCount: Int
+        }
+        let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: root.appendingPathComponent("manifest.json")))
+        let signature = SearchIndexSignature(
+            scopes: manifest.scopes.map { URL(fileURLWithPath: $0) },
+            deepIndex: manifest.deepIndex,
+            hasFullDiskAccess: manifest.hasFullDiskAccess,
+            authorizedScopePaths: manifest.authorizedScopePaths
+        )
+        let before = processPhysicalMemoryBytes().current
+        let loadStarted = ContinuousClock.now
+        let loaded = try #require(SearchIndexPersistence.load(
+            signature: signature,
+            from: root.appendingPathComponent(mode).appendingPathComponent("search-index-v18.bin")
+        ))
+        let loadMilliseconds = Self.milliseconds(loadStarted.duration(to: .now))
+        let after = processPhysicalMemoryBytes().current
+        #expect(loaded.usesMappedBaseNodeStorage == (mode == "mapped"))
+        #expect(loaded.nodes.count == manifest.nodeCount)
+        print("node-audit mode=\(mode) nodes=\(loaded.nodes.count) load-ms=\(loadMilliseconds) footprint-before=\(before) footprint-after=\(after)")
+        for (offset, term) in ["swift", "readme", "测试", "sidx"].enumerated() {
+            var options = SearchOptions(query: term)
+            options.target = .name
+            options.matchMode = offset == 3 ? .fuzzy : .substring
+            options.includeHidden = true
+            options.includePackages = true
+            options.useFrequencyRanking = false
+            let query = try SearchQueryPlan.parse(term).compile(options: options)
+            var digest = SHA256()
+            let started = ContinuousClock.now
+            let matches = loaded.nameMatches(query: query, options: options)
+            let elapsed = Self.milliseconds(started.duration(to: .now))
+            for result in matches { digest.update(data: Data((result.path + "\n").utf8)) }
+            let checksum = digest.finalize().map { String(format: "%02x", $0) }.joined()
+            print("node-audit-query mode=\(mode) query=\(offset) count=\(matches.count) ms=\(elapsed) sha256=\(checksum)")
+        }
+    }
+
     private func processDiskBytesWritten() -> UInt64 {
         var usage = rusage_info_v4()
         let status = withUnsafeMutablePointer(to: &usage) { pointer in

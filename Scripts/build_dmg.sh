@@ -19,7 +19,7 @@ cleanup() {
         "$LSREGISTER" -u "$STAGE/OpenFind.app" >/dev/null 2>&1 || true
     fi
     case "$STAGE" in
-        */openfind-dmg.*) /bin/rm -R "$STAGE" ;;
+        */openfind-dmg.*) /usr/bin/swift "$ROOT_DIR/Scripts/recycle_owned_path.swift" "$STAGE" ;;
         *) echo "Error: unexpected DMG staging path." >&2; dmg_exit_code=64 ;;
     esac
     /bin/rm -f "$DMG_TMP" "$CHECKSUM_TMP"

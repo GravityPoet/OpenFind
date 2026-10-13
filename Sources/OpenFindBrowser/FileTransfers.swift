@@ -52,10 +52,11 @@ struct ConflictSheet: View {
     @State private var applyToAll = false
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(BL("“\(conflict.destination.lastPathComponent)” already exists")).font(.headline)
+            Text(BLF("“%@” already exists", conflict.destination.lastPathComponent)).font(.headline)
             Text(
-                BL(
-                    "Choose what to do in \(conflict.destination.deletingLastPathComponent().path). Replace moves the existing item to Trash so Undo can restore it."
+                BLF(
+                    "Choose what to do in %@. Replace moves the existing item to Trash so Undo can restore it.",
+                    conflict.destination.deletingLastPathComponent().path
                 )
             )
             .fixedSize(horizontal: false, vertical: true)

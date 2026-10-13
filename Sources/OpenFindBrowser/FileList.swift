@@ -289,7 +289,7 @@ import AppKit
                 _ action: @escaping @MainActor () -> Void
             ) -> NSMenuItem {
                 let item = NSMenuItem(
-                    title: BL(title), action: #selector(runMenuAction(_:)), keyEquivalent: "")
+                    title: title, action: #selector(runMenuAction(_:)), keyEquivalent: "")
                 item.target = self; item.tag = actions.count; item.isEnabled = enabled
                 actions[item.tag] = action; (submenu ?? menu).addItem(item)
                 return item
@@ -297,15 +297,15 @@ import AppKit
             menu.autoenablesItems = false
             if !items.indices.contains(row) {
                 let writable = model.canWriteHere && !model.busy
-                add("New Folder", enabled: writable) { model.newFolder() }
-                add("New Text File", enabled: writable) { model.newTextFile() }
-                add("Paste Items", enabled: writable) { model.paste() }
-                add("Move Items Here", enabled: writable) { model.paste(move: true) }
+                add(BL("New Folder"), enabled: writable) { model.newFolder() }
+                add(BL("New Text File"), enabled: writable) { model.newTextFile() }
+                add(BL("Paste Items"), enabled: writable) { model.paste() }
+                add(BL("Move Items Here"), enabled: writable) { model.paste(move: true) }
                 menu.addItem(.separator())
-                add("Open in New Tab", enabled: model.canWriteHere) { [weak self] in
+                add(BL("Open in New Tab"), enabled: model.canWriteHere) { [weak self] in
                     self?.parent.newTab(model.location)
                 }
-                add("Add Folder to Sidebar", enabled: model.canWriteHere) { [weak self] in
+                add(BL("Add Folder to Sidebar"), enabled: model.canWriteHere) { [weak self] in
                     self?.parent.addFavorite(model.location)
                 }
                 menu.addItem(.separator())
@@ -316,16 +316,16 @@ import AppKit
                 }
                 let viewItem = NSMenuItem(title: BL("View"), action: nil, keyEquivalent: "")
                 viewItem.submenu = views; menu.addItem(viewItem)
-                let hidden = add("Show Hidden Files") { model.showHidden.toggle() }
+                let hidden = add(BL("Show Hidden Files")) { model.showHidden.toggle() }
                 hidden.state = model.showHidden ? .on : .off
-                add("Refresh", enabled: !model.busy) { model.schedule() }
+                add(BL("Refresh"), enabled: !model.busy) { model.schedule() }
                 return menu
             }
             if !table.selectedRowIndexes.contains(row) {
                 table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
             }
             let hit = items[row]
-            add("Open") { model.open(hit) }
+            add(BL("Open")) { model.open(hit) }
             if !hit.isFolder {
                 let applications = NSMenu(); applications.autoenablesItems = false
                 for application in OpenWithApps.applications(for: hit) {
@@ -334,24 +334,24 @@ import AppKit
                     }
                 }
                 applications.addItem(.separator())
-                add("Other…", to: applications) { model.chooseApplication(for: hit) }
+                add(BL("Other…"), to: applications) { model.chooseApplication(for: hit) }
                 let item = NSMenuItem(title: BL("Open With"), action: nil, keyEquivalent: "")
                 item.submenu = applications; menu.addItem(item)
             }
-            add("Open in New Tab", enabled: hit.isFolder) { [weak self] in
+            add(BL("Open in New Tab"), enabled: hit.isFolder) { [weak self] in
                 self?.parent.newTab(hit.url)
             }
-            add("Quick Look") { model.preview = hit }
-            add("Open Enclosing Folder") { model.navigate(hit.url.deletingLastPathComponent()) }
+            add(BL("Quick Look")) { model.preview = hit }
+            add(BL("Open Enclosing Folder")) { model.navigate(hit.url.deletingLastPathComponent()) }
             menu.addItem(.separator())
-            add("Get Info") { model.info() }
-            add("Rename…", enabled: !model.busy) { model.renameItems() }
-            add("Compress", enabled: !model.busy && model.canWriteHere) { model.compress() }
-            add("Extract ZIP", enabled: !model.busy && hit.url.pathExtension.lowercased() == "zip")
+            add(BL("Get Info")) { model.info() }
+            add(BL("Rename…"), enabled: !model.busy) { model.renameItems() }
+            add(BL("Compress"), enabled: !model.busy && model.canWriteHere) { model.compress() }
+            add(BL("Extract ZIP"), enabled: !model.busy && hit.url.pathExtension.lowercased() == "zip")
             { model.extract() }
-            add("Duplicate", enabled: !model.busy) { model.duplicate() }
-            add("Copy") { model.copy() }
-            add("Copy Path") { model.copyPath() }
+            add(BL("Duplicate"), enabled: !model.busy) { model.duplicate() }
+            add(BL("Copy")) { model.copy() }
+            add(BL("Copy Path")) { model.copyPath() }
             let tags = NSMenu(); tags.autoenablesItems = false
             for name in ["Red", "Orange", "Yellow", "Green", "Blue", "Purple", "Gray"] {
                 let item = NSMenuItem(
@@ -361,7 +361,7 @@ import AppKit
             }
             let tagItem = NSMenuItem(title: BL("Tags"), action: nil, keyEquivalent: "");
             tagItem.submenu = tags; menu.addItem(tagItem)
-            menu.addItem(.separator()); add("Move to Trash", enabled: !model.busy) { model.trash() }
+            menu.addItem(.separator()); add(BL("Move to Trash"), enabled: !model.busy) { model.trash() }
             return menu
         }
         @objc private func runMenuAction(_ sender: NSMenuItem) { actions[sender.tag]?() }
