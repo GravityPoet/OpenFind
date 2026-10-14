@@ -1428,7 +1428,8 @@ enum BackgroundContentIndexEnricher {
                     } else { autoreleasepool {
                         if let extracted = DocumentTextExtractor.extract(
                             from: node.url,
-                            maxFileSize: maxFileSize
+                            maxFileSize: maxFileSize,
+                            allowOCR: false
                         ) {
                             let digest = hardLinkIdentity.map { _ in
                                 ContentSearchIndex.contentDigest(extracted.text)

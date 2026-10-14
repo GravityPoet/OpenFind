@@ -177,18 +177,22 @@ struct TerminalBridgeTests {
         defer { controller.close() }
         controller.show()
         controller.viewModel.query = "g blocked"
-        try await waitUntil { controller.viewModel.selectedResult != nil }
+        try await waitUntil("terminal candidate was not ready") { controller.viewModel.selectedResult != nil }
         controller.panel?.onOpen?()
-        try await waitUntil { controller.viewModel.isSendingCommand }
+        try await waitUntil("sending state was never observed") { controller.viewModel.isSendingCommand }
         #expect(!controller.isVisible)
-        try await waitUntil { controller.viewModel.errorMessage != nil }
+        try await waitUntil("timeout error did not appear") { controller.viewModel.errorMessage != nil }
         #expect(controller.isVisible)
         #expect(!controller.viewModel.isSendingCommand)
         #expect(controller.viewModel.query == "g blocked")
         controller.viewModel.query = "g next"
-        try await waitUntil { controller.viewModel.resultsAreCurrent && controller.viewModel.selectedResult != nil }
+        try await waitUntil("second terminal candidate was not ready") {
+            controller.viewModel.resultsAreCurrent && controller.viewModel.selectedResult != nil
+        }
         controller.panel?.onOpen?()
-        try await waitUntil { !controller.viewModel.isSendingCommand && !controller.isVisible }
+        try await waitUntil("second delivery did not close the panel") {
+            !controller.viewModel.isSendingCommand && !controller.isVisible
+        }
         #expect(try String(contentsOf: fixture.calls, encoding: .utf8) == "blocked\nnext\n")
     }
 

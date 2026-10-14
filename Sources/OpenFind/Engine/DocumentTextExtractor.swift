@@ -3,11 +3,14 @@ import Compression
 import Darwin
 import Dispatch
 import Foundation
+import ImageIO
 import PDFKit
+import Vision
 
 struct ExtractedDocumentText: Sendable, Equatable {
     enum Source: String, Sendable {
         case plainText
+        case imageText
         case pdf
         case attributedDocument
         case htmlText
@@ -32,7 +35,7 @@ enum BackgroundContentTier: Int, CaseIterable, Sendable {
 /// archive members to disk. Structured formats use macOS-native readers where
 /// possible; process-isolated fallbacks have strict time and output ceilings.
 enum DocumentTextExtractor {
-    static let extractionVersion = 1
+    static let extractionVersion = 2
 
     enum StreamingPlainTextMatch: Sendable, Equatable {
         case match
@@ -46,6 +49,10 @@ enum DocumentTextExtractor {
     private static let processTimeout: TimeInterval = 15
     private static let listingLimit = 16 * 1_024 * 1_024
     private static let preferredBackgroundByteLimit: Int64 = 16 * 1_024 * 1_024
+    private static let maximumOCRImageDimension = 3_072
+    private static let imageExtensions: Set<String> = [
+        "bmp", "heic", "heif", "jpeg", "jpg", "png", "webp",
+    ]
     private static let deferredBackgroundPathComponents: Set<String> = [
         ".build", ".cache", ".gradle", "build", "caches", "deriveddata",
         "dist", "node_modules", "out", "target",
@@ -110,6 +117,7 @@ enum DocumentTextExtractor {
         let lowerName = name.lowercased()
         let extensionName = (lowerName as NSString).pathExtension
         return extensionName == "pdf"
+            || imageExtensions.contains(extensionName)
             || attributedDocumentTypes[extensionName] != nil
             || openXMLArchiveExtensions.contains(extensionName)
             || iWorkExtensions.contains(extensionName)
@@ -134,6 +142,8 @@ enum DocumentTextExtractor {
         if pathComponents.contains(where: deferredBackgroundPathComponents.contains) { return nil }
 
         let extensionName = (lowerName as NSString).pathExtension
+        // OCR is demand-driven; finding an ordinary file must not start a photo-library scan.
+        if imageExtensions.contains(extensionName) { return nil }
         if structuredBackgroundExtensions.contains(extensionName) {
             return .structured
         }
@@ -152,6 +162,7 @@ enum DocumentTextExtractor {
         return archiveSuffixes.contains { lowerName.hasSuffix($0) }
             || openXMLArchiveExtensions.contains(extensionName)
             || iWorkExtensions.contains(extensionName)
+            || imageExtensions.contains(extensionName)
             || extensionName == "rtfd"
     }
 
@@ -172,6 +183,7 @@ enum DocumentTextExtractor {
 
         let extensionName = url.pathExtension.lowercased()
         guard extensionName != "pdf",
+              !imageExtensions.contains(extensionName),
               attributedDocumentTypes[extensionName] == nil,
               !openXMLArchiveExtensions.contains(extensionName),
               !iWorkExtensions.contains(extensionName),
@@ -182,7 +194,8 @@ enum DocumentTextExtractor {
         return prefix.contains(0)
     }
 
-    static func extract(from url: URL, maxFileSize: Int64) -> ExtractedDocumentText? {
+    static func extract(from url: URL, maxFileSize: Int64, allowOCR: Bool = true) -> ExtractedDocumentText? {
+        guard !Task.isCancelled else { return nil }
         let keys: Set<URLResourceKey> = [.fileSizeKey, .isDirectoryKey, .isRegularFileKey]
         guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
         let isDirectory = values.isDirectory == true
@@ -203,15 +216,29 @@ enum DocumentTextExtractor {
             : Int(min(Int64(Int.max), max(1, maxFileSize)))
 
         if extensionName == "pdf" {
-            guard let text = PDFDocument(url: url)?.string,
-                  !text.isEmpty,
-                  text.utf8.count <= extractedByteLimit else { return nil }
+            guard let document = PDFDocument(url: url),
+                  let text = extractPDFText(document, byteLimit: extractedByteLimit, allowOCR: allowOCR) else { return nil }
             return ExtractedDocumentText(text: text, source: .pdf)
+        }
+
+        if imageExtensions.contains(extensionName), !isDirectory {
+            guard allowOCR,
+                  let source = CGImageSourceCreateWithURL(url as CFURL, [
+                kCGImageSourceShouldCache: false,
+            ] as CFDictionary),
+                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: maximumOCRImageDimension,
+                    kCGImageSourceShouldCacheImmediately: true,
+                  ] as CFDictionary),
+                  let text = recognizeImageText(image, byteLimit: extractedByteLimit) else { return nil }
+            return ExtractedDocumentText(text: text, source: .imageText)
         }
 
         if isDirectory, extensionName == "rtfd" {
             let richTextURL = url.appendingPathComponent("TXT.rtf", isDirectory: false)
-            return extract(from: richTextURL, maxFileSize: maxFileSize)
+            return extract(from: richTextURL, maxFileSize: maxFileSize, allowOCR: allowOCR)
         }
 
         if htmlLikeExtensions.contains(extensionName), !isDirectory {
@@ -262,6 +289,83 @@ enum DocumentTextExtractor {
               let text = decodePlainText(data),
               !text.isEmpty else { return nil }
         return ExtractedDocumentText(text: text, source: .plainText)
+    }
+
+    /// Keep existing PDF text verbatim; only pages without a text layer need OCR.
+    /// A failed/cancelled page invalidates the extraction instead of caching a partial document.
+    private static func extractPDFText(_ document: PDFDocument, byteLimit: Int, allowOCR: Bool) -> String? {
+        guard !document.isLocked, document.pageCount > 0 else { return nil }
+        var pieces: [String] = []
+        var bytes = 0
+        for index in 0..<document.pageCount {
+            guard !Task.isCancelled else { return nil }
+            let separatorBytes = pieces.isEmpty ? 0 : 1
+            guard separatorBytes <= byteLimit - bytes else { return nil }
+            let text: String? = autoreleasepool {
+                guard let page = document.page(at: index) else { return nil }
+                if let text = page.string,
+                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return text
+                }
+                guard allowOCR, let image = renderedOCRPage(page) else { return nil }
+                return recognizeImageText(image, byteLimit: byteLimit - bytes - separatorBytes)
+            }
+            guard let text, !Task.isCancelled,
+                  text.utf8.count <= byteLimit - bytes - separatorBytes else { return nil }
+            bytes += text.utf8.count + separatorBytes
+            pieces.append(text)
+        }
+        return pieces.joined(separator: "\n")
+    }
+
+    private static func renderedOCRPage(_ page: PDFPage) -> CGImage? {
+        let bounds = page.bounds(for: .cropBox)
+        guard bounds.width.isFinite, bounds.height.isFinite,
+              bounds.width > 0, bounds.height > 0,
+              let reference = page.pageRef else { return nil }
+        let scale = CGFloat(maximumOCRImageDimension) / max(bounds.width, bounds.height)
+        guard scale.isFinite, scale > 0 else { return nil }
+        let width = max(1, Int(ceil(bounds.width * scale)))
+        let height = max(1, Int(ceil(bounds.height * scale)))
+        guard let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        let target = CGRect(x: 0, y: 0, width: width, height: height)
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(target)
+        context.concatenate(reference.getDrawingTransform(.cropBox, rect: target, rotate: 0,
+                                                          preserveAspectRatio: true))
+        context.drawPDFPage(reference)
+        return context.makeImage()
+    }
+
+    /// Vision uses the system's OCR resources; no model download or remote request is involved.
+    /// Empty text is a successful extraction so blank images do not trigger endless retries.
+    private static func recognizeImageText(_ image: CGImage, byteLimit: Int) -> String? {
+        guard !Task.isCancelled else { return nil }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.automaticallyDetectsLanguage = true
+        if let supported = try? request.supportedRecognitionLanguages() {
+            // Vision permits Chinese to be paired with English, but no other languages.
+            let languages = ["zh-Hans", "zh-Hant", "en-US"].filter(supported.contains)
+            if !languages.isEmpty { request.recognitionLanguages = languages }
+        }
+        guard (try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])) != nil,
+              !Task.isCancelled else { return nil }
+        var lines: [String] = []
+        var bytes = 0
+        for observation in request.results ?? [] {
+            guard let line = observation.topCandidates(1).first?.string
+                .trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty else { continue }
+            let addedBytes = line.utf8.count + (lines.isEmpty ? 0 : 1)
+            guard addedBytes <= byteLimit - bytes else { return nil }
+            bytes += addedBytes
+            lines.append(line)
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Searches a large, ordinary ASCII text file without materializing its

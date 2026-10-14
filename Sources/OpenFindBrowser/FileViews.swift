@@ -34,7 +34,7 @@ struct FileIcon: View {
 @MainActor final class ThumbnailCache {
     static let shared = ThumbnailCache()
     private let images = NSCache<NSString, NSImage>()
-    private init() { images.countLimit = 768; images.totalCostLimit = 48 * 1024 * 1024 }
+    init() { images.countLimit = 768; images.totalCostLimit = 48 * 1024 * 1024 }
     func key(_ hit: Hit, pixels: Int) -> String {
         hit.imageKey + ":" + String(hit.size) + ":" + String(pixels)
     }

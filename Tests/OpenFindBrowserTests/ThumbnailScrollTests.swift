@@ -29,7 +29,8 @@ final class ThumbnailScrollTests: XCTestCase {
                 ImageRasterizer.decode(
                     source, maxPixels: largePixels)), size: NSSize(width: 128, height: 96))
         XCTAssertEqual(ImageRasterizer.cost(small) * 4, ImageRasterizer.cost(large))
-        let cache = ThumbnailCache.shared
+        // Previous scrolling tests can fill the shared cache and evict these fixtures.
+        let cache = ThumbnailCache()
         cache.store(small, for: hit, pixels: compactPixels)
         XCTAssertNil(
             cache.image(hit, pixels: largePixels),
@@ -108,23 +109,44 @@ final class ThumbnailScrollTests: XCTestCase {
     }
 
     func testRowIconsUseSmallBitmapsWithoutReplacingPreviewCache() async throws {
+        let parent = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+        let initialParent = try FileManager.default.attributesOfItem(atPath: parent.path)
+        let identityKeys: [FileAttributeKey] = [.systemNumber, .systemFileNumber]
+        let initialIdentity = identityKeys.map { (initialParent[$0] as? NSNumber)?.stringValue }
         let (root, hits) = try makeImageFixtures(1)
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer {
+            do {
+                let before = try FileManager.default.attributesOfItem(atPath: parent.path)
+                guard root.resolvingSymlinksInPath().path.hasPrefix(parent.path + "/FinderSearch-thumbs-"),
+                      identityKeys.map({ (before[$0] as? NSNumber)?.stringValue }) == initialIdentity else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+                var destination: NSURL?
+                try FileManager.default.trashItem(at: root, resultingItemURL: &destination)
+                let recovered = try XCTUnwrap(destination as URL?)
+                XCTAssertTrue(FileManager.default.fileExists(atPath: recovered.path))
+                XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
+                let after = try FileManager.default.attributesOfItem(atPath: parent.path)
+                XCTAssertEqual(identityKeys.map { (after[$0] as? NSNumber)?.stringValue }, initialIdentity)
+                print("Icon fixture Trash receipt: \(recovered.path), parent=\(initialIdentity)")
+            } catch { XCTFail("Icon fixture recovery failed: \(error)") }
+        }
+        let icons = FileIcons()
         let hit = hits[0]
-        let rowResult = await FileIcons.shared.load(hit, size: .row)
-        let previewResult = await FileIcons.shared.load(hit, size: .preview)
+        let rowResult = await icons.load(hit, size: .row)
+        let previewResult = await icons.load(hit, size: .preview)
         let row = try XCTUnwrap(rowResult)
         let preview = try XCTUnwrap(previewResult)
-        let repeatedRow = await FileIcons.shared.load(hit, size: .row)
-        let repeatedPreview = await FileIcons.shared.load(hit, size: .preview)
+        let repeatedRow = await icons.load(hit, size: .row)
+        let repeatedPreview = await icons.load(hit, size: .preview)
         XCTAssertTrue(row === repeatedRow)
         XCTAssertTrue(preview === repeatedPreview)
         XCTAssertFalse(row === preview)
         XCTAssertLessThanOrEqual(try XCTUnwrap(row.representations.first).pixelsWide, 32)
         XCTAssertGreaterThan(try XCTUnwrap(preview.representations.first).pixelsWide, 32)
         XCTAssertLessThan(ImageRasterizer.cost(row), ImageRasterizer.cost(preview))
-        let smallPlaceholder = FileIcons.shared.placeholder(hit, size: .row)
-        let largePlaceholder = FileIcons.shared.placeholder(hit, size: .preview)
+        let smallPlaceholder = icons.placeholder(hit, size: .row)
+        let largePlaceholder = icons.placeholder(hit, size: .preview)
         XCTAssertLessThanOrEqual(
             try XCTUnwrap(smallPlaceholder.representations.first).pixelsWide, 32)
         XCTAssertGreaterThan(try XCTUnwrap(largePlaceholder.representations.first).pixelsWide, 32)

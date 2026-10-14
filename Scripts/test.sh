@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BASE_TMP="${TMPDIR:-/tmp}"
 BASE_TMP="${BASE_TMP%/}"
+BASE_TMP="$(cd "$BASE_TMP" && pwd -P)"
+TEST_PARENT_IDENTITY="$(/usr/bin/stat -f '%d:%i' "$BASE_TMP")"
 TEST_ROOT="$(mktemp -d "$BASE_TMP/openfind-tests.XXXXXX")"
 TEST_HOME="$TEST_ROOT/home"
 TEST_TMP="$TEST_ROOT/tmp"
@@ -14,7 +16,17 @@ cleanup() {
     case "$TEST_ROOT" in
         "$BASE_TMP"/openfind-tests.*)
             if [ -d "$TEST_ROOT" ]; then
-                /bin/rm -R "$TEST_ROOT"
+                if [ "$(/usr/bin/stat -f '%d:%i' "$BASE_TMP")" != "$TEST_PARENT_IDENTITY" ] \
+                    || [ "$(cd "$TEST_ROOT" && pwd -P)" != "$TEST_ROOT" ]; then
+                    echo "Error: test fixture identity changed; preserving $TEST_ROOT" >&2
+                    exit 64
+                fi
+                # Reuse the validated Trash helper; retain the fixture and parent-identity receipt.
+                if ! env -u CFFIXED_USER_HOME /usr/bin/xcrun --sdk macosx swift \
+                    "$ROOT_DIR/Scripts/recycle_owned_path.swift" "$TEST_ROOT"; then
+                    echo "Error: recoverable test cleanup failed: $TEST_ROOT" >&2
+                    test_exit_code=64
+                fi
             fi
             ;;
         *)

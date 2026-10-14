@@ -500,8 +500,13 @@ struct ClipboardAlfredWorkflowTests {
         defer { controller.close() }
 
         let panel = try #require(controller.panel)
-        try await Task.sleep(for: .milliseconds(120))
-        panel.contentView?.layoutSubtreeIfNeeded()
+        try await waitUntil {
+            panel.contentView?.layoutSubtreeIfNeeded()
+            guard let split = findSplitView(in: panel.contentView), split.subviews.count >= 2 else { return false }
+            return abs(split.subviews[0].frame.width - 430) < 1
+                && abs(split.subviews[1].frame.width - 419) < 1
+                && abs(split.frame.width - 850) < 1
+        }
         let splitView = try #require(findSplitView(in: panel.contentView))
         let panes = Array(splitView.subviews.prefix(2))
         #expect(panes.count == 2)

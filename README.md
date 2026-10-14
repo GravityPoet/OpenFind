@@ -66,6 +66,7 @@ OpenFind combines all 5 essential power-tools into a single, unified, privacy-fi
 * **Instant `mmap` Indexing**: Loads millions of file paths in microseconds without heap memory overhead.
 * **Real-time FSEvents Sync**: Instantly indexes terminal changes (`git pull`, `touch`) as they happen.
 * **Deep Space Extraction**: Search inside PDFs, Word/Excel, Apple iWork, and stream inside `.zip` / `.tar.gz` compressed archives without disk extraction.
+* **Image & Scan Content Search (current source build)**: Find Chinese and English text in PNG, JPEG, HEIC, WebP and BMP images, and PDF pages without a text layer, with matching-text previews. Use `in keyword` or `content:"keyword"`; macOS performs OCR locally on demand during content searches, with no additional AI model download. This searches recognized words; scene descriptions, semantic similarity and audio/video content search are not included.
 * **Regex, Globs & Quick Look**: Complete support for `src/**/*.swift`, `regex:^Report-[0-9]+$`, and instant `Space` key Quick Look preview.
 
 ### 2. 📋 Encrypted Clipboard Manager & OCR Tool
