@@ -165,7 +165,7 @@ g pwd                  # 回车后在所选终端中运行命令
 type:code openfind      # 包含 openfind 的代码文件
 regex:^Report-[0-9]+$   # 正则匹配文件名
 content:"API_SECRET"    # 深层全文检索（支持代码、PDF 及 ZIP 包内）
-in:/Users/me/Projects   # 在指定目录下递归搜索
+in:~/Projects   # 在指定目录下递归搜索
 tag:Project;Important  # Finder 标签过滤
 size:>10mb dm:today     # 按大小与修改 (dm:) / 创建 (dc:) 日期过滤
 report AND NOT draft    # 布尔运算符：AND / OR / NOT
@@ -220,6 +220,6 @@ SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 OpenFind 社区版基于 **[AGPL-3.0 License](./LICENSE)** 协议开源。
 
 - **开源免费使用**：任何个人和企业均可按照 AGPL-3.0 协议规定**免费使用与分发**。
-- **商业免开源许可**：如果您或您的企业需要将本软件**闭源集成、免除 AGPL-3.0 开源义务或获取专有再分发权**，请联系我们购买 [商业许可 (Commercial Dual-License)](mailto:gravitypoet@icloud.com)。详见 [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md)。
+- **商业免开源许可**：如果您或您的企业需要将本软件**闭源集成、免除 AGPL-3.0 开源义务或获取专有再分发权**，请联系我们购买 [商业许可 (Commercial Dual-License)](mailto:gravitypoet&#64;icloud.com)。详见 [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md)。
 - **贡献者协议 (CLA)**：为了维护双重许可的合法性，所有外部 PR 提交前均须签署 CLA。详见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 - **商标声明**：详见 [TRADEMARKS.md](./TRADEMARKS.md)。

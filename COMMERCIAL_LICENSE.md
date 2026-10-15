@@ -24,7 +24,7 @@ Request a commercial license if you want to:
 
 Project Owner: Repository owner of github.com/GravityPoet/OpenFind
 
-Commercial licensing contact: gravitypoet@icloud.com or GitHub: @GravityPoet
+Commercial licensing contact: gravitypoet&#64;icloud.com or GitHub: @GravityPoet
 
 Commercial licensing requests should be directed to the project owner through the
 official repository contact channels. Do not treat an email, issue comment,

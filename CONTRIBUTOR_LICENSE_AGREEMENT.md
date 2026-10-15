@@ -9,7 +9,7 @@ authority to maintain OpenFind and grant commercial licenses for OpenFind.
 
 Project Owner: Repository owner of github.com/GravityPoet/OpenFind
 
-Commercial licensing contact: gravitypoet@icloud.com or GitHub: @GravityPoet
+Commercial licensing contact: gravitypoet&#64;icloud.com or GitHub: @GravityPoet
 
 If a separate written commercial agreement requires a formal legal name, use the
 legal name stated in that agreement.

@@ -168,7 +168,7 @@ g pwd                  # Return runs the command in your selected terminal
 type:code openfind      # Source code files containing openfind
 regex:^Report-[0-9]+$   # Match names using regex
 content:"API_SECRET"    # Deep text search in files, PDFs & Zipped sources
-in:/Users/me/Projects   # Search recursively inside specific directory
+in:~/Projects   # Search recursively inside specific directory
 tag:Project;Important  # Finder tag filtering
 size:>10mb dm:today     # Filter by size and modified (dm:) / created (dc:) date
 report AND NOT draft    # Boolean operators: AND / OR / NOT
@@ -224,6 +224,6 @@ SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 OpenFind Community Edition is open source under the **[AGPL-3.0 License](./LICENSE)**.
 
 - **Open Source Free Use**: Any individual or enterprise may use and distribute OpenFind for free in accordance with AGPL-3.0 license terms.
-- **Commercial Dual-License**: If you or your organization need closed-source integration, exemption from AGPL-3.0 copyleft obligations, or proprietary redistribution rights, please contact us for a [Commercial License](mailto:gravitypoet@icloud.com). See [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) for details.
+- **Commercial Dual-License**: If you or your organization need closed-source integration, exemption from AGPL-3.0 copyleft obligations, or proprietary redistribution rights, please contact us for a [Commercial License](mailto:gravitypoet&#64;icloud.com). See [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) for details.
 - **Contributor Agreement (CLA)**: External contributions are covered by our CLA to maintain dual-licensing clean rights. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 - **Trademarks**: See [TRADEMARKS.md](./TRADEMARKS.md).
